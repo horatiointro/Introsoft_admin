@@ -1,0 +1,238 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: #0a0a0a;
+    color: #f3f4f6;
+    font-family: var(--font-sans);
+    letter-spacing: -0.011em;
+  }
+
+  code, pre, kbd, samp, .font-mono {
+    font-family: var(--font-mono) !important;
+    letter-spacing: -0.02em;
+  }
+
+  /* Night Scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0a0a0a;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #222222;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #383838;
+  }
+}
+
+/* =========================================================================
+   DAY / LIGHT THEME STYLING
+   Comprehensive, ultra-crisp high-contrast Daylight mode
+   ========================================================================= */
+[data-theme="light"],
+.theme-light {
+  color-scheme: light;
+}
+
+[data-theme="light"] body,
+.theme-light body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Daylight Backgrounds */
+[data-theme="light"] .bg-\[\#0a0a0a\],
+[data-theme="light"] .bg-\[\#0d0d0d\],
+[data-theme="light"] .bg-\[\#000000\] {
+  background-color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-\[\#111111\],
+[data-theme="light"] .bg-\[\#121212\] {
+  background-color: #ffffff !important;
+}
+
+[data-theme="light"] .bg-\[\#141414\],
+[data-theme="light"] .bg-\[\#151515\],
+[data-theme="light"] .bg-\[\#161616\] {
+  background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .bg-\[\#1a1a1a\],
+[data-theme="light"] .bg-\[\#1c1c1c\],
+[data-theme="light"] .bg-\[\#1e1e1e\] {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .bg-\[\#0e0e0e\] {
+  background-color: #f8fafc !important;
+}
+
+[data-theme="light"] .bg-\[\#222222\] {
+  background-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .bg-\[\#252525\],
+[data-theme="light"] .bg-\[\#282828\] {
+  background-color: #e2e8f0 !important;
+}
+
+/* Daylight Borders */
+[data-theme="light"] .border-\[\#222222\],
+[data-theme="light"] .border-\[\#1c1c1c\],
+[data-theme="light"] .border-\[\#1a1a1a\],
+[data-theme="light"] .border-\[\#262626\],
+[data-theme="light"] .border-\[\#2a2a2a\],
+[data-theme="light"] .border-\[\#333333\],
+[data-theme="light"] .border-\[\#383838\] {
+  border-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .divide-\[\#222222\] > * + *,
+[data-theme="light"] .divide-\[\#1c1c1c\] > * + * {
+  border-color: #e2e8f0 !important;
+}
+
+/* Daylight Typography & Contrast */
+[data-theme="light"] .text-white {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .text-\[\#e5e5e5\],
+[data-theme="light"] .text-\[\#e0e0e0\],
+[data-theme="light"] .text-\[\#d4d4d4\],
+[data-theme="light"] .text-\[\#cccccc\],
+[data-theme="light"] .text-\[\#bbbbbb\] {
+  color: #1e293b !important;
+}
+
+[data-theme="light"] .text-\[\#aaaaaa\],
+[data-theme="light"] .text-\[\#999999\],
+[data-theme="light"] .text-\[\#888888\] {
+  color: #475569 !important;
+}
+
+[data-theme="light"] .text-\[\#777777\],
+[data-theme="light"] .text-\[\#666666\],
+[data-theme="light"] .text-\[\#555555\],
+[data-theme="light"] .text-\[\#444444\] {
+  color: #64748b !important;
+}
+
+/* Daylight Hover States */
+[data-theme="light"] .hover\:bg-\[\#141414\]:hover,
+[data-theme="light"] .hover\:bg-\[\#151515\]:hover,
+[data-theme="light"] .hover\:bg-\[\#161616\]:hover {
+  background-color: #f1f5f9 !important;
+}
+
+[data-theme="light"] .hover\:bg-\[\#1a1a1a\]:hover,
+[data-theme="light"] .hover\:bg-\[\#1c1c1c\]:hover,
+[data-theme="light"] .hover\:bg-\[\#222222\]:hover {
+  background-color: #e2e8f0 !important;
+}
+
+[data-theme="light"] .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+/* Daylight Form Inputs & Controls */
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+[data-theme="light"] input:focus,
+[data-theme="light"] select:focus,
+[data-theme="light"] textarea:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 1px #2563eb !important;
+}
+
+/* Daylight Modals & Dialogs */
+[data-theme="light"] .bg-black\/80,
+[data-theme="light"] .bg-black\/70,
+[data-theme="light"] .bg-black\/60,
+[data-theme="light"] .bg-black\/50 {
+  background-color: rgba(15, 23, 42, 0.5) !important;
+}
+
+[data-theme="light"] .fixed .bg-\[\#111111\],
+[data-theme="light"] .fixed .bg-\[\#0e0e0e\],
+[data-theme="light"] .fixed .bg-\[\#141414\] {
+  background-color: #ffffff !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Daylight Code blocks & Badges */
+[data-theme="light"] pre,
+[data-theme="light"] code {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Daylight Status Color Accents */
+[data-theme="light"] .text-green-400,
+[data-theme="light"] .text-emerald-400 {
+  color: #059669 !important;
+}
+
+[data-theme="light"] .text-blue-400 {
+  color: #2563eb !important;
+}
+
+[data-theme="light"] .text-amber-400,
+[data-theme="light"] .text-yellow-400 {
+  color: #d97706 !important;
+}
+
+[data-theme="light"] .text-red-400,
+[data-theme="light"] .text-rose-400 {
+  color: #dc2626 !important;
+}
+
+[data-theme="light"] .text-purple-400 {
+  color: #7c3aed !important;
+}
+
+/* Daylight Shadows for depth */
+[data-theme="light"] .bg-\[\#111111\],
+[data-theme="light"] .bg-\[\#0a0a0a\] {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+/* Daylight Scrollbars */
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f1f5f9 !important;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Introsoft ALTIL Control Centre",
+  "description": "Provider-independent AI aggregation and governance platform with customer tenant management, statutory POPIA/GDPR officer registration, API key provisioning, and intelligent failover routing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
