@@ -98,10 +98,21 @@ import {
 import { ScopeHeaderBar } from './components/ScopeHeaderBar';
 import { Incident360DiagnosticModal } from './components/Incident360DiagnosticModal';
 import { IncidentCrmView } from './components/IncidentCrmView';
+import { LoginScreen } from './components/LoginScreen';
+import { SplashScreen } from './components/SplashScreen';
 import { INITIAL_INCIDENTS_LIST, INITIAL_ALERTS_LIST, INITIAL_RAG_KNOWLEDGE_BASE } from './data/incidentData';
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isSplashActive, setIsSplashActive] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string; tenant: string }>({
+    name: 'Horatio Huxham',
+    email: 'horatio.huxham@gmail.com',
+    role: 'Global Super Admin',
+    tenant: 'Total Company Scope'
+  });
+
   const [activeTab, setActiveTab] = useState<NavTabId>('command_centre');
   const [architectureOpen, setArchitectureOpen] = useState(false);
   const [selectedTelemetryProviderId, setSelectedTelemetryProviderId] = useState<string>('p-openai');
@@ -1084,6 +1095,36 @@ export default function App() {
     setActiveTab('logs');
   };
 
+  const handleLoginSuccess = (user: { name: string; email: string; role: string; tenant: string }) => {
+    setCurrentUser(user);
+    setIsSplashActive(true);
+  };
+
+  const handleSplashComplete = () => {
+    setIsSplashActive(false);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setIsSplashActive(false);
+  };
+
+  if (!isAuthenticated && !isSplashActive) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  if (isSplashActive) {
+    return (
+      <SplashScreen
+        userName={currentUser.name}
+        userRole={currentUser.role}
+        onComplete={handleSplashComplete}
+        minDurationMs={1500}
+      />
+    );
+  }
+
   return (
     <div className="h-screen bg-[#0a0a0a] text-[#e5e5e5] flex flex-col font-sans selection:bg-blue-600 selection:text-white overflow-hidden">
       {/* Top Navigation Header */}
@@ -1095,6 +1136,8 @@ export default function App() {
         alertsList={alertsList}
         onOpenAlertsView={() => setActiveTab('incidents')}
         onOpenIncidentById={handleOpenIncidentById}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Universal Enterprise Live Event Ticker */}

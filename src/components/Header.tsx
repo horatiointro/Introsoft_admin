@@ -12,7 +12,8 @@ import {
   Moon,
   Bell,
   AlertTriangle,
-  ChevronRight
+  ChevronRight,
+  LogOut
 } from 'lucide-react';
 import { MultiChannelAlert } from '../types';
 
@@ -26,6 +27,8 @@ interface HeaderProps {
   alertsList?: MultiChannelAlert[];
   onOpenAlertsView?: () => void;
   onOpenIncidentById?: (incidentId: string) => void;
+  currentUser?: { name: string; email: string; role: string; tenant: string };
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -37,7 +40,9 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   alertsList = [],
   onOpenAlertsView,
-  onOpenIncidentById
+  onOpenIncidentById,
+  currentUser = { name: 'Horatio Huxham', email: 'horatio.huxham@gmail.com', role: 'Global Super Admin', tenant: 'Total Company Scope' },
+  onLogout
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const unreadAlerts = alertsList.filter(a => !a.isRead);
@@ -163,15 +168,25 @@ export const Header: React.FC<HeaderProps> = ({
           <span>Simulate API</span>
         </button>
 
-        {/* Admin Profile */}
-        <div className="flex items-center gap-2 pl-3 border-l border-[#222222]">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-800 flex items-center justify-center text-[10px] font-bold text-white">
-            H
+        {/* Admin Profile & Logout */}
+        <div className="flex items-center gap-3 pl-3 border-l border-[#222222]">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-800 flex items-center justify-center text-xs font-bold text-white shadow-md border border-emerald-500/30">
+            {currentUser.name.charAt(0)}
           </div>
           <div className="hidden xl:flex flex-col">
-            <span className="text-xs font-semibold text-white leading-tight">Horatio</span>
-            <span className="text-[10px] text-green-500 font-mono leading-tight">Admin Active</span>
+            <span className="text-xs font-semibold text-white leading-tight">{currentUser.name}</span>
+            <span className="text-[10px] text-emerald-400 font-mono leading-tight">{currentUser.role}</span>
           </div>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="p-1.5 rounded-lg bg-[#141414] hover:bg-red-500/20 text-[#888888] hover:text-red-400 border border-[#222222] hover:border-red-500/30 transition-colors ml-1"
+              title="Lock Console / Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </header>
