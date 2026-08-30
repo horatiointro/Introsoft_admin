@@ -14,7 +14,8 @@ import {
   Send,
   Layers,
   Sparkles,
-  Search
+  Search,
+  Maximize2
 } from 'lucide-react';
 import {
   SlaProfileDefinition,
@@ -30,6 +31,8 @@ import {
   initialServiceDeskTickets,
   initialWorkflows
 } from '../data/initialState';
+import { TileDetailModal, TileDetailData } from './TileDetailModal';
+import { getTileDetailData } from '../data/tileDetailData';
 
 interface ServiceManagementViewProps {
   onNavigate?: (tab: any) => void;
@@ -37,6 +40,7 @@ interface ServiceManagementViewProps {
 
 export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () => {
   const [activeTab, setActiveTab] = useState<'sla_designer' | 'kpi_centre' | 'catalogue' | 'service_desk' | 'workflow_approvals'>('sla_designer');
+  const [selectedTileDetail, setSelectedTileDetail] = useState<TileDetailData | null>(null);
 
   // SLA Designer State
   const [slaProfiles, setSlaProfiles] = useState<SlaProfileDefinition[]>(initialSlaProfiles);
@@ -56,8 +60,18 @@ export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () =>
 
   const currentSlaProfile = slaProfiles.find(p => p.id === selectedProfileId) || slaProfiles[0];
 
+  const handleKpiTileClick = (title: string, value: string | number, category?: any) => {
+    setSelectedTileDetail(getTileDetailData(title, value, category || 'Availability & Health'));
+  };
+
   return (
     <div className="space-y-6">
+      {/* Tile Detail Inspector Modal */}
+      <TileDetailModal
+        data={selectedTileDetail}
+        onClose={() => setSelectedTileDetail(null)}
+      />
+
       {/* View Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#12141c] border border-[#222636] p-5 rounded-xl">
         <div>
@@ -227,9 +241,16 @@ export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () =>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {kpis.map(kpi => (
-                <div key={kpi.id} className="bg-[#161a26] border border-[#242c40] rounded-xl p-4 space-y-2.5 font-mono text-xs">
+                <div
+                  key={kpi.id}
+                  onClick={() => handleKpiTileClick(kpi.name, `${kpi.currentValue} ${kpi.unit}`, 'Availability & Health')}
+                  className="bg-[#161a26] border border-[#242c40] hover:border-blue-500/60 rounded-xl p-4 space-y-2.5 font-mono text-xs cursor-pointer transition-all hover:scale-[1.02] group"
+                >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">{kpi.name}</span>
+                    <span className="text-xs font-bold text-white flex items-center gap-1">
+                      {kpi.name}
+                      <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400" />
+                    </span>
                     <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
                       kpi.status === 'within_target' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                     }`}>
