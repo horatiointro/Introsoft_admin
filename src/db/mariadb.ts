@@ -21,17 +21,40 @@ import {
 } from '../data/licensingData';
 
 // Configurable MariaDB connection pool parameters
-const dbConfig = {
-  host: process.env.MARIADB_HOST || 'localhost',
-  port: parseInt(process.env.MARIADB_PORT || '3306', 10),
-  user: process.env.MARIADB_USER || 'root',
-  password: process.env.MARIADB_PASSWORD || '',
-  database: process.env.MARIADB_DATABASE || 'ai_governance_platform',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  connectTimeout: 3000, // Fast fallback if DB server offline
-};
+function getDatabaseConfig(): mysql.PoolOptions {
+  if (process.env.DATABASE_URL) {
+    try {
+      const parsedUrl = new URL(process.env.DATABASE_URL);
+      return {
+        host: parsedUrl.hostname || '127.0.0.1',
+        port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 3306,
+        user: decodeURIComponent(parsedUrl.username || 'altil_user'),
+        password: decodeURIComponent(parsedUrl.password || ''),
+        database: parsedUrl.pathname ? parsedUrl.pathname.replace(/^\//, '') : 'altil_db',
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 4000,
+      };
+    } catch (e) {
+      console.warn('[MariaDB Config] Failed to parse DATABASE_URL, falling back to discrete env vars:', e);
+    }
+  }
+
+  return {
+    host: process.env.MARIADB_HOST || '127.0.0.1',
+    port: parseInt(process.env.MARIADB_PORT || '3306', 10),
+    user: process.env.MARIADB_USER || 'altil_user',
+    password: process.env.MARIADB_PASSWORD || '',
+    database: process.env.MARIADB_DATABASE || 'altil_db',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    connectTimeout: 4000,
+  };
+}
+
+const dbConfig = getDatabaseConfig();
 
 let pool: mysql.Pool | null = null;
 let isDbConnected = false;
@@ -42,7 +65,7 @@ let dbStatusMessage = 'Initializing MariaDB 10.11.18 Connection...';
  */
 export function getMariaDbPool(): mysql.Pool {
   if (!pool) {
-    pool = mysql.createPool(dbConfig);
+    pool = mysql.createPool(getDatabaseConfig());
   }
   return pool;
 }
