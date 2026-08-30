@@ -11,9 +11,12 @@ import {
   TrendingUp,
   Sliders,
   ShieldAlert,
-  ArrowUpRight
+  ArrowUpRight,
+  Maximize2
 } from 'lucide-react';
 import { Customer, TenantSlaProfile as SlaProfile, KpiDefinition } from '../types';
+import { TileDetailModal, TileDetailData } from './TileDetailModal';
+import { getTileDetailData } from '../data/tileDetailData';
 
 interface SlaKpiMonitoringViewProps {
   customers: Customer[];
@@ -29,13 +32,24 @@ export const SlaKpiMonitoringView: React.FC<SlaKpiMonitoringViewProps> = ({
 }) => {
   const [selectedTenantId, setSelectedTenantId] = useState<string>('all');
   const [selectedSlaId, setSelectedSlaId] = useState<string>('all');
+  const [selectedTileDetail, setSelectedTileDetail] = useState<TileDetailData | null>(null);
 
   const filteredCustomers = selectedTenantId === 'all' 
     ? customers 
     : customers.filter(c => c.id === selectedTenantId);
 
+  const handleTileClick = (title: string, value: string | number, category?: any) => {
+    setSelectedTileDetail(getTileDetailData(title, value, category || 'Platform Health'));
+  };
+
   return (
     <div className="space-y-6">
+      {/* Tile Detail Inspector Modal */}
+      <TileDetailModal
+        data={selectedTileDetail}
+        onClose={() => setSelectedTileDetail(null)}
+      />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#12141c] border border-[#222636] p-5 rounded-xl">
         <div>
@@ -47,7 +61,7 @@ export const SlaKpiMonitoringView: React.FC<SlaKpiMonitoringViewProps> = ({
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">Service Level & KPI Monitoring Dashboard</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
-            Real-time evaluation of SLA compliance, P95/P99 latencies, RTO/RPO targets, and automated penalty credit calculations per tenant.
+            Real-time evaluation of SLA compliance, P95/P99 latencies, RTO/RPO targets, and automated penalty credit calculations per tenant. Click any card for derivation metrics.
           </p>
         </div>
 
@@ -92,19 +106,26 @@ export const SlaKpiMonitoringView: React.FC<SlaKpiMonitoringViewProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {kpis.map(kpi => (
-            <div key={kpi.id} className="bg-[#12141c] border border-[#222636] p-4 rounded-xl space-y-3">
+            <div
+              key={kpi.id}
+              onClick={() => handleTileClick(kpi.name, `${kpi.currentValue} ${kpi.unit}`, 'Platform Health')}
+              className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-4 rounded-xl space-y-3 cursor-pointer transition-all hover:scale-[1.02] group"
+            >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white">{kpi.name}</span>
+                <span className="text-xs font-bold text-white flex items-center gap-1">
+                  {kpi.name}
+                  <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400" />
+                </span>
                 <span
                   className={`text-[10px] font-mono px-2 py-0.5 rounded ${
                     kpi.status === 'within_target'
-                      ? 'bg-emerald-500/20 text-emerald-400'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       : kpi.status === 'warning'
-                      ? 'bg-amber-500/20 text-amber-400'
-                      : 'bg-red-500/20 text-red-400'
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      : 'bg-red-500/20 text-red-400 border border-red-500/30'
                   }`}
                 >
-                  {kpi.status.replace('_', ' ').toUpperCase()}
+                  {kpi.status.replace(/_/g, ' ').toUpperCase()}
                 </span>
               </div>
 

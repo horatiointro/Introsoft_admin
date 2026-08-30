@@ -111,8 +111,8 @@ export interface ProviderTelemetryData {
 export type ApplicationStatus = 'active' | 'suspended' | 'revoked';
 
 export type CustomerType = 'company' | 'individual';
-export type CustomerStatus = 'active' | 'pending_kyc' | 'trial' | 'restricted' | 'suspended' | 'archived';
-export type CustomerTier = 'enterprise' | 'growth' | 'startup' | 'pay_as_you_go';
+export type CustomerStatus = 'active' | 'pending_kyc' | 'trial' | 'restricted' | 'suspended' | 'archived' | 'terminated';
+export type CustomerTier = 'enterprise' | 'scale' | 'growth' | 'starter' | 'startup' | 'pay_as_you_go';
 export type UserRole = 'owner' | 'admin' | 'developer' | 'compliance_officer' | 'billing' | 'viewer';
 export type OrgRole = 'parent_owner' | 'subsidiary' | 'partner_reseller' | 'direct_client';
 
@@ -639,11 +639,74 @@ export interface KpiDefinition {
 }
 
 // ==========================================
-// INCIDENT & PROBLEM MANAGEMENT
+// SCOPE FILTERING (COMPANY vs TENANT vs APP)
+// ==========================================
+
+export interface CompanyScopeFilter {
+  tenantId: string; // 'all' or specific customer ID e.g. 'cust-fnb'
+  appId: string;    // 'all' or specific application ID e.g. 'app-fnb-support'
+  scopeName?: string;
+}
+
+// ==========================================
+// INCIDENT & PROBLEM MANAGEMENT & CRM
 // ==========================================
 
 export type IncidentSeverity = 'P1_CRITICAL' | 'P2_HIGH' | 'P3_MEDIUM' | 'P4_LOW';
-export type IncidentStatus = 'investigating' | 'identified' | 'monitoring' | 'resolved';
+export type IncidentStatus = 'reported' | 'investigating' | 'assigned' | 'mitigated' | 'resolved' | 'closed';
+
+export interface BocDiagnosticInfo {
+  revenueAtRiskUsdPerHour: number;
+  slaCreditPenaltyPercent: number;
+  breachCountdownMinutes: number;
+  affectedTenantTier: string;
+  contractImpactSummary: string;
+  customerExecutiveNotified: boolean;
+  accountManagerName: string;
+}
+
+export interface SocDiagnosticInfo {
+  threatClassification: string; // e.g. 'POPIA Part B Violation', 'Prompt Injection', 'Unauthorized API Token'
+  popiaSectionClause?: string; // e.g. 'POPIA Section 72'
+  threatVector: string;
+  auditHash: string;
+  sourceIp: string;
+  informationOfficerPaged: boolean;
+  complianceRiskRating: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+}
+
+export interface NocDiagnosticInfo {
+  p50LatencyMs: number;
+  p95LatencyMs: number;
+  p99LatencyMs: number;
+  httpStatusCodeDistribution: Record<string, number>; // e.g. { '504': 142, '429': 18, '200': 1200 }
+  upstreamProviderHealth: { name: string; status: 'online' | 'degraded' | 'offline'; latencyMs: number }[];
+  activeCircuitBreaker: boolean;
+  gatewayNodeCpuRam: string;
+}
+
+export interface Level1PlaybookInfo {
+  triageChecklist: { step: string; done: boolean }[];
+  recommendedActions: string[];
+  suggestedFallbackModel: string;
+  oneClickMitigationAvailable: boolean;
+}
+
+export interface Level2DiagnosticInfo {
+  rootCauseHypotheses: { hypothesis: string; probabilityPercent: number }[];
+  stackTraceSnippet: string;
+  recentDeploymentsCorrelated: string[];
+  payloadHeaderDiff: string;
+}
+
+export interface Level3EngineeringInfo {
+  rawRequestPayloadJson: string;
+  rawResponsePayloadJson: string;
+  databaseLockStatus: string;
+  jiraTicketUrl?: string;
+  gitHubIssueUrl?: string;
+  suggestedCodePatch?: string;
+}
 
 export interface Incident {
   id: string;
@@ -651,7 +714,12 @@ export interface Incident {
   severity: IncidentSeverity;
   status: IncidentStatus;
   commander: string;
+  assignedTeam: 'BOC' | 'SOC' | 'NOC' | 'Level_1' | 'Level_2' | 'Level_3';
+  assignedEngineer?: string;
   affectedTenantIds: string[];
+  affectedTenantNames?: string[];
+  affectedAppIds: string[];
+  affectedAppNames?: string[];
   affectedServiceIds: string[];
   startTime: string;
   estimatedResolutionTime?: string;
@@ -659,11 +727,29 @@ export interface Incident {
   slaImpacted: boolean;
   slaBreachMinutes?: number;
   summary: string;
+  category: 'API_Gateway' | 'Security_POPIA' | 'Provider_Outage' | 'Latency_Spike' | 'Billing_Webhook' | 'Model_Drift';
+  
+  // Multi-channel alerting state
+  alertChannels: ('sms' | 'email' | 'in_app')[];
+  smsAlertSent: boolean;
+  emailAlertSent: boolean;
+  inAppAlertSent: boolean;
+
+  // Operational 360 Diagnostics
+  bocDetails?: BocDiagnosticInfo;
+  socDetails?: SocDiagnosticInfo;
+  nocDetails?: NocDiagnosticInfo;
+  level1Details?: Level1PlaybookInfo;
+  level2Details?: Level2DiagnosticInfo;
+  level3Details?: Level3EngineeringInfo;
+
   timeline: {
     timestamp: string;
     author: string;
     note: string;
+    channelTriggered?: string;
   }[];
+  
   postIncidentReview?: {
     rootCause: string;
     customerImpact: string;
@@ -674,6 +760,34 @@ export interface Incident {
     dueDate: string;
     status: 'open' | 'in_progress' | 'completed';
   };
+}
+
+export interface MultiChannelAlert {
+  id: string;
+  incidentId: string;
+  incidentTitle: string;
+  severity: IncidentSeverity;
+  timestamp: string;
+  tenantName?: string;
+  appName?: string;
+  message: string;
+  channels: ('sms' | 'email' | 'in_app')[];
+  recipientPhone?: string;
+  recipientEmail?: string;
+  smsStatus: 'sent' | 'queued' | 'failed';
+  emailStatus: 'sent' | 'queued' | 'failed';
+  inAppStatus: 'delivered' | 'read';
+  isRead: boolean;
+}
+
+export interface RagKnowledgeArticle {
+  id: string;
+  title: string;
+  category: 'runbook' | 'post_mortem' | 'compliance' | 'sla_policy';
+  content: string;
+  keywords: string[];
+  relatedErrorCodes: string[];
+  updatedAt: string;
 }
 
 export interface ProblemRecord {
@@ -714,14 +828,21 @@ export interface IamUser {
   name: string;
   email: string;
   department: string;
+  designation?: string;
+  phone?: string;
   roleId: string;
   roleName: string;
   tenantId?: string;
   tenantName?: string;
-  status: 'active' | 'inactive' | 'locked';
+  status: 'active' | 'inactive' | 'locked' | 'suspended' | 'offboarded';
   mfaEnabled: boolean;
-  authMethod: 'sso_saml' | 'oauth_google' | 'mfa_password';
+  authMethod: 'sso_saml' | 'oauth_google' | 'mfa_password' | 'fido2_webauthn';
   lastLogin: string;
+  createdAt?: string;
+  ipWhitelist?: string[];
+  sessionTokenRevokedAt?: string | null;
+  offboardedAt?: string | null;
+  offboardedReason?: string | null;
 }
 
 export interface IamRole {
@@ -730,6 +851,9 @@ export interface IamRole {
   description: string;
   isSystemRole: boolean;
   permissions: string[];
+  tenantId?: string;
+  userCount?: number;
+  createdAt?: string;
 }
 
 // ==========================================
@@ -1033,5 +1157,98 @@ export interface ActivityFeedEvent {
   title: string;
   details: string;
 }
+
+// ==========================================
+// ENTERPRISE LICENSING & MONETIZATION
+// ==========================================
+
+export type PricingModelType =
+  | 'per_transaction'      // $ per API call / per 1k tokens
+  | 'per_day'              // Daily recurring license
+  | 'per_month'            // Monthly recurring subscription
+  | 'per_year'             // Annual enterprise contract
+  | 'tiered_volume'        // Step-down pricing per volume bracket
+  | 'hybrid_base_metered'  // Fixed base fee + metered transaction overage
+  | 'custom_contract';     // Custom enterprise SLA agreement
+
+export type EnforcementAction =
+  | 'soft_warning'         // Header warning & UI notification banner
+  | 'rate_limit_throttle'  // Strict request throttling (e.g. 5 RPM)
+  | 'read_only'            // Block POST/PUT mutations, allow read queries
+  | 'hard_block_402';      // HTTP 402 Payment Required - Gateway traffic blocked
+
+export type LicenseStatus =
+  | 'active'
+  | 'grace_period'
+  | 'past_due_restricted'
+  | 'auto_suspended'
+  | 'cancelled';
+
+export interface LicensingPlanTemplate {
+  id: string;
+  name: string;
+  applicationId: string; // bound application id or 'all'
+  applicationName: string;
+  pricingType: PricingModelType;
+  currency: 'USD' | 'ZAR' | 'EUR';
+  basePrice: number;
+  billingCycle: 'per_transaction' | 'daily' | 'monthly' | 'annual' | 'custom';
+  includedTransactions: number;
+  overagePricePerTransaction: number;
+  gracePeriodDays: number;
+  autoEnforcementAction: EnforcementAction;
+  autoEnforceOnUnpaid: boolean;
+  features: string[];
+  maxUsersAllowed?: number;
+  slaUptimeGuarantee?: number;
+  isPublished: boolean;
+  createdDate: string;
+}
+
+export interface TenantAppLicense {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  applicationId: string;
+  applicationName: string;
+  planId: string;
+  planName: string;
+  pricingType: PricingModelType;
+  currency: 'USD' | 'ZAR' | 'EUR';
+  basePrice: number;
+  contractStartDate: string;
+  contractEndDate: string;
+  nextBillingDate: string;
+  lastPaymentDate: string;
+  lastPaymentAmount?: number;
+  paymentStatus: 'paid' | 'pending' | 'failed' | 'overdue';
+  licenseStatus: LicenseStatus;
+  currentTransactionCount: number;
+  maxTransactionQuota: number;
+  overageTransactionsCount: number;
+  currentAccruedBillUsd: number;
+  autoEnforceOnUnpaid: boolean;
+  graceDaysRemaining: number;
+  activeEnforcement: EnforcementAction | null;
+  billingContactEmail: string;
+  customContractNotes?: string;
+}
+
+export interface PaymentWebhookLog {
+  id: string;
+  timestamp: string;
+  tenantId: string;
+  tenantName: string;
+  applicationId: string;
+  invoiceId: string;
+  eventType: 'invoice.paid' | 'invoice.payment_failed' | 'license.grace_period_entered' | 'license.auto_suspended' | 'license.reinstated' | 'payment.reconciled_eft';
+  amount: number;
+  currency: 'USD' | 'ZAR' | 'EUR';
+  gatewayProvider: 'Stripe' | 'PayFast' | 'SAP_Billing' | 'Direct_EFT' | 'Manual_Admin';
+  enforcementTriggered: EnforcementAction | 'none';
+  status: 'processed' | 'rejected' | 'pending_reconciliation';
+  rawPayloadSummary: string;
+}
+
 
 

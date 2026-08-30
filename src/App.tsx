@@ -22,7 +22,9 @@ import {
   ProviderTestResult,
   OrchestrationRequest,
   OrchestrationResponse,
-  ApplicationStatus
+  ApplicationStatus,
+  IamUser,
+  IamRole
 } from './types';
 import {
   initialProviders,
@@ -80,7 +82,23 @@ import { ServiceManagementView } from './components/ServiceManagementView';
 import { EnterpriseOperationsView } from './components/EnterpriseOperationsView';
 import { AiGovernanceModelLabView } from './components/AiGovernanceModelLabView';
 import { EnterpriseGovernanceRiskView } from './components/EnterpriseGovernanceRiskView';
+import { LicensingMonetizationView } from './components/LicensingMonetizationView';
 import { UniversalActivityTicker } from './components/UniversalActivityTicker';
+import { INITIAL_LICENSING_PLANS, INITIAL_TENANT_LICENSES, INITIAL_PAYMENT_WEBHOOK_LOGS } from './data/licensingData';
+import {
+  LicensingPlanTemplate,
+  TenantAppLicense,
+  PaymentWebhookLog,
+  CompanyScopeFilter,
+  Incident,
+  MultiChannelAlert,
+  RagKnowledgeArticle,
+  IncidentStatus
+} from './types';
+import { ScopeHeaderBar } from './components/ScopeHeaderBar';
+import { Incident360DiagnosticModal } from './components/Incident360DiagnosticModal';
+import { IncidentCrmView } from './components/IncidentCrmView';
+import { INITIAL_INCIDENTS_LIST, INITIAL_ALERTS_LIST, INITIAL_RAG_KNOWLEDGE_BASE } from './data/incidentData';
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
@@ -127,7 +145,9 @@ export default function App() {
   // Enterprise Governance States
   const [slaProfiles, setSlaProfiles] = useState(initialSlaProfiles);
   const [kpis, setKpis] = useState(initialKpiDefinitions);
-  const [incidents, setIncidents] = useState(initialIncidents);
+  const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS_LIST);
+  const [alertsList, setAlertsList] = useState<MultiChannelAlert[]>(INITIAL_ALERTS_LIST);
+  const [ragKnowledgeBase, setRagKnowledgeBase] = useState<RagKnowledgeArticle[]>(INITIAL_RAG_KNOWLEDGE_BASE);
   const [problems, setProblems] = useState(initialProblems);
   const [workflows, setWorkflows] = useState(initialWorkflows);
   const [iamUsers, setIamUsers] = useState(initialIamUsers);
@@ -135,6 +155,92 @@ export default function App() {
   const [complianceControls, setComplianceControls] = useState(initialComplianceControls);
   const [evidence, setEvidence] = useState(initialEvidence);
   const [executiveReports, setExecutiveReports] = useState(initialExecutiveReports);
+
+  // Global Scope Filter State (Company -> Tenant -> Application Hierarchy)
+  const [scopeFilter, setScopeFilter] = useState<CompanyScopeFilter>({
+    tenantId: 'all',
+    appId: 'all',
+    scopeName: 'Total Company View'
+  });
+
+  // 360 Operational Diagnostic Modal state
+  const [selectedDiagnosticIncident, setSelectedDiagnosticIncident] = useState<Incident | null>(null);
+
+  const handleOpenDiagnosticModal = (incident: Incident) => {
+    setSelectedDiagnosticIncident(incident);
+  };
+
+  const handleOpenIncidentById = (incidentId: string) => {
+    const found = incidents.find(i => i.id === incidentId);
+    if (found) {
+      setSelectedDiagnosticIncident(found);
+    } else {
+      setActiveTab('incidents');
+    }
+  };
+
+  const handleAddIncident = (newInc: Incident) => {
+    setIncidents(prev => [newInc, ...prev]);
+    showToast(`Major Incident ${newInc.id} declared and logged in CRM.`);
+  };
+
+  const handleUpdateIncidentStatus = (incidentId: string, status: IncidentStatus) => {
+    setIncidents(prev =>
+      prev.map(inc => (inc.id === incidentId ? { ...inc, status } : inc))
+    );
+    showToast(`Incident ${incidentId} status updated to ${status}.`);
+  };
+
+  const handleSendMultiChannelAlert = (alertPartial: Partial<MultiChannelAlert>) => {
+    const newAlert: MultiChannelAlert = {
+      id: `alt-${Date.now().toString(36)}`,
+      incidentId: alertPartial.incidentId || 'INC-2026-ALERT',
+      incidentTitle: alertPartial.incidentTitle || 'Emergency System Alert',
+      severity: alertPartial.severity || 'P1_CRITICAL',
+      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      tenantName: alertPartial.tenantName || 'Enterprise Tenant',
+      appName: alertPartial.appName || 'Platform App',
+      message: alertPartial.message || 'System operational alert dispatched.',
+      channels: alertPartial.channels || ['sms', 'email', 'in_app'],
+      recipientPhone: alertPartial.recipientPhone || '+27 82 555 0192',
+      recipientEmail: alertPartial.recipientEmail || 'ciso@enterprise.co.za',
+      smsStatus: alertPartial.smsStatus || 'sent',
+      emailStatus: alertPartial.emailStatus || 'sent',
+      inAppStatus: alertPartial.inAppStatus || 'delivered',
+      isRead: false
+    };
+
+    setAlertsList(prev => [newAlert, ...prev]);
+    showToast(`Multi-channel alert sent via ${newAlert.channels.join(', ').toUpperCase()}!`);
+  };
+
+  const handleMitigateIncident = (incidentId: string, actionName: string) => {
+    setIncidents(prev =>
+      prev.map(inc => {
+        if (inc.id === incidentId) {
+          return {
+            ...inc,
+            status: 'mitigated',
+            timeline: [
+              ...inc.timeline,
+              {
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                author: 'ALTIL 360 Operational Automation',
+                note: `Executed 1-click mitigation action: "${actionName}". Traffic rerouted.`
+              }
+            ]
+          };
+        }
+        return inc;
+      })
+    );
+    showToast(`Incident ${incidentId} mitigated via "${actionName}".`);
+  };
+
+  // Enterprise Licensing & Commercial Monetization States
+  const [licensingPlans, setLicensingPlans] = useState<LicensingPlanTemplate[]>(INITIAL_LICENSING_PLANS);
+  const [tenantLicenses, setTenantLicenses] = useState<TenantAppLicense[]>(INITIAL_TENANT_LICENSES);
+  const [paymentLogs, setPaymentLogs] = useState<PaymentWebhookLog[]>(INITIAL_PAYMENT_WEBHOOK_LOGS);
 
   // Inspection modal state
   const [selectedLogToInspect, setSelectedLogToInspect] = useState<AuditLog | null>(null);
@@ -402,6 +508,37 @@ export default function App() {
       )
     );
     showToast('Application connected to customer tenant.');
+  };
+
+  // --- IAM User & Role Lifecycle Handlers ---
+  const handleAddIamUser = (newUser: IamUser) => {
+    setIamUsers(prev => [newUser, ...prev]);
+    showToast(`IAM User "${newUser.name}" provisioned successfully.`);
+  };
+
+  const handleUpdateIamUser = (id: string, updates: Partial<IamUser>) => {
+    setIamUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
+    showToast(`User "${id}" security profile updated.`);
+  };
+
+  const handleDeleteIamUser = (id: string) => {
+    setIamUsers(prev => prev.filter(u => u.id !== id));
+    showToast(`User "${id}" removed from IAM directory.`);
+  };
+
+  const handleAddIamRole = (newRole: IamRole) => {
+    setIamRoles(prev => [newRole, ...prev]);
+    showToast(`Role "${newRole.name}" created successfully.`);
+  };
+
+  const handleUpdateIamRole = (id: string, updates: Partial<IamRole>) => {
+    setIamRoles(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+    showToast(`Role "${id}" permissions updated.`);
+  };
+
+  const handleDeleteIamRole = (id: string) => {
+    setIamRoles(prev => prev.filter(r => r.id !== id));
+    showToast(`Role "${id}" removed.`);
   };
 
   // --- Provider Handlers ---
@@ -948,13 +1085,16 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-[#e5e5e5] flex flex-col font-sans selection:bg-blue-600 selection:text-white">
+    <div className="h-screen bg-[#0a0a0a] text-[#e5e5e5] flex flex-col font-sans selection:bg-blue-600 selection:text-white overflow-hidden">
       {/* Top Navigation Header */}
       <Header
         onOpenArchitecture={() => setArchitectureOpen(true)}
         onOpenPlayground={() => setActiveTab('playground')}
         theme={theme}
         onToggleTheme={toggleTheme}
+        alertsList={alertsList}
+        onOpenAlertsView={() => setActiveTab('incidents')}
+        onOpenIncidentById={handleOpenIncidentById}
       />
 
       {/* Universal Enterprise Live Event Ticker */}
@@ -982,7 +1122,17 @@ export default function App() {
         />
 
         {/* Content View Container */}
-        <main className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full">
+        <main className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full space-y-6">
+          {/* Universal Scope Drill-Down Navigation Bar (Total Company -> Tenant -> Application) */}
+          <ScopeHeaderBar
+            scopeFilter={scopeFilter}
+            onScopeChange={setScopeFilter}
+            customers={customers}
+            applications={applications}
+            activeIncidentsCount={incidents.filter(i => i.status !== 'closed' && i.status !== 'resolved').length}
+            onNavigateToTenants={() => setActiveTab('tenants')}
+          />
+
           {(activeTab === 'command_centre' || activeTab === 'dashboard') && (
             <CommandCentreView
               customers={customers}
@@ -996,6 +1146,7 @@ export default function App() {
           {activeTab === 'tenant_360' && (
             <Tenant360View
               customers={customers}
+              onNavigateToTenants={() => setActiveTab('tenants')}
             />
           )}
 
@@ -1047,9 +1198,17 @@ export default function App() {
           )}
 
           {activeTab === 'incidents' && (
-            <IncidentsView
+            <IncidentCrmView
               incidents={incidents}
               problems={problems}
+              alerts={alertsList}
+              customers={customers}
+              applications={applications}
+              ragKnowledgeBase={ragKnowledgeBase}
+              onOpenDiagnosticModal={handleOpenDiagnosticModal}
+              onAddIncident={handleAddIncident}
+              onUpdateIncidentStatus={handleUpdateIncidentStatus}
+              onSendMultiChannelAlert={handleSendMultiChannelAlert}
             />
           )}
 
@@ -1212,6 +1371,21 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'tenant_licensing' && (
+            <LicensingMonetizationView
+              customers={customers}
+              applications={applications}
+              licensingPlans={licensingPlans}
+              tenantLicenses={tenantLicenses}
+              paymentLogs={paymentLogs}
+              onAddPlanTemplate={(plan) => setLicensingPlans([plan, ...licensingPlans])}
+              onUpdatePlanTemplate={(plan) => setLicensingPlans(licensingPlans.map(p => p.id === plan.id ? plan : p))}
+              onAssignTenantLicense={(license) => setTenantLicenses([license, ...tenantLicenses])}
+              onUpdateTenantLicense={(license) => setTenantLicenses(tenantLicenses.map(l => l.id === license.id ? license : l))}
+              onProcessPaymentWebhook={(event) => setPaymentLogs([event, ...paymentLogs])}
+            />
+          )}
+
           {activeTab === 'automation' && (
             <AutomationView
               workflows={workflows}
@@ -1245,6 +1419,13 @@ export default function App() {
                 <IamAdminView
                   users={iamUsers}
                   roles={iamRoles}
+                  customers={customers}
+                  onAddUser={handleAddIamUser}
+                  onUpdateUser={handleUpdateIamUser}
+                  onDeleteUser={handleDeleteIamUser}
+                  onAddRole={handleAddIamRole}
+                  onUpdateRole={handleUpdateIamRole}
+                  onDeleteRole={handleDeleteIamRole}
                 />
               )}
 
@@ -1283,6 +1464,25 @@ export default function App() {
         isOpen={architectureOpen}
         onClose={() => setArchitectureOpen(false)}
       />
+
+      {/* 360 Operational Diagnostic Inspector Modal */}
+      {selectedDiagnosticIncident && (
+        <Incident360DiagnosticModal
+          incident={selectedDiagnosticIncident}
+          onClose={() => setSelectedDiagnosticIncident(null)}
+          onMitigate={handleMitigateIncident}
+          onTriggerAlert={(inc, channel) => {
+            handleSendMultiChannelAlert({
+              incidentId: inc.id,
+              incidentTitle: inc.title,
+              severity: inc.severity,
+              tenantName: inc.affectedTenantNames?.[0],
+              message: `[ALTIL ${inc.severity}] ${inc.title}`,
+              channels: [channel]
+            });
+          }}
+        />
+      )}
 
       {/* Toast Notification Container */}
       {toast && (

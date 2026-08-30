@@ -1,17 +1,31 @@
-import React from 'react';
-import { DollarSign, TrendingUp, CreditCard, PieChart, AlertCircle, ArrowUpRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { DollarSign, TrendingUp, CreditCard, PieChart, AlertCircle, ArrowUpRight, Maximize2 } from 'lucide-react';
 import { Customer } from '../types';
+import { TileDetailModal, TileDetailData } from './TileDetailModal';
+import { getTileDetailData } from '../data/tileDetailData';
 
 interface FinOpsViewProps {
   customers: Customer[];
 }
 
 export const FinOpsView: React.FC<FinOpsViewProps> = ({ customers }) => {
+  const [selectedTileDetail, setSelectedTileDetail] = useState<TileDetailData | null>(null);
+
   const totalSpendUsd = customers.reduce((sum, c) => sum + c.currentSpendUsd, 0);
   const totalBudgetUsd = customers.reduce((sum, c) => sum + c.monthlyBudgetUsd, 0);
 
+  const handleTileClick = (title: string, value: string | number, category?: any) => {
+    setSelectedTileDetail(getTileDetailData(title, value, category || 'FinOps & Cost'));
+  };
+
   return (
     <div className="space-y-6">
+      {/* Tile Detail Inspector Modal */}
+      <TileDetailModal
+        data={selectedTileDetail}
+        onClose={() => setSelectedTileDetail(null)}
+      />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#12141c] border border-[#222636] p-5 rounded-xl">
         <div>
@@ -23,35 +37,59 @@ export const FinOpsView: React.FC<FinOpsViewProps> = ({ customers }) => {
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">AI FinOps & Enterprise Cost Management</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
-            Real-time tracking of AI provider token burn, tenant cost allocation, budget ceiling actions, and free-tier savings.
+            Real-time tracking of AI provider token burn, tenant cost allocation, budget ceiling actions, and free-tier savings. Click any tile for derivation & BOC financial breakdown.
           </p>
         </div>
       </div>
 
       {/* FinOps KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[#12141c] border border-[#222636] p-4 rounded-xl">
-          <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Total Platform MTD Burn</span>
+        <div
+          onClick={() => handleTileClick('Month-to-Date Spend', `$${totalSpendUsd.toFixed(2)}`, 'FinOps & Cost')}
+          className="bg-[#12141c] border border-[#222636] hover:border-amber-500/60 p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Total Platform MTD Burn</span>
+            <Maximize2 className="w-3.5 h-3.5 text-[#555e78] group-hover:text-amber-400" />
+          </div>
           <span className="text-2xl font-bold text-white font-mono mt-1 block">${totalSpendUsd.toFixed(2)}</span>
           <span className="text-[10px] text-amber-400 font-mono mt-0.5 block">≈ R{(totalSpendUsd * 18).toFixed(2)} ZAR</span>
         </div>
 
-        <div className="bg-[#12141c] border border-[#222636] p-4 rounded-xl">
-          <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Combined Tenant Budgets</span>
+        <div
+          onClick={() => handleTileClick('Forecast Monthly', `$${totalBudgetUsd.toFixed(2)}`, 'FinOps & Cost')}
+          className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Combined Tenant Budgets</span>
+            <Maximize2 className="w-3.5 h-3.5 text-[#555e78] group-hover:text-blue-400" />
+          </div>
           <span className="text-2xl font-bold text-blue-400 font-mono mt-1 block">${totalBudgetUsd.toFixed(2)}</span>
           <span className="text-[10px] text-blue-300 font-mono mt-0.5 block">Allocation Ceiling</span>
         </div>
 
-        <div className="bg-[#12141c] border border-[#222636] p-4 rounded-xl">
-          <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Budget Utilization</span>
+        <div
+          onClick={() => handleTileClick('Budget Used', `${((totalSpendUsd / totalBudgetUsd) * 100).toFixed(1)}%`, 'FinOps & Cost')}
+          className="bg-[#12141c] border border-[#222636] hover:border-emerald-500/60 p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Budget Utilization</span>
+            <Maximize2 className="w-3.5 h-3.5 text-[#555e78] group-hover:text-emerald-400" />
+          </div>
           <span className="text-2xl font-bold text-emerald-400 font-mono mt-1 block">
             {((totalSpendUsd / totalBudgetUsd) * 100).toFixed(1)}%
           </span>
           <span className="text-[10px] text-emerald-400 font-mono mt-0.5 block">Optimal Burn Rate</span>
         </div>
 
-        <div className="bg-[#12141c] border border-[#222636] p-4 rounded-xl">
-          <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Free Tier Savings</span>
+        <div
+          onClick={() => handleTileClick('Free Tier Savings', '$420.15', 'FinOps & Cost')}
+          className="bg-[#12141c] border border-[#222636] hover:border-purple-500/60 p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Free Tier Savings</span>
+            <Maximize2 className="w-3.5 h-3.5 text-[#555e78] group-hover:text-purple-400" />
+          </div>
           <span className="text-2xl font-bold text-purple-400 font-mono mt-1 block">$420.15</span>
           <span className="text-[10px] text-purple-300 font-mono mt-0.5 block">Ollama GPU Local Efficiency</span>
         </div>

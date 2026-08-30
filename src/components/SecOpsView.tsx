@@ -1,6 +1,8 @@
-import React from 'react';
-import { ShieldAlert, Lock, AlertCircle, Eye, EyeOff, ShieldCheck, Cpu } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldAlert, Lock, AlertCircle, Eye, EyeOff, ShieldCheck, Cpu, Maximize2 } from 'lucide-react';
 import { Customer, AIProvider, AuditLog } from '../types';
+import { TileDetailModal, TileDetailData } from './TileDetailModal';
+import { getTileDetailData } from '../data/tileDetailData';
 
 interface SecOpsViewProps {
   customers: Customer[];
@@ -12,8 +14,20 @@ export const SecOpsView: React.FC<SecOpsViewProps> = ({
   customers,
   auditLogs
 }) => {
+  const [selectedTileDetail, setSelectedTileDetail] = useState<TileDetailData | null>(null);
+
+  const handleTileClick = (title: string, value: string | number, category?: any) => {
+    setSelectedTileDetail(getTileDetailData(title, value, category || 'SOC & Security'));
+  };
+
   return (
     <div className="space-y-6">
+      {/* Tile Detail Inspector Modal */}
+      <TileDetailModal
+        data={selectedTileDetail}
+        onClose={() => setSelectedTileDetail(null)}
+      />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#12141c] border border-[#222636] p-5 rounded-xl">
         <div>
@@ -25,7 +39,7 @@ export const SecOpsView: React.FC<SecOpsViewProps> = ({
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">Security Operations Centre (SOC) & Threat Shield</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
-            Monitor API threat vectors, prompt injection telemetry, POPIA/GDPR real-time PII redaction accuracy, and IP whitelisting rules.
+            Monitor API threat vectors, prompt injection telemetry, POPIA/GDPR real-time PII redaction accuracy, and IP whitelisting rules. Click any tile to inspect derivations and root cause logs.
           </p>
         </div>
 
@@ -39,26 +53,50 @@ export const SecOpsView: React.FC<SecOpsViewProps> = ({
 
       {/* Threat Telemetry Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-[#12141c] border border-[#222636] p-4 rounded-xl">
-          <span className="text-[10px] text-[#77809a] uppercase font-semibold">Total Threats Deflected</span>
+        <div
+          onClick={() => handleTileClick('Threats Deflected', '142', 'SOC & Security')}
+          className="bg-[#12141c] border border-[#222636] hover:border-red-500/60 p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#77809a] uppercase font-semibold">Total Threats Deflected</span>
+            <Maximize2 className="w-3.5 h-3.5 text-[#555e78] group-hover:text-red-400" />
+          </div>
           <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">142</div>
           <span className="text-[10px] text-[#8890a6] mt-0.5 block">0 Bypasses Logged</span>
         </div>
 
-        <div className="bg-[#12141c] border border-[#222636] p-4 rounded-xl">
-          <span className="text-[10px] text-[#77809a] uppercase font-semibold">Prompt Injections Blocked</span>
+        <div
+          onClick={() => handleTileClick('Prompt Injections', '38', 'SOC & Security')}
+          className="bg-[#12141c] border border-[#222636] hover:border-purple-500/60 p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#77809a] uppercase font-semibold">Prompt Injections Blocked</span>
+            <Maximize2 className="w-3.5 h-3.5 text-[#555e78] group-hover:text-purple-400" />
+          </div>
           <div className="text-2xl font-bold text-purple-400 font-mono mt-1">38</div>
           <span className="text-[10px] text-[#8890a6] mt-0.5 block">Jailbreak / Adversarial</span>
         </div>
 
-        <div className="bg-[#12141c] border border-[#222636] p-4 rounded-xl">
-          <span className="text-[10px] text-[#77809a] uppercase font-semibold">PII Redactions Performed</span>
+        <div
+          onClick={() => handleTileClick('PII Incidents Scrubbed', '1,240', 'SOC & Security')}
+          className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#77809a] uppercase font-semibold">PII Redactions Performed</span>
+            <Maximize2 className="w-3.5 h-3.5 text-[#555e78] group-hover:text-blue-400" />
+          </div>
           <div className="text-2xl font-bold text-blue-400 font-mono mt-1">1,240</div>
           <span className="text-[10px] text-emerald-400 font-mono mt-0.5 block">100% Zero-Retention</span>
         </div>
 
-        <div className="bg-[#12141c] border border-[#222636] p-4 rounded-xl">
-          <span className="text-[10px] text-[#77809a] uppercase font-semibold">Risk Rating Score</span>
+        <div
+          onClick={() => handleTileClick('Risk Rating Score', 'LOW (0.02)', 'SOC & Security')}
+          className="bg-[#12141c] border border-[#222636] hover:border-emerald-500/60 p-4 rounded-xl cursor-pointer transition-all hover:scale-[1.02] group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#77809a] uppercase font-semibold">Risk Rating Score</span>
+            <Maximize2 className="w-3.5 h-3.5 text-[#555e78] group-hover:text-emerald-400" />
+          </div>
           <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">LOW (0.02)</div>
           <span className="text-[10px] text-[#8890a6] mt-0.5 block">ISO 27001 Benchmark</span>
         </div>

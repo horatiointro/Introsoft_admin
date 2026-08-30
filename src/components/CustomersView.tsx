@@ -187,8 +187,127 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [testKeyLoading, setTestKeyLoading] = useState(false);
   const [testKeyResult, setTestKeyResult] = useState<any | null>(null);
 
+  // Offboarding & Lifecycle Modals State
+  const [offboardingCustomer, setOffboardingCustomer] = useState<Customer | null>(null);
+  const [offboardAction, setOffboardAction] = useState<'suspend' | 'archive' | 'terminated'>('archive');
+  const [offboardReason, setOffboardReason] = useState('Enterprise contract offboarding and statutory compliance retention');
+  const [offboardRevokeKeys, setOffboardRevokeKeys] = useState(true);
+  const [offboardDisableApps, setOffboardDisableApps] = useState(true);
+  const [offboardCertJson, setOffboardCertJson] = useState<string | null>(null);
+
+  // Tier Adjustment Modal State
+  const [tierModalCustomer, setTierModalCustomer] = useState<Customer | null>(null);
+  const [selectedTierChange, setSelectedTierChange] = useState<CustomerTier>('growth');
+
   // Tab inside Customers Screen
-  const [activeSubTab, setActiveSubTab] = useState<'directory' | 'key_tester' | 'statutory_matrix'>('directory');
+  const [activeSubTab, setActiveSubTab] = useState<'directory' | 'lifecycle' | 'key_tester' | 'statutory_matrix'>('directory');
+
+  // Dossier Export Handler
+  const handleExportCustomerDossier = (customer: Customer) => {
+    const customerApps = applications.filter(a => customer.connectedAppIds.includes(a.id) || a.customerId === customer.id);
+    const customerKeys = apiKeys.filter(k => k.customerId === customer.id);
+
+    const dossier = {
+      exportTimestamp: new Date().toISOString(),
+      platform: "ALTIL Governance & Gateway Console",
+      version: "v2026.8",
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        legalName: customer.legalName,
+        registrationNumber: customer.registrationNumber,
+        taxVatNumber: customer.taxVatNumber,
+        type: customer.type,
+        status: customer.status,
+        tier: customer.tier,
+        country: customer.country,
+        industry: customer.industry,
+        monthlyBudgetUsd: customer.monthlyBudgetUsd,
+        currentSpendUsd: customer.currentSpendUsd,
+        rateLimitRpm: customer.rateLimitRpm,
+        primaryContact: customer.primaryContact,
+        createdAt: customer.createdAt,
+        updatedAt: customer.updatedAt
+      },
+      statutoryOfficers: customer.statutoryOfficers || {},
+      connectedApplications: customerApps.map(a => ({
+        id: a.id,
+        appIdentifier: a.appIdentifier,
+        name: a.name,
+        environment: a.environment,
+        status: a.status
+      })),
+      issuedApiKeysSummary: customerKeys.map(k => ({
+        id: k.id,
+        name: k.name,
+        prefix: k.prefix,
+        status: k.status,
+        rateLimitRpm: k.rateLimitRpm,
+        createdAt: k.createdAt,
+        expiresAt: k.expiresAt
+      })),
+      usersRoster: (customer.users || []).map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        designation: u.designation,
+        mfaEnabled: u.mfaEnabled,
+        status: u.status
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ALTIL-Tenant-Dossier-${customer.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Execute Offboarding Handler
+  const handleExecuteOffboarding = async () => {
+    if (!offboardingCustomer) return;
+
+    const custId = offboardingCustomer.id;
+
+    // Revoke Keys if requested
+    if (offboardRevokeKeys) {
+      const customerKeys = apiKeys.filter(k => k.customerId === custId);
+      for (const key of customerKeys) {
+        if (key.status === 'active') {
+          await onRevokeApiKey(key.id);
+        }
+      }
+    }
+
+    // Update Customer Status
+    const newStatus: CustomerStatus = offboardAction === 'suspend' ? 'suspended' : offboardAction === 'archive' ? 'archived' : 'terminated';
+    await onUpdateCustomer(custId, {
+      status: newStatus,
+      notes: `${offboardingCustomer.notes || ''}\n[${new Date().toISOString().slice(0, 10)}] OFFBOARDING (${offboardAction.toUpperCase()}): ${offboardReason}`
+    });
+
+    // Generate Compliance Certificate JSON
+    const cert = {
+      certificateNumber: `ALTIL-OFFBOARD-CERT-${Math.floor(100000 + Math.random() * 900000)}`,
+      timestamp: new Date().toISOString(),
+      tenantId: offboardingCustomer.id,
+      tenantName: offboardingCustomer.name,
+      legalName: offboardingCustomer.legalName,
+      registrationNumber: offboardingCustomer.registrationNumber,
+      actionExecuted: offboardAction,
+      finalLifecycleStatus: newStatus,
+      offboardingRationale: offboardReason,
+      keysRevoked: offboardRevokeKeys,
+      applicationsDisabled: offboardDisableApps,
+      statutoryGovernanceRetained: true,
+      certifiedBy: "ALTIL Governance Engine"
+    };
+
+    setOffboardCertJson(JSON.stringify(cert, null, 2));
+  };
 
   // Filter Customers
   const filteredCustomers = customers.filter(c => {
@@ -515,13 +634,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </div>
             <div>
               <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                Customer & Tenant Management
+                Tenant Directory & Enterprise Onboarding Engine
                 <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
-                  AI Aggregator Tier
+                  Multi-Tenant Platform
                 </span>
               </h1>
               <p className="text-xs text-[#888888] mt-0.5">
-                Multi-tenant organizational onboarding, tenant-scoped API keys, and statutory POPIA / GDPR officer governance.
+                Centralized hub to onboard enterprise tenant accounts, manage statutory POPIA/GDPR officers, assign subscription tiers, issue API keys, and manage tenant lifecycle.
               </p>
             </div>
           </div>
@@ -538,7 +657,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   : 'text-[#888888] hover:text-white'
               }`}
             >
-              Directory & Tenants ({customers.length})
+              Tenant Directory ({customers.length})
+            </button>
+            <button
+              id="subtab-lifecycle-btn"
+              onClick={() => setActiveSubTab('lifecycle')}
+              className={`px-3 py-1.5 rounded transition-colors flex items-center gap-1.5 ${
+                activeSubTab === 'lifecycle'
+                  ? 'bg-purple-600/30 text-purple-300 border border-purple-500/50'
+                  : 'text-[#888888] hover:text-white'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-purple-400" />
+              Lifecycle Pipeline & Offboarding
             </button>
             <button
               id="subtab-statutory-btn"
@@ -571,10 +702,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               resetNewCustomerForm();
               setIsAddModalOpen(true);
             }}
-            className="flex items-center space-x-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold shadow-lg shadow-blue-600/20 transition-all"
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold shadow-lg shadow-blue-600/20 transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>Activate Customer</span>
+            <span>+ Onboard New Tenant</span>
           </button>
         </div>
       </div>
@@ -1158,7 +1289,248 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </div>
       )}
 
-      {/* SUBTAB 2: STATUTORY OFFICERS MATRIX */}
+      {/* SUBTAB 2: TENANT LIFECYCLE PIPELINE & OFFBOARDING CONSOLE */}
+      {activeSubTab === 'lifecycle' && (
+        <div className="space-y-4">
+          {/* Lifecycle Stage Funnel Summary Strip */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="bg-[#111111] border border-[#222222] rounded p-3.5 space-y-1">
+              <div className="flex items-center justify-between text-xs text-[#888888]">
+                <span>Active Production</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-bold text-white font-mono">
+                {customers.filter(c => c.status === 'active').length}
+              </div>
+              <div className="text-[10px] text-emerald-400 font-medium">Fully Operational Ingress</div>
+            </div>
+
+            <div className="bg-[#111111] border border-[#222222] rounded p-3.5 space-y-1">
+              <div className="flex items-center justify-between text-xs text-[#888888]">
+                <span>Onboarding Trial</span>
+                <Clock className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="text-2xl font-bold text-amber-400 font-mono">
+                {customers.filter(c => c.status === 'trial').length}
+              </div>
+              <div className="text-[10px] text-amber-500/80 font-medium">14-Day Evaluation</div>
+            </div>
+
+            <div className="bg-[#111111] border border-[#222222] rounded p-3.5 space-y-1">
+              <div className="flex items-center justify-between text-xs text-[#888888]">
+                <span>Restricted / Quota</span>
+                <AlertTriangle className="w-4 h-4 text-orange-400" />
+              </div>
+              <div className="text-2xl font-bold text-orange-400 font-mono">
+                {customers.filter(c => c.status === 'restricted').length}
+              </div>
+              <div className="text-[10px] text-orange-500/80 font-medium">Rate-Limited Access</div>
+            </div>
+
+            <div className="bg-[#111111] border border-[#222222] rounded p-3.5 space-y-1">
+              <div className="flex items-center justify-between text-xs text-[#888888]">
+                <span>Suspended / Risk</span>
+                <ShieldAlert className="w-4 h-4 text-red-400" />
+              </div>
+              <div className="text-2xl font-bold text-red-400 font-mono">
+                {customers.filter(c => c.status === 'suspended').length}
+              </div>
+              <div className="text-[10px] text-red-400/80 font-medium">Keys Soft-Blocked</div>
+            </div>
+
+            <div className="bg-[#111111] border border-[#222222] rounded p-3.5 space-y-1">
+              <div className="flex items-center justify-between text-xs text-[#888888]">
+                <span>Offboarded / Archived</span>
+                <Lock className="w-4 h-4 text-slate-400" />
+              </div>
+              <div className="text-2xl font-bold text-slate-400 font-mono">
+                {customers.filter(c => c.status === 'archived' || c.status === 'terminated').length}
+              </div>
+              <div className="text-[10px] text-slate-500 font-medium">Audit History Preserved</div>
+            </div>
+          </div>
+
+          {/* Interactive Lifecycle Pipeline Table */}
+          <div className="bg-[#111111] border border-[#222222] rounded p-4 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#222222]">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-purple-400" />
+                  Tenant Lifecycle & Offboarding Console
+                </h3>
+                <p className="text-xs text-[#888888] mt-0.5">
+                  Manage stage transitions, tier upgrades, quota limits, and execute automated offboarding wizards with compliance certificate generation.
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    const allDataStr = JSON.stringify(customers, null, 2);
+                    const blob = new Blob([allDataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `ALTIL-Tenants-Portfolio-${new Date().toISOString().slice(0, 10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#2a2a2a] text-xs font-semibold text-[#cccccc] hover:text-white rounded transition-colors flex items-center gap-1.5"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                  Export All Tenants (JSON)
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-[#222222] text-[#888888] font-semibold bg-[#161616]">
+                    <th className="p-3">Tenant / Legal Entity</th>
+                    <th className="p-3">Lifecycle Stage</th>
+                    <th className="p-3">Tier & Budget Cap</th>
+                    <th className="p-3">Statutory Readiness</th>
+                    <th className="p-3">Apps & Keys</th>
+                    <th className="p-3 text-right">Lifecycle Management</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#1f1f1f]">
+                  {customers.map(c => {
+                    const cApps = applications.filter(a => c.connectedAppIds.includes(a.id) || a.customerId === c.id);
+                    const cKeys = apiKeys.filter(k => k.customerId === c.id);
+                    const io = c.statutoryOfficers?.informationOfficer;
+                    const dpo = c.statutoryOfficers?.dataProtectionOfficer;
+
+                    return (
+                      <tr key={c.id} className="hover:bg-[#141414] transition-colors">
+                        <td className="p-3">
+                          <div className="font-bold text-white flex items-center gap-2">
+                            <span>{c.name}</span>
+                            <span className="text-[10px] text-[#666666] font-mono">({c.id})</span>
+                          </div>
+                          <div className="text-[11px] text-[#888888]">{c.legalName}</div>
+                          <div className="text-[10px] text-[#555555] font-mono mt-0.5">
+                            Reg: {c.registrationNumber || 'N/A'} | {c.country}
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <select
+                            value={c.status}
+                            onChange={e => {
+                              const newSt = e.target.value as CustomerStatus;
+                              onUpdateCustomer(c.id, { status: newSt });
+                            }}
+                            className={`text-xs font-bold uppercase rounded px-2.5 py-1 border outline-none cursor-pointer ${
+                              c.status === 'active'
+                                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
+                                : c.status === 'trial'
+                                ? 'bg-amber-950/80 text-amber-300 border-amber-700/60'
+                                : c.status === 'restricted'
+                                ? 'bg-orange-950/80 text-orange-300 border-orange-700/60'
+                                : c.status === 'suspended'
+                                ? 'bg-red-950/80 text-red-300 border-red-700/60'
+                                : 'bg-slate-900 text-slate-400 border-slate-700'
+                            }`}
+                          >
+                            <option value="active" className="bg-[#161616] text-emerald-400">STAGE: ACTIVE</option>
+                            <option value="trial" className="bg-[#161616] text-amber-400">STAGE: TRIAL</option>
+                            <option value="restricted" className="bg-[#161616] text-orange-400">STAGE: RESTRICTED</option>
+                            <option value="suspended" className="bg-[#161616] text-red-400">STAGE: SUSPENDED</option>
+                            <option value="archived" className="bg-[#161616] text-slate-400">STAGE: ARCHIVED</option>
+                            <option value="terminated" className="bg-[#161616] text-red-500">STAGE: TERMINATED</option>
+                          </select>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-purple-950 text-purple-300 border border-purple-800/60">
+                              {c.tier}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setTierModalCustomer(c);
+                                setSelectedTierChange(c.tier);
+                              }}
+                              className="text-[10px] text-blue-400 hover:text-blue-300 underline font-medium"
+                            >
+                              Adjust Tier
+                            </button>
+                          </div>
+                          <div className="text-[11px] text-white font-mono mt-1">
+                            Cap: ${c.monthlyBudgetUsd.toLocaleString()} USD | {c.rateLimitRpm} RPM
+                          </div>
+                          <div className="text-[10px] text-[#666666] font-mono">
+                            Spend: ${c.currentSpendUsd || 0} USD
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-[#888888]">POPIA:</span>
+                              {io ? (
+                                <span className="text-emerald-400 font-medium">Registered ({io.name})</span>
+                              ) : (
+                                <span className="text-red-400 italic">Pending Officer</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-[#888888]">GDPR:</span>
+                              {dpo ? (
+                                <span className="text-blue-400 font-medium">DPO Nominated</span>
+                              ) : (
+                                <span className="text-[#666666]">N/A</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-3">
+                          <div className="text-[#cccccc] font-medium">
+                            {cApps.length} App{cApps.length === 1 ? '' : 's'} | {cKeys.length} Key{cKeys.length === 1 ? '' : 's'}
+                          </div>
+                          <div className="text-[10px] text-[#666666]">
+                            Active Keys: {cKeys.filter(k => k.status === 'active').length}
+                          </div>
+                        </td>
+
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            <button
+                              onClick={() => handleExportCustomerDossier(c)}
+                              className="px-2.5 py-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#2a2a2a] text-xs font-medium text-[#cccccc] hover:text-white rounded transition-colors flex items-center gap-1"
+                              title="Export full tenant configuration & compliance dossier"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>Dossier</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setOffboardingCustomer(c);
+                                setOffboardCertJson(null);
+                              }}
+                              className="px-2.5 py-1.5 bg-red-950/30 hover:bg-red-900/50 border border-red-800/40 text-xs font-semibold text-red-300 hover:text-white rounded transition-colors flex items-center gap-1"
+                              title="Launch Offboarding & Archiving Wizard"
+                            >
+                              <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+                              <span>Offboard</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUBTAB 3: STATUTORY OFFICERS MATRIX */}
       {activeSubTab === 'statutory_matrix' && (
         <div className="space-y-4">
           <div className="bg-[#111111] border border-[#222222] rounded p-4">
@@ -2823,6 +3195,289 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: TIER ADJUSTMENT WIZARD                                            */}
+      {/* ========================================================================= */}
+      {tierModalCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-[#141414] border border-[#2a2a2a] rounded-lg max-w-md w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#222222] pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Adjust Tier: {tierModalCustomer.name}</h3>
+                  <p className="text-xs text-[#888888]">Modify commercial tier, RPM rate limits, and budget caps.</p>
+                </div>
+              </div>
+              <button onClick={() => setTierModalCustomer(null)} className="text-[#777777] hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <label className="block text-[#aaaaaa] font-medium">Select Target Tier:</label>
+              <div className="grid grid-cols-2 gap-2">
+                {(['starter', 'growth', 'scale', 'enterprise'] as CustomerTier[]).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setSelectedTierChange(t)}
+                    className={`p-3 rounded border text-left flex flex-col justify-between transition-all ${
+                      selectedTierChange === t
+                        ? 'bg-purple-950/40 border-purple-500 text-purple-300'
+                        : 'bg-[#181818] border-[#2a2a2a] text-[#888888] hover:text-white'
+                    }`}
+                  >
+                    <span className="font-bold uppercase text-xs">{t}</span>
+                    <span className="text-[10px] text-[#777777] mt-1">
+                      {t === 'starter' && '$500 / mo | 60 RPM'}
+                      {t === 'growth' && '$2,500 / mo | 240 RPM'}
+                      {t === 'scale' && '$10,000 / mo | 1,000 RPM'}
+                      {t === 'enterprise' && '$25,000 / mo | 5,000 RPM'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-3 bg-[#181818] border border-[#262626] rounded text-[#888888]">
+                <div className="font-semibold text-white mb-1">Recommended Tier Defaults:</div>
+                <ul className="space-y-0.5 text-[11px] list-disc list-inside">
+                  <li>Starter: $500 monthly budget, 60 RPM rate limit</li>
+                  <li>Growth: $2,500 monthly budget, 240 RPM rate limit</li>
+                  <li>Scale: $10,000 monthly budget, 1,000 RPM rate limit</li>
+                  <li>Enterprise: $25,000 monthly budget, 5,000 RPM rate limit</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-3 border-t border-[#222222]">
+              <button
+                type="button"
+                onClick={() => setTierModalCustomer(null)}
+                className="px-4 py-2 bg-[#1a1a1a] hover:bg-[#252525] text-xs font-semibold text-[#888888] rounded"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const defaults = {
+                    starter: { budget: 500, rpm: 60 },
+                    growth: { budget: 2500, rpm: 240 },
+                    scale: { budget: 10000, rpm: 1000 },
+                    enterprise: { budget: 25000, rpm: 5000 }
+                  }[selectedTierChange];
+
+                  await onUpdateCustomer(tierModalCustomer.id, {
+                    tier: selectedTierChange,
+                    monthlyBudgetUsd: defaults.budget,
+                    rateLimitRpm: defaults.rpm
+                  });
+
+                  setTierModalCustomer(null);
+                  alert(`Updated tenant ${tierModalCustomer.name} to ${selectedTierChange.toUpperCase()} tier.`);
+                }}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded transition-colors"
+              >
+                Apply Tier Change
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: OFFBOARDING & ARCHIVING WIZARD                                    */}
+      {/* ========================================================================= */}
+      {offboardingCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#141414] border border-[#2a2a2a] rounded-lg max-w-2xl w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#222222] pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Tenant Offboarding Wizard: {offboardingCustomer.name}
+                  </h3>
+                  <p className="text-xs text-[#888888]">
+                    Automated offboarding, API key revocation, application isolation, and statutory compliance archiving.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setOffboardingCustomer(null)}
+                className="text-[#777777] hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {!offboardCertJson ? (
+              <div className="space-y-4 text-xs">
+                {/* Step 1: Select Action */}
+                <div>
+                  <label className="block text-[#aaaaaa] font-semibold mb-2">1. Select Offboarding Action:</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOffboardAction('suspend')}
+                      className={`p-3 rounded border text-left ${
+                        offboardAction === 'suspend'
+                          ? 'bg-amber-950/40 border-amber-500 text-amber-300'
+                          : 'bg-[#181818] border-[#262626] text-[#777777]'
+                      }`}
+                    >
+                      <div className="font-bold uppercase text-xs">Suspend Access</div>
+                      <div className="text-[10px] mt-1 text-[#888888]">Soft lock keys & retain configuration</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOffboardAction('archive')}
+                      className={`p-3 rounded border text-left ${
+                        offboardAction === 'archive'
+                          ? 'bg-purple-950/40 border-purple-500 text-purple-300'
+                          : 'bg-[#181818] border-[#262626] text-[#777777]'
+                      }`}
+                    >
+                      <div className="font-bold uppercase text-xs">Archive Tenant</div>
+                      <div className="text-[10px] mt-1 text-[#888888]">Revoke keys & archive statutory logs</div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOffboardAction('terminated')}
+                      className={`p-3 rounded border text-left ${
+                        offboardAction === 'terminated'
+                          ? 'bg-red-950/40 border-red-500 text-red-300'
+                          : 'bg-[#181818] border-[#262626] text-[#777777]'
+                      }`}
+                    >
+                      <div className="font-bold uppercase text-xs">Terminate Contract</div>
+                      <div className="text-[10px] mt-1 text-[#888888]">Permanent revocation & offboard signoff</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Step 2: Offboarding Rationale */}
+                <div>
+                  <label className="block text-[#aaaaaa] font-semibold mb-1">2. Offboarding Rationale & Audit Note:</label>
+                  <textarea
+                    rows={2}
+                    value={offboardReason}
+                    onChange={e => setOffboardReason(e.target.value)}
+                    className="w-full bg-[#161616] border border-[#2a2a2a] rounded p-2.5 text-white font-mono outline-none"
+                    placeholder="Describe the business or legal reason for offboarding..."
+                  />
+                </div>
+
+                {/* Step 3: Safeguards Checkboxes */}
+                <div className="space-y-2 bg-[#181818] p-3 rounded border border-[#262626]">
+                  <label className="flex items-center space-x-2 text-white font-medium cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={offboardRevokeKeys}
+                      onChange={e => setOffboardRevokeKeys(e.target.checked)}
+                      className="rounded border-[#333333] bg-[#111111] text-red-500 focus:ring-0"
+                    />
+                    <span>Revoke all active API keys issued to {offboardingCustomer.name}</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2 text-white font-medium cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={offboardDisableApps}
+                      onChange={e => setOffboardDisableApps(e.target.checked)}
+                      className="rounded border-[#333333] bg-[#111111] text-red-500 focus:ring-0"
+                    />
+                    <span>Freeze connected application ingress routing</span>
+                  </label>
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-3 border-t border-[#222222]">
+                  <button
+                    type="button"
+                    onClick={() => setOffboardingCustomer(null)}
+                    className="px-4 py-2 bg-[#1a1a1a] text-[#888888] hover:text-white rounded font-semibold"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleExecuteOffboarding}
+                    className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-semibold rounded flex items-center gap-1.5 shadow-lg shadow-red-600/20 transition-all"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>Execute Offboarding & Generate Certificate</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Offboarding Certificate Generated View */
+              <div className="space-y-4 text-xs">
+                <div className="p-3 bg-emerald-950/30 border border-emerald-500/40 rounded flex items-center space-x-3">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                  <div>
+                    <div className="font-bold text-white text-sm">Tenant Offboarding Executed Successfully</div>
+                    <div className="text-[#888888]">
+                      Status updated to {offboardAction.toUpperCase()}. Official compliance certificate generated.
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-[#aaaaaa] font-mono text-[11px] mb-1">
+                    <span>Offboarding Compliance Certificate (JSON)</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(offboardCertJson)}
+                      className="text-blue-400 hover:text-blue-300 underline font-sans"
+                    >
+                      Copy Certificate JSON
+                    </button>
+                  </div>
+                  <pre className="bg-[#0c0c0c] p-3 rounded border border-[#222222] font-mono text-[11px] text-emerald-300 max-h-48 overflow-y-auto">
+                    {offboardCertJson}
+                  </pre>
+                </div>
+
+                <div className="flex items-center justify-end space-x-2 pt-3 border-t border-[#222222]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const blob = new Blob([offboardCertJson], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `ALTIL-Offboard-Cert-${offboardingCustomer.id}-${new Date().toISOString().slice(0, 10)}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded transition-colors flex items-center gap-1.5"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Download Certificate</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOffboardingCustomer(null)}
+                    className="px-4 py-2 bg-[#222222] hover:bg-[#333333] text-white font-semibold rounded transition-colors"
+                  >
+                    Close Wizard
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

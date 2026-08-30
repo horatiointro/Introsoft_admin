@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AltilLogo } from './AltilLogo';
 import {
   Layers,
@@ -9,8 +9,12 @@ import {
   Radio,
   Play,
   Sun,
-  Moon
+  Moon,
+  Bell,
+  AlertTriangle,
+  ChevronRight
 } from 'lucide-react';
+import { MultiChannelAlert } from '../types';
 
 interface HeaderProps {
   onOpenPlayground: () => void;
@@ -19,6 +23,9 @@ interface HeaderProps {
   totalProviders?: number;
   theme?: 'night' | 'day';
   onToggleTheme?: () => void;
+  alertsList?: MultiChannelAlert[];
+  onOpenAlertsView?: () => void;
+  onOpenIncidentById?: (incidentId: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,17 +34,20 @@ export const Header: React.FC<HeaderProps> = ({
   providersOnline = 4,
   totalProviders = 5,
   theme = 'night',
-  onToggleTheme
+  onToggleTheme,
+  alertsList = [],
+  onOpenAlertsView,
+  onOpenIncidentById
 }) => {
+  const [showNotifications, setShowNotifications] = useState(false);
+  const unreadAlerts = alertsList.filter(a => !a.isRead);
+
   return (
-    <header className="h-16 border-b border-[#222222] flex items-center justify-between px-6 sm:px-8 bg-[#0a0a0a] sticky top-0 z-30 select-none">
+    <header className="h-24 border-b border-[#222222] flex items-center justify-between px-6 sm:px-8 bg-[#0a0a0a] shrink-0 select-none relative z-40">
       {/* Left Branding with Company Logo */}
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-3 cursor-pointer hover:opacity-90 transition-opacity">
-          <AltilLogo size="lg" />
-          <span className="text-[10px] font-mono uppercase tracking-widest text-[#888888] hidden sm:inline-block px-1.5 py-0.5 rounded bg-[#141414] border border-[#222222]">
-            Enterprise Control Centre
-          </span>
+          <AltilLogo size="custom" height="80px" />
         </div>
       </div>
 
@@ -72,27 +82,68 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Admin Profile & Quick Actions */}
       <div className="flex items-center space-x-3">
-        {/* Day / Night Theme Setting */}
-        {onToggleTheme && (
+        {/* Multi-Channel Notification Bell */}
+        <div className="relative">
           <button
-            id="btn-day-night-toggle"
-            onClick={onToggleTheme}
-            title={theme === 'night' ? 'Switch to Day mode (Light theme)' : 'Switch to Night mode (Dark theme)'}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-[#141414] hover:bg-[#1a1a1a] text-[#888888] hover:text-white border border-[#222222] transition-colors"
+            onClick={() => setShowNotifications(!showNotifications)}
+            className="p-2 rounded-lg bg-[#141414] hover:bg-[#1a1a1a] text-[#888888] hover:text-white border border-[#222222] transition-colors relative"
           >
-            {theme === 'night' ? (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-[11px] font-mono hidden sm:inline">Day</span>
-              </>
-            ) : (
-              <>
-                <Moon className="w-3.5 h-3.5 text-blue-400" />
-                <span className="text-[11px] font-mono hidden sm:inline">Night</span>
-              </>
+            <Bell className="w-4 h-4 text-amber-400" />
+            {unreadAlerts.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-[9px] font-mono font-bold text-white flex items-center justify-center animate-pulse">
+                {unreadAlerts.length}
+              </span>
             )}
           </button>
-        )}
+
+          {/* Notification Drawer Dropdown */}
+          {showNotifications && (
+            <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#10121a] border border-[#222636] rounded-xl shadow-2xl p-4 space-y-3 z-50 font-mono text-xs">
+              <div className="flex items-center justify-between border-b border-[#222636] pb-2">
+                <span className="font-bold text-white flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  Live Incident Alerts ({alertsList.length})
+                </span>
+                <button
+                  onClick={() => {
+                    setShowNotifications(false);
+                    if (onOpenAlertsView) onOpenAlertsView();
+                  }}
+                  className="text-[10px] text-blue-400 hover:underline"
+                >
+                  View CRM Alerts →
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {alertsList.length === 0 ? (
+                  <div className="text-center py-4 text-[#666666]">No active alerts</div>
+                ) : (
+                  alertsList.map(alt => (
+                    <div
+                      key={alt.id}
+                      onClick={() => {
+                        setShowNotifications(false);
+                        if (onOpenIncidentById) onOpenIncidentById(alt.incidentId);
+                      }}
+                      className="p-2.5 rounded-lg bg-[#181c2b] border border-[#283046] hover:border-blue-500 cursor-pointer transition-colors space-y-1"
+                    >
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-blue-400 font-bold">{alt.incidentId}</span>
+                        <span className="text-red-400 font-bold">{alt.severity}</span>
+                      </div>
+                      <p className="text-white text-[11px] leading-tight line-clamp-2">{alt.message}</p>
+                      <div className="text-[9px] text-[#8890a6] flex justify-between pt-1">
+                        <span>Tenant: {alt.tenantName || 'Enterprise'}</span>
+                        <span className="text-emerald-400">Channels: {alt.channels.join(', ').toUpperCase()}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         <button
           id="btn-architecture-diagram"

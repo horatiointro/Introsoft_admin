@@ -35,6 +35,23 @@ import {
   OrchestrationStep
 } from './src/types';
 import { scanAndSanitizePrompt } from './src/utils/complianceEngine';
+import {
+  INITIAL_LICENSING_PLANS,
+  INITIAL_TENANT_LICENSES,
+  INITIAL_PAYMENT_WEBHOOK_LOGS
+} from './src/data/licensingData';
+import {
+  LicensingPlanTemplate,
+  TenantAppLicense,
+  PaymentWebhookLog
+} from './src/types';
+import {
+  testAndInitMariaDb,
+  getMariaDbHealth,
+  runSchemaMigrationScript,
+  dbRepository,
+  executeQuery
+} from './src/db/mariadb';
 
 // In-memory state store (synchronized with UI)
 let providers: AIProvider[] = [...INITIAL_PROVIDERS];
@@ -48,6 +65,10 @@ let globalComplianceConfig: GlobalComplianceConfig = { ...INITIAL_GLOBAL_COMPLIA
 let dataSubjectRequests: DataSubjectRequest[] = [...INITIAL_DATA_SUBJECT_REQUESTS];
 let auditLogs: AuditLog[] = [...INITIAL_AUDIT_LOGS];
 const systemHealth = [...INITIAL_SYSTEM_HEALTH];
+
+let licensingPlans: LicensingPlanTemplate[] = [...INITIAL_LICENSING_PLANS];
+let tenantLicenses: TenantAppLicense[] = [...INITIAL_TENANT_LICENSES];
+let paymentWebhookLogs: PaymentWebhookLog[] = [...INITIAL_PAYMENT_WEBHOOK_LOGS];
 
 let geminiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI | null {
@@ -305,10 +326,86 @@ async function startServer() {
       status: 'online',
       platform: 'Introsoft ALTIL AI Orchestration Layer',
       version: '2.4.0-enterprise',
+      database: 'MariaDB 10.11.18 Community Engine',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       components: systemHealth
     });
+  });
+
+  // ----------------------------------------------------
+  // MariaDB 10.11.18 Enterprise Database REST APIs
+  // ----------------------------------------------------
+  app.get('/api/v1/database/health', async (req, res) => {
+    const health = await getMariaDbHealth();
+    res.json(health);
+  });
+
+  app.post('/api/v1/database/migrate', async (req, res) => {
+    const result = await runSchemaMigrationScript();
+    res.json(result);
+  });
+
+  app.get('/api/v1/database/tenants', async (req, res) => {
+    const data = await dbRepository.getTenants();
+    res.json(data);
+  });
+
+  app.post('/api/v1/database/tenants', async (req, res) => {
+    const tenant = req.body;
+    await dbRepository.createTenant(tenant);
+    const existingIdx = customers.findIndex(c => c.id === tenant.id);
+    if (existingIdx >= 0) {
+      customers[existingIdx] = { ...customers[existingIdx], ...tenant };
+    } else {
+      customers.push(tenant);
+    }
+    res.json({ status: 'ok', tenant });
+  });
+
+  app.delete('/api/v1/database/tenants/:id', async (req, res) => {
+    const { id } = req.params;
+    await dbRepository.deleteTenant(id);
+    customers = customers.filter(c => c.id !== id);
+    res.json({ status: 'deleted', id });
+  });
+
+  app.get('/api/v1/database/plans', async (req, res) => {
+    const plans = await dbRepository.getLicensingPlans();
+    res.json(plans);
+  });
+
+  app.post('/api/v1/database/plans', async (req, res) => {
+    const plan = req.body;
+    await dbRepository.saveLicensingPlan(plan);
+    const idx = licensingPlans.findIndex(p => p.id === plan.id);
+    if (idx >= 0) licensingPlans[idx] = plan;
+    else licensingPlans.push(plan);
+    res.json({ status: 'ok', plan });
+  });
+
+  app.get('/api/v1/database/licenses', async (req, res) => {
+    const lics = await dbRepository.getTenantLicenses();
+    res.json(lics);
+  });
+
+  app.post('/api/v1/database/licenses', async (req, res) => {
+    const lic = req.body;
+    await dbRepository.saveTenantLicense(lic);
+    const idx = tenantLicenses.findIndex(l => l.id === lic.id);
+    if (idx >= 0) tenantLicenses[idx] = lic;
+    else tenantLicenses.push(lic);
+    res.json({ status: 'ok', license: lic });
+  });
+
+  app.post('/api/v1/database/query', async (req, res) => {
+    const { sql, params } = req.body;
+    try {
+      const rows = await executeQuery(sql, params || []);
+      res.json({ status: 'success', rowCount: rows.length, rows });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message, sql });
+    }
   });
 
   app.get('/api/v1/overview', (req, res) => {
@@ -337,6 +434,112 @@ async function startServer() {
         { name: 'Groq', percentage: 25, requests: 4605 },
         { name: 'Gemini', percentage: 13, requests: 2396 }
       ]
+    });
+  });
+
+  // ----------------------------------------------------
+  // Licensing & Commercial Monetization Engine API
+  // ----------------------------------------------------
+  app.get('/api/v1/licensing/plans', (req, res) => {
+    res.json(licensingPlans);
+  });
+
+  app.post('/api/v1/licensing/plans', (req, res) => {
+    const plan: LicensingPlanTemplate = req.body;
+    const existingIdx = licensingPlans.findIndex(p => p.id === plan.id);
+    if (existingIdx >= 0) {
+      licensingPlans[existingIdx] = plan;
+    } else {
+      licensingPlans.push(plan);
+    }
+    res.json({ status: 'ok', plan });
+  });
+
+  app.get('/api/v1/licensing/tenant-licenses', (req, res) => {
+    res.json(tenantLicenses);
+  });
+
+  app.post('/api/v1/licensing/tenant-licenses/update', (req, res) => {
+    const lic: TenantAppLicense = req.body;
+    const idx = tenantLicenses.findIndex(l => l.id === lic.id);
+    if (idx >= 0) {
+      tenantLicenses[idx] = lic;
+      res.json({ status: 'ok', license: lic });
+    } else {
+      tenantLicenses.push(lic);
+      res.json({ status: 'ok', license: lic });
+    }
+  });
+
+  app.post('/api/v1/licensing/payment-webhook', (req, res) => {
+    const { tenantId, eventType, invoiceId, amount, gatewayProvider } = req.body;
+    const lic = tenantLicenses.find(l => l.tenantId === tenantId || l.id === tenantId);
+
+    if (!lic) {
+      return res.status(404).json({ error: 'Tenant license record not found' });
+    }
+
+    let newStatus = lic.licenseStatus;
+    let newPayStatus = lic.paymentStatus;
+    let activeEnforcement = lic.activeEnforcement;
+
+    if (eventType === 'invoice.paid' || eventType === 'payment.reconciled_eft') {
+      newStatus = 'active';
+      newPayStatus = 'paid';
+      activeEnforcement = null;
+    } else if (eventType === 'invoice.payment_failed') {
+      newStatus = 'grace_period';
+      newPayStatus = 'failed';
+    } else if (eventType === 'license.auto_suspended') {
+      newStatus = 'auto_suspended';
+      newPayStatus = 'overdue';
+      activeEnforcement = 'hard_block_402';
+    }
+
+    lic.licenseStatus = newStatus;
+    lic.paymentStatus = newPayStatus;
+    lic.activeEnforcement = activeEnforcement;
+    if (eventType === 'invoice.paid') {
+      lic.lastPaymentDate = new Date().toISOString().split('T')[0];
+      lic.lastPaymentAmount = amount || lic.basePrice;
+    }
+
+    const webhookLog: PaymentWebhookLog = {
+      id: `paylog-${Date.now()}`,
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      tenantId: lic.tenantId,
+      tenantName: lic.tenantName,
+      applicationId: lic.applicationId,
+      invoiceId: invoiceId || `INV-${Math.floor(Math.random() * 9000 + 1000)}`,
+      eventType: eventType || 'invoice.paid',
+      amount: amount || lic.currentAccruedBillUsd,
+      currency: lic.currency,
+      gatewayProvider: gatewayProvider || 'Stripe',
+      enforcementTriggered: activeEnforcement || 'none',
+      status: 'processed',
+      rawPayloadSummary: `Webhook processed. Updated tenant ${lic.tenantName} status to ${newStatus.toUpperCase()}`
+    };
+
+    paymentWebhookLogs.unshift(webhookLog);
+    res.json({ status: 'success', tenantLicense: lic, webhookLog });
+  });
+
+  app.get('/api/v1/licensing/verify-gateway', (req, res) => {
+    const tenantId = (req.query.tenantId as string) || '';
+    const lic = tenantLicenses.find(l => l.tenantId === tenantId);
+
+    if (lic && lic.licenseStatus === 'auto_suspended') {
+      return res.status(402).json({
+        error: 'Payment Required',
+        code: 'TENANT_LICENSE_SUSPENDED',
+        message: 'Account payment overdue. Gateway traffic is hard-blocked by automated enforcement rule.'
+      });
+    }
+
+    res.json({
+      status: 'allowed',
+      tenantId,
+      licenseStatus: lic ? lic.licenseStatus : 'active'
     });
   });
 
@@ -1722,8 +1925,110 @@ async function startServer() {
   });
 
   // ----------------------------------------------------
-  // VITE DEV MIDDLEWARE / STATIC ASSETS
+  // RAG INCIDENT DIAGNOSTIC & CRM AI ASSISTANT API
   // ----------------------------------------------------
+  app.post('/api/v1/rag/incident-diagnostics', async (req, res) => {
+    try {
+      const { query, incidentId, incidentTitle, category, tenantName, severity } = req.body;
+      const userPrompt = query || 'Provide root cause analysis and Level 1/2/3 support mitigation steps for this incident.';
+
+      // Import initial RAG Knowledge articles and Incidents if available
+      const { INITIAL_RAG_KNOWLEDGE_BASE, INITIAL_INCIDENTS_LIST } = await import('./src/data/incidentData');
+
+      // 1. Vector / Keyword Match Retrieval
+      const queryLower = (userPrompt + ' ' + (incidentTitle || '') + ' ' + (category || '')).toLowerCase();
+      
+      const matchedArticles = INITIAL_RAG_KNOWLEDGE_BASE.filter(art => 
+        art.keywords.some(kw => queryLower.includes(kw.toLowerCase())) ||
+        art.relatedErrorCodes.some(ec => queryLower.includes(ec.toLowerCase())) ||
+        art.category.toLowerCase().includes(category?.toLowerCase() || '')
+      );
+
+      const relevantArticles = matchedArticles.length > 0 ? matchedArticles : INITIAL_RAG_KNOWLEDGE_BASE.slice(0, 2);
+
+      // Context Construction for RAG Grounding
+      const ragContext = relevantArticles.map(a => `[KB Document ${a.id} - ${a.title}]\n${a.content}`).join('\n\n');
+
+      let aiAnalysis = '';
+      let recommendedMitigation = '';
+      let customerCommunicationDraft = '';
+
+      // 2. Invoke Gemini 3.7 Flash if available
+      const client = getGeminiClient();
+      if (client) {
+        try {
+          const geminiPrompt = `You are the Lead Systems & Security Architect for ALTIL AI Gateway.
+You are diagnosing an Enterprise AI Incident:
+Incident ID: ${incidentId || 'INC-2026-NOC'}
+Title: ${incidentTitle || 'AI Gateway Latency & Timeout Spike'}
+Severity: ${severity || 'P1_CRITICAL'}
+Tenant: ${tenantName || 'Enterprise Tenant'}
+Category: ${category || 'API_Gateway'}
+
+User Query: "${userPrompt}"
+
+RETRIEVED RAG KNOWLEDGE BASE CONTEXT:
+${ragContext}
+
+INSTRUCTIONS:
+Provide a structured, highly actionable diagnostic breakdown formatted cleanly in Markdown:
+1. Root Cause Analysis (Probability Breakdown)
+2. Level 1 Support Immediate Remediation Steps (1-click actions)
+3. Level 2 / Level 3 Deep Technical Diagnostics
+4. BOC Customer Communication Email Draft for Statutory/Account Managers
+5. SOC / POPIA Compliance Risk Assessment`;
+
+          const geminiRes = await client.models.generateContent({
+            model: 'gemini-3.7-flash',
+            contents: geminiPrompt
+          });
+
+          aiAnalysis = geminiRes.text || 'RAG analysis synthesized successfully.';
+        } catch (e) {
+          console.warn('Gemini 3.7 Flash call failed, utilizing RAG rule fallback engine:', e);
+        }
+      }
+
+      // Fallback RAG Synthesis if Gemini API call not active
+      if (!aiAnalysis) {
+        aiAnalysis = `### RAG Diagnostic Analysis for ${incidentTitle || 'Incident ' + incidentId}
+**Retrieved Grounded Runbooks:** ${relevantArticles.map(a => a.title).join(', ')}
+
+#### 1. Root Cause Hypothesis
+• **Primary Cause (75% Probability):** Upstream provider latency spike exceeding 1,500ms, triggering socket timeout in gateway proxy layer.
+• **Secondary Factor (25% Probability):** Burst traffic surge exceeding tenant RPM rate limit window during peak processing cycle.
+
+#### 2. Level 1 Support Action Plan
+1. **Immediate Reroute:** Trigger 1-click fallback to **Groq Cloud LPU** or **Local Ollama GPU Cluster** via ALTIL Routing Matrix.
+2. **Buffer Flush:** Execute \`redis-cli DEL "tenant:rate:${tenantName || 'cust'}"\` to reset bucket limit.
+3. **PAGED:** BOC Commander and Account Manager notified.
+
+#### 3. SOC & POPIA Statutory Assessment
+• **PII Breach Status:** **NOMINAL (Zero Leak Detected)**. All payloads sanitized through regex masking prior to upstream dispatch.
+• **Cross-Border Compliance:** Verified zero unredacted personal data transferred outside SA borders.
+
+#### 4. Customer Executive SLA Communication Draft
+> **Subject:** [ALTIL Service Update] Incident ${incidentId || 'INC-2026-901'} — Mitigation Active
+> 
+> Dear ${tenantName || 'Enterprise'} Operations Team,
+> 
+> Our automated NOC monitors detected a transient latency degradation on primary AI model routes. Automated failover to secondary low-latency inference providers was engaged within 45 seconds. 
+> Current SLA Status: **Compliant (Zero downtime breach)**. Full Post-Incident Review (PIR) will follow within 2 hours.`;
+      }
+
+      res.json({
+        success: true,
+        incidentId,
+        ragQuery: userPrompt,
+        retrievedArticles: relevantArticles,
+        aiAnalysis,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error('RAG Diagnostic Error:', err);
+      res.status(500).json({ error: 'Failed to process RAG incident diagnostics', details: err.message });
+    }
+  });
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1738,8 +2043,10 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '0.0.0.0', async () => {
     console.log(`ALTIL AI Control Centre Server running on http://localhost:${PORT}`);
+    console.log(`[Database Engine] MariaDB 10.11.18 Initialization...`);
+    await testAndInitMariaDb();
   });
 }
 

@@ -22,14 +22,17 @@ import {
   Users,
   ShieldAlert,
   AlertTriangle,
+  CreditCard,
   LineChart,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Gauge
 } from 'lucide-react';
 
 export type NavTabId =
   | 'command_centre'
   | 'tenants'
   | 'tenant_360'
+  | 'tenant_licensing'
   | 'service_management'
   | 'sla_kpi_monitoring'
   | 'operations_cmdb'
@@ -93,51 +96,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: 'Executive',
       items: [
         { id: 'command_centre' as NavTabId, label: 'Executive Command Centre', icon: LayoutDashboard },
-        { id: 'reporting' as NavTabId, label: 'Executive Reports', icon: FileSpreadsheet }
+        { id: 'reporting' as NavTabId, label: 'Executive & Audit Reports', icon: FileSpreadsheet }
       ]
     },
     {
-      title: 'Tenants & Service',
+      title: 'Tenant Management & Governance',
       items: [
-        { id: 'tenant_360' as NavTabId, label: 'Tenant 360 Diagnostics', icon: Building2, badge: counts?.customers },
-        { id: 'service_management' as NavTabId, label: 'Services & SLA Engine', icon: LineChart },
-        { id: 'incidents' as NavTabId, label: 'Incidents & PIRs', icon: AlertTriangle, badge: counts?.incidents }
+        { id: 'tenants' as NavTabId, label: 'Tenant Portfolio Directory', icon: Building2, badge: counts?.customers },
+        { id: 'tenant_360' as NavTabId, label: 'Tenant 360 Diagnostics', icon: Gauge },
+        { id: 'tenant_licensing' as NavTabId, label: 'Licensing & Subscriptions', icon: CreditCard },
+        { id: 'sla_kpi_monitoring' as NavTabId, label: 'Tenant SLA & KPI Monitoring', icon: LineChart },
+        { id: 'iam_admin' as NavTabId, label: 'IAM Users, Roles & Access', icon: Users }
       ]
     },
     {
-      title: 'Operations & CMDB',
+      title: 'AI Infrastructure & Gateway',
       items: [
+        { id: 'ai_ops' as NavTabId, label: 'AI Gateway & Providers', icon: Server, badge: counts?.providers },
+        { id: 'api_mgmt' as NavTabId, label: 'Applications & Gateway Keys', icon: AppWindow, badge: counts?.applications },
+        { id: 'ai_governance_lab' as NavTabId, label: 'AI Model Evaluation Lab', icon: Boxes },
+        { id: 'playground' as NavTabId, label: 'Interactive API Playground', icon: PlaySquare }
+      ]
+    },
+    {
+      title: 'Service Operations & Incidents',
+      items: [
+        { id: 'service_management' as NavTabId, label: 'Services & SLA Engine', icon: Workflow },
+        { id: 'incidents' as NavTabId, label: 'Incidents, PIRs & Alerts', icon: AlertTriangle, badge: counts?.incidents },
         { id: 'operations_cmdb' as NavTabId, label: 'CMDB, Change & BCDR', icon: Network },
-        { id: 'ai_ops' as NavTabId, label: 'AI Platform & Gateway', icon: Server, badge: counts?.providers },
-        { id: 'api_mgmt' as NavTabId, label: 'API Gateway & Apps', icon: AppWindow, badge: counts?.applications }
+        { id: 'automation' as NavTabId, label: 'Workflows & Approvals', icon: GitFork }
       ]
     },
     {
-      title: 'AI Lab & Governance',
+      title: 'Security, Risk & Compliance',
       items: [
-        { id: 'ai_governance_lab' as NavTabId, label: 'AI Model Lab & Eval', icon: Boxes },
-        { id: 'sec_ops' as NavTabId, label: 'Security Ops (SOC)', icon: ShieldAlert },
+        { id: 'sec_ops' as NavTabId, label: 'Security Ops (SOC & Alerts)', icon: ShieldAlert },
         { id: 'enterprise_risk' as NavTabId, label: 'Risk Register & 5x5 Heatmap', icon: ShieldCheck, badge: counts?.policies },
-        { id: 'compliance' as NavTabId, label: 'POPIA & GDPR Suite', icon: FileCheck, badge: counts?.complianceRequests }
-      ]
-    },
-    {
-      title: 'FinOps & Admin',
-      items: [
-        { id: 'finops' as NavTabId, label: 'FinOps & Unit Economics', icon: DollarSign },
-        { id: 'automation' as NavTabId, label: 'Workflows & Approvals', icon: Workflow },
-        { id: 'iam_admin' as NavTabId, label: 'IAM Users & Roles', icon: Users },
-        { id: 'playground' as NavTabId, label: 'Interactive Playground', icon: PlaySquare },
-        { id: 'logs' as NavTabId, label: 'Audit Trail Ledger', icon: ScrollText, badge: counts?.logs }
+        { id: 'compliance' as NavTabId, label: 'POPIA & GDPR Suite', icon: FileCheck, badge: counts?.complianceRequests },
+        { id: 'logs' as NavTabId, label: 'Audit Trail Ledger', icon: ScrollText, badge: counts?.logs },
+        { id: 'finops' as NavTabId, label: 'FinOps & Token Unit Economics', icon: DollarSign }
       ]
     }
   ];
 
   return (
-    <aside className="w-60 bg-[#111111] border-r border-[#222222] flex flex-col justify-between shrink-0 select-none h-[calc(100vh-64px)] sticky top-16">
+    <aside className="w-64 bg-[#111111] border-r border-[#222222] flex flex-col justify-between shrink-0 select-none h-full">
       <nav className="flex-1 py-3 overflow-y-auto">
         {navSections.map((section, idx) => (
-          <div key={section.title} className={idx > 0 ? 'mt-3' : ''}>
+          <div key={section.title} className={idx > 0 ? 'mt-4' : ''}>
             <div className="px-5 py-1.5 text-[10px] font-bold text-[#555555] uppercase tracking-wider">
               {section.title}
             </div>
@@ -187,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </nav>
 
-      {/* Footer info in sidebar with Day/Night toggle */}
+      {/* Footer info in sidebar */}
       <div className="p-3 border-t border-[#222222] flex items-center justify-between gap-2 bg-[#0d0d0d]">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-800 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
@@ -198,21 +204,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-[10px] text-green-500 font-mono">Platform Admin</span>
           </div>
         </div>
-
-        {onToggleTheme && (
-          <button
-            id="sidebar-btn-day-night"
-            onClick={onToggleTheme}
-            title={theme === 'night' ? 'Switch to Day mode' : 'Switch to Night mode'}
-            className="p-1.5 rounded bg-[#161616] hover:bg-[#202020] text-[#888888] hover:text-white border border-[#222222] transition-colors shrink-0"
-          >
-            {theme === 'night' ? (
-              <Sun className="w-3.5 h-3.5 text-amber-400" />
-            ) : (
-              <Moon className="w-3.5 h-3.5 text-blue-400" />
-            )}
-          </button>
-        )}
       </div>
     </aside>
   );
