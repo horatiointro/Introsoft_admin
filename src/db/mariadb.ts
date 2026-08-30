@@ -60,6 +60,19 @@ let pool: mysql.Pool | null = null;
 let isDbConnected = false;
 let dbStatusMessage = 'Initializing MariaDB 10.11.18 Connection...';
 
+export function isDatabaseConnected(): boolean {
+  return isDbConnected;
+}
+
+export function setDatabaseConnected(connected: boolean): void {
+  isDbConnected = connected;
+  if (!connected) {
+    dbStatusMessage = 'MariaDB connection offline (Simulated Outage). Operating in synchronized enterprise memory store with full CRUD capabilities.';
+  } else {
+    dbStatusMessage = 'Connected to MariaDB 10.11.18 (Recovered).';
+  }
+}
+
 /**
  * Lazy initialization of MariaDB pool
  */

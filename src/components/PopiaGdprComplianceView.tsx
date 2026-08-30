@@ -39,6 +39,7 @@ import {
   ComplianceScanResult
 } from '../types';
 import { scanAndSanitizePrompt } from '../utils/complianceEngine';
+import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface PopiaGdprComplianceViewProps {
   policies: AIPolicy[];

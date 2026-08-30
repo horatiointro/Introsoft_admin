@@ -21,6 +21,7 @@ import {
 import { Customer, AIProvider, AuditLog, Incident } from '../types';
 import { TileDetailModal, TileDetailData } from './TileDetailModal';
 import { getTileDetailData } from '../data/tileDetailData';
+import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface CommandCentreViewProps {
   customers: Customer[];
@@ -127,7 +128,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-[#77809a] uppercase font-semibold">Active Tenants</span>
-              <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
+              <ProvenanceBadge type="LIVE" source="MariaDB" size="xs" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">{activeTenantsCount} / {customers.length}</div>
             <span className="text-[10px] text-[#8890a6] mt-0.5 block">Enterprise Multi-tenant</span>
@@ -139,7 +140,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-[#77809a] uppercase font-semibold">Connected Apps</span>
-              <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
+              <ProvenanceBadge type="LIVE" source="App Registry" size="xs" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">12 Apps</div>
             <span className="text-[10px] text-blue-400 font-mono mt-0.5 block">Production Scoped</span>
@@ -151,7 +152,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-[#77809a] uppercase font-semibold">Requests / Min</span>
-              <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
+              <ProvenanceBadge type="DERIVED" source="Prometheus Rollup" size="xs" />
             </div>
             <div className="text-lg font-bold text-blue-400 font-mono mt-1">2,840 RPM</div>
             <span className="text-[10px] text-[#8890a6] mt-0.5 block">Peak Capacity: 10,000</span>
@@ -163,7 +164,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-[#77809a] uppercase font-semibold">Requests Today</span>
-              <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
+              <ProvenanceBadge type="CALCULATED" source="Audit Log Ingest" size="xs" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">48,420</div>
             <span className="text-[10px] text-emerald-400 font-mono mt-0.5 block">+14.2% vs yesterday</span>

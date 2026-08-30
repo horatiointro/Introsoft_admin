@@ -11,6 +11,23 @@ export type ProviderType =
   | 'openai_compatible'
   | 'custom';
 
+export type DataProvenanceType = 'LIVE' | 'CALCULATED' | 'DERIVED' | 'DEMO' | 'FALLBACK';
+
+export interface ProvenanceMetadata {
+  provenance: DataProvenanceType;
+  source: string;
+  calculatedAt?: string;
+  verified?: boolean;
+  notes?: string;
+}
+
+export interface ProvenanceValue<T = any> {
+  value: T;
+  provenance: DataProvenanceType;
+  source: string;
+  calculatedAt?: string;
+}
+
 export type HealthStatus = 'online' | 'degraded' | 'offline' | 'checking';
 
 export interface AIProvider {
@@ -24,6 +41,8 @@ export interface AIProvider {
   customHeaders?: Record<string, string>;
   enabled: boolean;
   status: HealthStatus;
+  executionState?: 'LIVE' | 'CONFIGURED-BUT-NOT-VERIFIED' | 'FALLBACK' | 'UNAVAILABLE';
+  provenance?: DataProvenanceType;
   latencyMs: number;
   p95LatencyMs?: number;
   uptimePercent?: number;

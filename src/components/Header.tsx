@@ -13,9 +13,11 @@ import {
   Bell,
   AlertTriangle,
   ChevronRight,
-  LogOut
+  LogOut,
+  Database
 } from 'lucide-react';
 import { MultiChannelAlert } from '../types';
+import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface HeaderProps {
   onOpenPlayground: () => void;
@@ -29,6 +31,8 @@ interface HeaderProps {
   onOpenIncidentById?: (incidentId: string) => void;
   currentUser?: { name: string; email: string; role: string; tenant: string };
   onLogout?: () => void;
+  dbConnected?: boolean;
+  dbStatusMessage?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,7 +46,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAlertsView,
   onOpenIncidentById,
   currentUser = { name: 'Horatio Huxham', email: 'horatio.huxham@gmail.com', role: 'Global Super Admin', tenant: 'Total Company Scope' },
-  onLogout
+  onLogout,
+  dbConnected = false,
+  dbStatusMessage = 'MariaDB Storage Layer'
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const unreadAlerts = alertsList.filter(a => !a.isRead);
@@ -56,11 +62,24 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Center Live System Heartbeat */}
-      <div className="hidden lg:flex items-center space-x-5 text-xs text-[#888888]">
+      {/* Center Live System Heartbeat & Persistence Provenance */}
+      <div className="hidden lg:flex items-center space-x-4 text-xs text-[#888888]">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-green-500"></span>
           <span className="text-[10px] font-mono uppercase text-[#888888]">Gateway: Online</span>
+        </div>
+
+        <div className="h-3.5 w-px bg-[#222222]" />
+
+        {/* MariaDB Persistence Provenance Badge */}
+        <div className="flex items-center space-x-1.5" title={dbStatusMessage}>
+          <Database className={`w-3.5 h-3.5 ${dbConnected ? 'text-emerald-400' : 'text-amber-400'}`} />
+          <span className="text-[10px] font-mono text-[#888888]">DB:</span>
+          {dbConnected ? (
+            <ProvenanceBadge type="LIVE" source="MariaDB 10.11" size="xs" />
+          ) : (
+            <ProvenanceBadge type="FALLBACK" source="In-Memory Sync" size="xs" />
+          )}
         </div>
 
         <div className="h-3.5 w-px bg-[#222222]" />

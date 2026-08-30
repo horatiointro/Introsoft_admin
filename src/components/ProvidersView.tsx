@@ -29,6 +29,7 @@ import {
   Copy
 } from 'lucide-react';
 import { AIProvider, ProviderTestResult, ProviderType } from '../types';
+import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface ProvidersViewProps {
   providers: AIProvider[];
@@ -406,15 +407,31 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Status Indicator */}
-                  <span
-                    className={`text-[10px] font-mono flex items-center gap-1 shrink-0 ${
-                      isOnline ? 'text-green-500' : 'text-[#666666]'
-                    }`}
-                  >
-                    <span>●</span>
-                    <span>{provider.enabled ? provider.status.toUpperCase() : 'DISABLED'}</span>
-                  </span>
+                  {/* Status Indicator & Provenance */}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span
+                      className={`text-[10px] font-mono flex items-center gap-1 ${
+                        isOnline ? 'text-green-500' : 'text-[#666666]'
+                      }`}
+                    >
+                      <span>●</span>
+                      <span>{provider.enabled ? provider.status.toUpperCase() : 'DISABLED'}</span>
+                    </span>
+                    <ProvenanceBadge
+                      type={
+                        !provider.enabled || provider.status === 'offline'
+                          ? 'DEMO'
+                          : provider.type === 'gemini'
+                          ? 'LIVE'
+                          : provider.type === 'ollama'
+                          ? 'FALLBACK'
+                          : provider.type === 'groq' || provider.type === 'openai'
+                          ? 'CALCULATED'
+                          : 'DERIVED'
+                      }
+                      size="xs"
+                    />
+                  </div>
                 </div>
 
                 {/* Endpoint & Key Specs */}

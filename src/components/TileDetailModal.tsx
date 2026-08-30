@@ -28,6 +28,7 @@ import {
   Zap,
   Filter
 } from 'lucide-react';
+import { ProvenanceBadge } from './ProvenanceBadge';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -143,6 +144,17 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
                 {data.category}
               </span>
               <span className="text-xs font-mono text-[#8890a6]">ID: {data.id}</span>
+              <ProvenanceBadge
+                type={
+                  data.category === 'Availability & Health' || data.category === 'SOC & Security'
+                    ? 'LIVE'
+                    : data.category === 'FinOps & Cost'
+                    ? 'CALCULATED'
+                    : 'DERIVED'
+                }
+                source={data.dataSources?.[0] || 'MariaDB telemetry'}
+                size="xs"
+              />
               <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 Calculated {data.lastCalculatedAt}

@@ -1105,10 +1105,42 @@ export default function App() {
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('altil_auth_token');
+      if (token) {
+        await fetch('/api/v1/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      }
+    } catch (_) {}
+    localStorage.removeItem('altil_auth_token');
+    localStorage.removeItem('altil_user_profile');
     setIsAuthenticated(false);
     setIsSplashActive(false);
   };
+
+  // Restore authenticated session from localStorage on initial load
+  useEffect(() => {
+    const savedToken = localStorage.getItem('altil_auth_token');
+    const savedProfile = localStorage.getItem('altil_user_profile');
+    if (savedToken && savedProfile) {
+      try {
+        const parsed = JSON.parse(savedProfile);
+        setCurrentUser({
+          name: parsed.name || `${parsed.firstName || ''} ${parsed.lastName || ''}`.trim() || 'Enterprise Admin',
+          email: parsed.email || 'horatio.huxham@gmail.com',
+          role: parsed.role || 'Global Super Admin',
+          tenant: parsed.tenant || 'Total Company Scope'
+        });
+        setIsAuthenticated(true);
+      } catch (_) {}
+    }
+  }, []);
 
   if (!isAuthenticated && !isSplashActive) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;

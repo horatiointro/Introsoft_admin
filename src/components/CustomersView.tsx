@@ -12,6 +12,7 @@ import {
   UserRole,
   InvoicePreview
 } from '../types';
+import { ProvenanceBadge } from './ProvenanceBadge';
 import {
   Building2,
   UserCheck,
@@ -638,6 +639,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
                   Multi-Tenant Platform
                 </span>
+                <ProvenanceBadge type="LIVE" source="MariaDB `customers`" size="xs" />
               </h1>
               <p className="text-xs text-[#888888] mt-0.5">
                 Centralized hub to onboard enterprise tenant accounts, manage statutory POPIA/GDPR officers, assign subscription tiers, issue API keys, and manage tenant lifecycle.

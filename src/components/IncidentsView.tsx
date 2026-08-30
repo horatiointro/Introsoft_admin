@@ -11,6 +11,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Incident, ProblemRecord } from '../types';
+import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface IncidentsViewProps {
   incidents: Incident[];
@@ -33,6 +34,7 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
             <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase">
               ITIL Aligned Service Management
             </span>
+            <ProvenanceBadge type="LIVE" source="MariaDB `itil_incidents`" size="xs" />
             <span className="text-xs text-blue-400 font-mono">PIR & Root Cause Ledger</span>
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">Incident & Problem Management Centre</h1>

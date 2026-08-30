@@ -50,8 +50,20 @@ import {
   getMariaDbHealth,
   runSchemaMigrationScript,
   dbRepository,
-  executeQuery
+  executeQuery,
+  setDatabaseConnected,
+  isDatabaseConnected
 } from './src/db/mariadb';
+import { authRouter } from './src/routes/authRoutes';
+import { itilRouter } from './src/routes/itilRoutes';
+import { complianceRouter } from './src/routes/complianceRoutes';
+import { IamRepository } from './src/db/iamRepository';
+import {
+  requireAuthentication,
+  requireRole,
+  requireTenantAccess,
+  AuthenticatedRequest
+} from './src/middleware/authMiddleware';
 
 // In-memory state store (synchronized with UI)
 let providers: AIProvider[] = [...INITIAL_PROVIDERS];
@@ -317,16 +329,26 @@ async function startServer() {
   app.use(express.json());
 
   // ----------------------------------------------------
+  // ALTIL IAM & ENTERPRISE AUTHENTICATION APIS
+  // ----------------------------------------------------
+  app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/iam', authRouter);
+  app.use('/api/v1/itil', itilRouter);
+  app.use('/api/v1/compliance', complianceRouter);
+
+  // ----------------------------------------------------
   // ALTIL CORE REST APIS
   // ----------------------------------------------------
 
-  // Health & Overview
+  // Health (Public Status Endpoint)
   app.get('/api/v1/health', (req, res) => {
+    const isConnected = isDatabaseConnected();
     res.json({
-      status: 'online',
+      status: isConnected ? 'HEALTHY' : 'DEGRADED',
       platform: 'Introsoft ALTIL AI Orchestration Layer',
       version: '2.4.0-enterprise',
       database: 'MariaDB 10.11.18 Community Engine',
+      databaseConnected: isConnected,
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       components: systemHealth
@@ -336,22 +358,28 @@ async function startServer() {
   // ----------------------------------------------------
   // MariaDB 10.11.18 Enterprise Database REST APIs
   // ----------------------------------------------------
-  app.get('/api/v1/database/health', async (req, res) => {
+  app.get('/api/v1/database/health', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const health = await getMariaDbHealth();
     res.json(health);
   });
 
-  app.post('/api/v1/database/migrate', async (req, res) => {
+  app.post('/api/v1/database/toggle-offline', requireAuthentication, requireRole(['SUPER_ADMIN']), (req, res) => {
+    const { offline } = req.body;
+    setDatabaseConnected(!offline);
+    res.json({ status: 'ok', databaseConnected: !offline });
+  });
+
+  app.post('/api/v1/database/migrate', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const result = await runSchemaMigrationScript();
     res.json(result);
   });
 
-  app.get('/api/v1/database/tenants', async (req, res) => {
+  app.get('/api/v1/database/tenants', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const data = await dbRepository.getTenants();
     res.json(data);
   });
 
-  app.post('/api/v1/database/tenants', async (req, res) => {
+  app.post('/api/v1/database/tenants', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const tenant = req.body;
     await dbRepository.createTenant(tenant);
     const existingIdx = customers.findIndex(c => c.id === tenant.id);
@@ -363,19 +391,19 @@ async function startServer() {
     res.json({ status: 'ok', tenant });
   });
 
-  app.delete('/api/v1/database/tenants/:id', async (req, res) => {
+  app.delete('/api/v1/database/tenants/:id', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const { id } = req.params;
     await dbRepository.deleteTenant(id);
     customers = customers.filter(c => c.id !== id);
     res.json({ status: 'deleted', id });
   });
 
-  app.get('/api/v1/database/plans', async (req, res) => {
+  app.get('/api/v1/database/plans', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const plans = await dbRepository.getLicensingPlans();
     res.json(plans);
   });
 
-  app.post('/api/v1/database/plans', async (req, res) => {
+  app.post('/api/v1/database/plans', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const plan = req.body;
     await dbRepository.saveLicensingPlan(plan);
     const idx = licensingPlans.findIndex(p => p.id === plan.id);
@@ -384,12 +412,12 @@ async function startServer() {
     res.json({ status: 'ok', plan });
   });
 
-  app.get('/api/v1/database/licenses', async (req, res) => {
+  app.get('/api/v1/database/licenses', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const lics = await dbRepository.getTenantLicenses();
     res.json(lics);
   });
 
-  app.post('/api/v1/database/licenses', async (req, res) => {
+  app.post('/api/v1/database/licenses', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const lic = req.body;
     await dbRepository.saveTenantLicense(lic);
     const idx = tenantLicenses.findIndex(l => l.id === lic.id);
@@ -398,7 +426,7 @@ async function startServer() {
     res.json({ status: 'ok', license: lic });
   });
 
-  app.post('/api/v1/database/query', async (req, res) => {
+  app.post('/api/v1/database/query', requireAuthentication, requireRole(['SUPER_ADMIN']), async (req: AuthenticatedRequest, res) => {
     const { sql, params } = req.body;
     try {
       const rows = await executeQuery(sql, params || []);
@@ -408,7 +436,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/v1/overview', (req, res) => {
+  app.get('/api/v1/overview', requireAuthentication, (req: AuthenticatedRequest, res) => {
     const totalRequests = auditLogs.length + 18421;
     const errorCount = auditLogs.filter(l => l.status === 'ERROR' || l.status === 'POLICY_BLOCKED').length + 31;
     res.json({
@@ -440,11 +468,11 @@ async function startServer() {
   // ----------------------------------------------------
   // Licensing & Commercial Monetization Engine API
   // ----------------------------------------------------
-  app.get('/api/v1/licensing/plans', (req, res) => {
+  app.get('/api/v1/licensing/plans', requireAuthentication, (req: AuthenticatedRequest, res) => {
     res.json(licensingPlans);
   });
 
-  app.post('/api/v1/licensing/plans', (req, res) => {
+  app.post('/api/v1/licensing/plans', requireAuthentication, requireRole(['SUPER_ADMIN', 'FINOPS_MANAGER']), (req: AuthenticatedRequest, res) => {
     const plan: LicensingPlanTemplate = req.body;
     const existingIdx = licensingPlans.findIndex(p => p.id === plan.id);
     if (existingIdx >= 0) {
@@ -455,11 +483,13 @@ async function startServer() {
     res.json({ status: 'ok', plan });
   });
 
-  app.get('/api/v1/licensing/tenant-licenses', (req, res) => {
-    res.json(tenantLicenses);
+  app.get('/api/v1/licensing/tenant-licenses', requireAuthentication, (req: AuthenticatedRequest, res) => {
+    const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
+    const filtered = isSuperAdmin ? tenantLicenses : tenantLicenses.filter(l => l.tenantId === req.user?.tenantId);
+    res.json(filtered);
   });
 
-  app.post('/api/v1/licensing/tenant-licenses/update', (req, res) => {
+  app.post('/api/v1/licensing/tenant-licenses/update', requireAuthentication, requireRole(['SUPER_ADMIN', 'FINOPS_MANAGER']), (req: AuthenticatedRequest, res) => {
     const lic: TenantAppLicense = req.body;
     const idx = tenantLicenses.findIndex(l => l.id === lic.id);
     if (idx >= 0) {
@@ -544,7 +574,7 @@ async function startServer() {
   });
 
   // Providers CRUD
-  app.get('/api/v1/providers', (req, res) => {
+  app.get('/api/v1/providers', requireAuthentication, (req: AuthenticatedRequest, res) => {
     // Update model counts before returning
     providers.forEach(p => {
       p.modelsCount = models.filter(m => m.providerId === p.id).length;
@@ -553,7 +583,7 @@ async function startServer() {
     res.json(providers);
   });
 
-  app.post('/api/v1/providers', (req, res) => {
+  app.post('/api/v1/providers', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     const rawKey = req.body.apiKey || '';
     let prefix = req.body.keyPrefix || '';
     if (rawKey && !prefix) {
@@ -603,7 +633,7 @@ async function startServer() {
     res.status(201).json(newProvider);
   });
 
-  app.put('/api/v1/providers/:id', (req, res) => {
+  app.put('/api/v1/providers/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     const idx = providers.findIndex(p => p.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Provider not found' });
 
@@ -622,7 +652,7 @@ async function startServer() {
     res.json(providers[idx]);
   });
 
-  app.delete('/api/v1/providers/:id', (req, res) => {
+  app.delete('/api/v1/providers/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     const targetId = req.params.id;
     providers = providers.filter(p => p.id !== targetId);
     // Optionally clean up or orphan models
@@ -633,7 +663,7 @@ async function startServer() {
   });
 
   // Dedicated Telemetry Data per Provider
-  app.get('/api/v1/providers/:id/telemetry', (req, res) => {
+  app.get('/api/v1/providers/:id/telemetry', requireAuthentication, (req: AuthenticatedRequest, res) => {
     const provider = providers.find(p => p.id === req.params.id);
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
 
@@ -748,7 +778,7 @@ async function startServer() {
   });
 
   // Run live synthetic benchmark on provider
-  app.post('/api/v1/providers/:id/benchmark', async (req, res) => {
+  app.post('/api/v1/providers/:id/benchmark', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req: AuthenticatedRequest, res) => {
     const provider = providers.find(p => p.id === req.params.id);
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
 
@@ -776,7 +806,7 @@ async function startServer() {
   });
 
   // Test Connection
-  app.post('/api/v1/providers/:id/test', async (req, res) => {
+  app.post('/api/v1/providers/:id/test', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req: AuthenticatedRequest, res) => {
     const provider = providers.find(p => p.id === req.params.id);
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
 
@@ -853,11 +883,11 @@ async function startServer() {
   });
 
   // Models CRUD
-  app.get('/api/v1/models', (req, res) => {
+  app.get('/api/v1/models', requireAuthentication, (req: AuthenticatedRequest, res) => {
     res.json(models);
   });
 
-  app.post('/api/v1/models', (req, res) => {
+  app.post('/api/v1/models', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     const newModel: AIModel = {
       id: `m-${Date.now().toString(36)}`,
       modelIdentifier: req.body.modelIdentifier || 'custom-model:v1',
@@ -877,30 +907,32 @@ async function startServer() {
     res.status(201).json(newModel);
   });
 
-  app.put('/api/v1/models/:id', (req, res) => {
+  app.put('/api/v1/models/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     const idx = models.findIndex(m => m.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Model not found' });
     models[idx] = { ...models[idx], ...req.body };
     res.json(models[idx]);
   });
 
-  app.delete('/api/v1/models/:id', (req, res) => {
+  app.delete('/api/v1/models/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     models = models.filter(m => m.id !== req.params.id);
     res.json({ success: true });
   });
 
   // Customers / Tenants CRUD & Enterprise Onboarding
-  app.get('/api/v1/customers', (req, res) => {
-    res.json(customers);
+  app.get('/api/v1/customers', requireAuthentication, (req: AuthenticatedRequest, res) => {
+    const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
+    const filtered = isSuperAdmin ? customers : customers.filter(c => c.id === req.user?.tenantId);
+    res.json(filtered);
   });
 
-  app.get('/api/v1/customers/:id', (req, res) => {
+  app.get('/api/v1/customers/:id', requireAuthentication, requireTenantAccess('id'), (req: AuthenticatedRequest, res) => {
     const cust = customers.find(c => c.id === req.params.id);
     if (!cust) return res.status(404).json({ error: 'Customer not found' });
     res.json(cust);
   });
 
-  app.post('/api/v1/customers', (req, res) => {
+  app.post('/api/v1/customers', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res) => {
     const custId = `cust-${(req.body.name || 'company').toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 20)}-${Date.now().toString(36).slice(-4)}`;
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
@@ -1049,7 +1081,7 @@ async function startServer() {
     res.status(201).json({ customer: newCustomer, application: createdApp, apiKey: createdKey });
   });
 
-  app.get('/api/v1/customers/:id/invoice-preview', (req, res) => {
+  app.get('/api/v1/customers/:id/invoice-preview', requireAuthentication, requireTenantAccess('id'), (req: AuthenticatedRequest, res) => {
     const cust = customers.find(c => c.id === req.params.id);
     if (!cust) return res.status(404).json({ error: 'Customer not found' });
 
@@ -1108,7 +1140,7 @@ async function startServer() {
     res.json(invoicePreview);
   });
 
-  app.put('/api/v1/customers/:id', (req, res) => {
+  app.put('/api/v1/customers/:id', requireAuthentication, requireTenantAccess('id'), requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     const idx = customers.findIndex(c => c.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Customer not found' });
     customers[idx] = {
@@ -1119,13 +1151,13 @@ async function startServer() {
     res.json(customers[idx]);
   });
 
-  app.delete('/api/v1/customers/:id', (req, res) => {
+  app.delete('/api/v1/customers/:id', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res) => {
     customers = customers.filter(c => c.id !== req.params.id);
     res.json({ success: true });
   });
 
   // Customer Users CRUD
-  app.post('/api/v1/customers/:id/users', (req, res) => {
+  app.post('/api/v1/customers/:id/users', requireAuthentication, requireTenantAccess('id'), requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     const cust = customers.find(c => c.id === req.params.id);
     if (!cust) return res.status(404).json({ error: 'Customer not found' });
 
@@ -1147,7 +1179,7 @@ async function startServer() {
     res.status(201).json(newUser);
   });
 
-  app.put('/api/v1/customers/:id/users/:userId', (req, res) => {
+  app.put('/api/v1/customers/:id/users/:userId', requireAuthentication, requireTenantAccess('id'), requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     const cust = customers.find(c => c.id === req.params.id);
     if (!cust) return res.status(404).json({ error: 'Customer not found' });
 
@@ -1162,7 +1194,7 @@ async function startServer() {
     res.json(cust.users[uIdx]);
   });
 
-  app.delete('/api/v1/customers/:id/users/:userId', (req, res) => {
+  app.delete('/api/v1/customers/:id/users/:userId', requireAuthentication, requireTenantAccess('id'), requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     const cust = customers.find(c => c.id === req.params.id);
     if (!cust) return res.status(404).json({ error: 'Customer not found' });
 
@@ -1172,7 +1204,7 @@ async function startServer() {
   });
 
   // Customer Key Generation & Validation
-  app.post('/api/v1/customers/:id/keys', (req, res) => {
+  app.post('/api/v1/customers/:id/keys', requireAuthentication, requireTenantAccess('id'), requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     const cust = customers.find(c => c.id === req.params.id);
     if (!cust) return res.status(404).json({ error: 'Customer not found' });
 
@@ -1251,14 +1283,19 @@ async function startServer() {
   });
 
   // Applications CRUD
-  app.get('/api/v1/applications', (req, res) => {
-    res.json(applications);
+  app.get('/api/v1/applications', requireAuthentication, (req: AuthenticatedRequest, res) => {
+    const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
+    const tenantId = req.user?.tenantId;
+    const filtered = isSuperAdmin ? applications : applications.filter(a => a.customerId === tenantId || (!a.customerId && tenantId === 'cust-1'));
+    res.json(filtered);
   });
 
-  app.post('/api/v1/applications', (req, res) => {
+  app.post('/api/v1/applications', requireAuthentication, requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     const appId = `app-${(req.body.appIdentifier || req.body.name || 'app').toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     const newApp: Application = {
       id: appId,
+      customerId: req.user?.tenantId || req.body.customerId || 'cust-1',
+      customerName: req.body.customerName || (req.user?.tenantId === 'cust-2' ? 'Capitec Bank Ltd' : 'Introsoft Cloud (Default)'),
       appIdentifier: req.body.appIdentifier || (req.body.name || 'app').toLowerCase().replace(/[^a-z0-9]/g, '-'),
       name: req.body.name || 'New Application',
       description: req.body.description || '',
@@ -1279,6 +1316,8 @@ async function startServer() {
     const keyRaw = `ALTIL-${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
     const newKey: ApiKey = {
       id: `key-${Date.now().toString(36)}`,
+      customerId: newApp.customerId,
+      customerName: newApp.customerName,
       appId: newApp.id,
       name: `${newApp.name} Primary Key`,
       key: keyRaw,
@@ -1296,9 +1335,15 @@ async function startServer() {
     res.status(201).json({ application: newApp, apiKey: newKey });
   });
 
-  app.put('/api/v1/applications/:id', (req, res) => {
+  app.put('/api/v1/applications/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     const idx = applications.findIndex(a => a.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Application not found' });
+    
+    // Check tenant access if not super admin
+    if (!req.user?.roles.includes('SUPER_ADMIN') && applications[idx].customerId && applications[idx].customerId !== req.user?.tenantId) {
+      return res.status(403).json({ error: 'Forbidden: Access denied to other tenant application' });
+    }
+
     applications[idx] = {
       ...applications[idx],
       ...req.body,
@@ -1307,21 +1352,34 @@ async function startServer() {
     res.json(applications[idx]);
   });
 
-  app.delete('/api/v1/applications/:id', (req, res) => {
+  app.delete('/api/v1/applications/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
+    const target = applications.find(a => a.id === req.params.id);
+    if (!target) return res.status(404).json({ error: 'Application not found' });
+
+    if (!req.user?.roles.includes('SUPER_ADMIN') && target.customerId && target.customerId !== req.user?.tenantId) {
+      return res.status(403).json({ error: 'Forbidden: Access denied' });
+    }
+
     applications = applications.filter(a => a.id !== req.params.id);
     apiKeys = apiKeys.filter(k => k.appId !== req.params.id);
     res.json({ success: true });
   });
 
   // API Keys CRUD
-  app.get('/api/v1/api-keys', (req, res) => {
-    res.json(apiKeys);
+  app.get('/api/v1/api-keys', requireAuthentication, (req: AuthenticatedRequest, res) => {
+    const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
+    const tenantId = req.user?.tenantId;
+    const filtered = isSuperAdmin ? apiKeys : apiKeys.filter(k => k.customerId === tenantId || (!k.customerId && tenantId === 'cust-1'));
+    res.json(filtered);
   });
 
-  app.post('/api/v1/api-keys', (req, res) => {
+  app.post('/api/v1/api-keys', requireAuthentication, requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
+    const targetCustId = req.user?.roles.includes('SUPER_ADMIN') ? (req.body.customerId || 'cust-1') : req.user?.tenantId;
     const keyRaw = `ALTIL-${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
     const newKey: ApiKey = {
       id: `key-${Date.now().toString(36)}`,
+      customerId: targetCustId,
+      customerName: targetCustId === 'cust-2' ? 'Capitec Bank Ltd' : 'Introsoft Cloud (Default)',
       appId: req.body.appId || applications[0]?.id || 'app-introsoft-web',
       name: req.body.name || 'Application API Key',
       key: keyRaw,
@@ -1338,24 +1396,33 @@ async function startServer() {
     res.status(201).json(newKey);
   });
 
-  app.put('/api/v1/api-keys/:id/revoke', (req, res) => {
+  app.put('/api/v1/api-keys/:id/revoke', requireAuthentication, requireRole(['SUPER_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     const key = apiKeys.find(k => k.id === req.params.id);
     if (!key) return res.status(404).json({ error: 'Key not found' });
+    
+    if (!req.user?.roles.includes('SUPER_ADMIN') && key.customerId && key.customerId !== req.user?.tenantId) {
+      return res.status(403).json({ error: 'Forbidden: Access denied to other tenant API key' });
+    }
+
     key.status = 'revoked';
     res.json(key);
   });
 
-  app.delete('/api/v1/api-keys/:id', (req, res) => {
+  app.delete('/api/v1/api-keys/:id', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res) => {
     apiKeys = apiKeys.filter(k => k.id !== req.params.id);
     res.json({ success: true });
   });
 
   // Routing Rules CRUD
-  app.get('/api/v1/routes', (req, res) => {
+  app.get('/api/v1/routes', requireAuthentication, (req: AuthenticatedRequest, res) => {
     res.json(routingRules);
   });
 
-  app.post('/api/v1/routes', (req, res) => {
+  app.get('/api/v1/routing-rules', requireAuthentication, (req: AuthenticatedRequest, res) => {
+    res.json(routingRules);
+  });
+
+  app.post('/api/v1/routes', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     const newRoute: RoutingRule = {
       id: `route-${Date.now().toString(36)}`,
       name: req.body.name || 'New Routing Rule',
@@ -1375,24 +1442,24 @@ async function startServer() {
     res.status(201).json(newRoute);
   });
 
-  app.put('/api/v1/routes/:id', (req, res) => {
+  app.put('/api/v1/routes/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     const idx = routingRules.findIndex(r => r.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Route not found' });
     routingRules[idx] = { ...routingRules[idx], ...req.body };
     res.json(routingRules[idx]);
   });
 
-  app.delete('/api/v1/routes/:id', (req, res) => {
+  app.delete('/api/v1/routes/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req: AuthenticatedRequest, res) => {
     routingRules = routingRules.filter(r => r.id !== req.params.id);
     res.json({ success: true });
   });
 
   // Policies CRUD
-  app.get('/api/v1/policies', (req, res) => {
+  app.get('/api/v1/policies', requireAuthentication, (req: AuthenticatedRequest, res) => {
     res.json(policies);
   });
 
-  app.post('/api/v1/policies', (req, res) => {
+  app.post('/api/v1/policies', requireAuthentication, requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'COMPLIANCE_OFFICER']), (req: AuthenticatedRequest, res) => {
     const newPolicy: AIPolicy = {
       id: `pol-${Date.now().toString(36)}`,
       name: req.body.name || 'New AI Governance Policy',
@@ -1418,7 +1485,7 @@ async function startServer() {
     res.status(201).json(newPolicy);
   });
 
-  app.put('/api/v1/policies/:id', (req, res) => {
+  app.put('/api/v1/policies/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'COMPLIANCE_OFFICER']), (req: AuthenticatedRequest, res) => {
     const idx = policies.findIndex(p => p.id === req.params.id);
     if (idx === -1) return res.status(404).json({ error: 'Policy not found' });
     policies[idx] = {
@@ -1429,70 +1496,21 @@ async function startServer() {
     res.json(policies[idx]);
   });
 
-  app.delete('/api/v1/policies/:id', (req, res) => {
+  app.delete('/api/v1/policies/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'COMPLIANCE_OFFICER']), (req: AuthenticatedRequest, res) => {
     policies = policies.filter(p => p.id !== req.params.id);
     res.json({ success: true });
   });
 
-  // POPIA & GDPR Compliance API Routes
-  app.get('/api/v1/compliance/config', (req, res) => {
-    res.json(globalComplianceConfig);
-  });
-
-  app.put('/api/v1/compliance/config', (req, res) => {
-    globalComplianceConfig = {
-      ...globalComplianceConfig,
-      ...req.body,
-      lastUpdated: new Date().toISOString().replace('T', ' ').slice(0, 19)
-    };
-    res.json(globalComplianceConfig);
-  });
-
-  app.get('/api/v1/compliance/dsar', (req, res) => {
-    res.json(dataSubjectRequests);
-  });
-
-  app.post('/api/v1/compliance/dsar', (req, res) => {
-    const newReq: DataSubjectRequest = {
-      id: req.body.id || `DSR-${req.body.framework === 'GDPR' ? 'EU' : 'ZA'}-${Date.now().toString(36).toUpperCase()}`,
-      framework: req.body.framework || 'POPIA',
-      requestType: req.body.requestType || 'access',
-      subjectIdentifier: req.body.subjectIdentifier || 'Anonymous',
-      requestorName: req.body.requestorName || 'Unknown Requestor',
-      appId: req.body.appId,
-      status: req.body.status || 'pending',
-      createdAt: req.body.createdAt || new Date().toISOString().replace('T', ' ').slice(0, 19),
-      dueAt: req.body.dueAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19),
-      notes: req.body.notes || ''
-    };
-    dataSubjectRequests.unshift(newReq);
-    res.status(201).json(newReq);
-  });
-
-  app.put('/api/v1/compliance/dsar/:id', (req, res) => {
-    const idx = dataSubjectRequests.findIndex(r => r.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Data subject request not found' });
-    dataSubjectRequests[idx] = {
-      ...dataSubjectRequests[idx],
-      ...req.body
-    };
-    res.json(dataSubjectRequests[idx]);
-  });
-
-  app.post('/api/v1/compliance/scan', (req, res) => {
-    const { prompt, popiaRules, gdprRules, providerId } = req.body;
-    const targetProvider = providers.find(p => p.id === providerId) || providers[0];
-    const scanResult = scanAndSanitizePrompt(prompt || '', {
-      popiaRules: popiaRules || globalComplianceConfig.popia,
-      gdprRules: gdprRules || globalComplianceConfig.gdpr,
-      targetProvider
-    });
-    res.json(scanResult);
-  });
-
   // Audit Logs
-  app.get('/api/v1/logs', (req, res) => {
+  app.get('/api/v1/logs', requireAuthentication, requireRole(['SUPER_ADMIN', 'AUDITOR', 'SECURITY_ADMIN', 'TENANT_ADMIN']), (req: AuthenticatedRequest, res) => {
     let result = [...auditLogs];
+    const isSuperOrAuditor = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR') || req.user?.roles.includes('SECURITY_ADMIN');
+    
+    if (!isSuperOrAuditor && req.user?.tenantId) {
+      const tenantApps = applications.filter(a => a.customerId === req.user?.tenantId).map(a => a.id);
+      result = result.filter(l => tenantApps.includes(l.appId));
+    }
+
     if (req.query.appId && req.query.appId !== 'all') {
       result = result.filter(l => l.appId === req.query.appId);
     }
@@ -1515,7 +1533,7 @@ async function startServer() {
     res.json(result);
   });
 
-  app.get('/api/v1/usage', (req, res) => {
+  app.get('/api/v1/usage', requireAuthentication, (req: AuthenticatedRequest, res) => {
     res.json({
       chartData: USAGE_CHART_DATA,
       todayRequests: 4812,
@@ -1544,8 +1562,15 @@ async function startServer() {
   // (Full 7-Step Provider-Agnostic Intelligent Dispatch)
   // ----------------------------------------------------
   app.post('/api/v1/orchestrate', async (req, res) => {
+    try {
+      const rawAuthHeader = req.headers.authorization;
+      const headerApiKey = req.headers['x-api-key'] as string;
+      const cookieToken = req.headers.cookie?.split(';')
+        .find(c => c.trim().startsWith('altil_session='))
+        ?.split('=')[1]?.trim();
+
     const {
-      apiKey,
+      apiKey = headerApiKey,
       appId,
       capability = 'general_ai',
       task,
@@ -1554,6 +1579,40 @@ async function startServer() {
       simulatePrimaryFailure = false,
       simulateProviderFailure = false
     } = req.body;
+
+    // Verify authentication (either valid API key or valid user session)
+    let authenticatedCaller: { type: 'api_key' | 'session'; user?: any; keyRecord?: ApiKey } | null = null;
+
+    if (apiKey) {
+      const keyRecord = apiKeys.find(k => k.key === apiKey || (k.prefix && k.prefix.includes(apiKey.slice(0, 8))));
+      if (!keyRecord) {
+        return res.status(401).json({ error: 'Unauthorized: Invalid API key provided' });
+      }
+      if (keyRecord.status === 'revoked') {
+        return res.status(403).json({ error: 'Forbidden: API key has been revoked' });
+      }
+      if (keyRecord.expiresAt && new Date(keyRecord.expiresAt).getTime() < Date.now()) {
+        return res.status(403).json({ error: 'Forbidden: API key expired' });
+      }
+      authenticatedCaller = { type: 'api_key', keyRecord };
+    } else {
+      const token = rawAuthHeader?.startsWith('Bearer ') ? rawAuthHeader.slice(7).trim() : cookieToken;
+      if (token) {
+        const session = await IamRepository.getSession(token);
+        if (session) {
+          const user = await IamRepository.getUserById(session.user_id);
+          if (user && user.status === 'ACTIVE') {
+            authenticatedCaller = { type: 'session', user };
+          }
+        }
+      }
+    }
+
+    if (!authenticatedCaller) {
+      return res.status(401).json({
+        error: 'Unauthorized: Missing or invalid credentials. Provide a valid x-api-key or Bearer session token.'
+      });
+    }
 
     const isFailureSimulated = simulatePrimaryFailure || simulateProviderFailure;
     const queryText = prompt || input || 'Hello from Introsoft application';
@@ -1564,13 +1623,9 @@ async function startServer() {
 
     // 1. Authenticate Application
     let appRecord = applications.find(a => a.id === appId);
-    let keyRecord: ApiKey | undefined;
-
-    if (apiKey) {
-      keyRecord = apiKeys.find(k => k.key === apiKey || (k.prefix && k.prefix.includes(apiKey.slice(0, 8))));
-      if (keyRecord) {
-        appRecord = applications.find(a => a.id === keyRecord?.appId);
-      }
+    if (authenticatedCaller.type === 'api_key' && authenticatedCaller.keyRecord) {
+      const keyApp = applications.find(a => a.id === authenticatedCaller!.keyRecord?.appId);
+      if (keyApp) appRecord = keyApp;
     }
 
     if (!appRecord) {
@@ -1670,7 +1725,7 @@ async function startServer() {
         timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
         appId: appRecord.id,
         appName: appRecord.name,
-        apiKeyPrefix: keyRecord ? keyRecord.prefix : 'ALTIL-DEMO...',
+        apiKeyPrefix: authenticatedCaller?.keyRecord ? authenticatedCaller.keyRecord.prefix : 'ALTIL-SESSION',
         requestType: 'capability',
         capability: chosenCapability,
         providerId: 'none',
@@ -1855,7 +1910,7 @@ async function startServer() {
       timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
       appId: appRecord.id,
       appName: appRecord.name,
-      apiKeyPrefix: keyRecord ? keyRecord.prefix : 'ALTIL-PROD...',
+      apiKeyPrefix: authenticatedCaller?.keyRecord ? authenticatedCaller.keyRecord.prefix : 'ALTIL-SESSION',
       requestType: task ? 'task' : 'capability',
       capability: chosenCapability,
       providerId: finalProvider.id,
@@ -1922,6 +1977,10 @@ async function startServer() {
     };
 
     res.json(executionResult);
+    } catch (err: any) {
+      console.error('Orchestration pipeline error:', err);
+      res.status(500).json({ error: 'Orchestration pipeline failure', details: err.message });
+    }
   });
 
   // ----------------------------------------------------

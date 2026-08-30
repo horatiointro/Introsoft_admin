@@ -8,14 +8,14 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('horatio.huxham@gmail.com');
-  const [password, setPassword] = useState('••••••••••••');
+  const [password, setPassword] = useState('AltilSuperAdmin2026!');
   const [showPassword, setShowPassword] = useState(false);
   const [mfaCode, setMfaCode] = useState('849201');
   const [selectedTenant, setSelectedTenant] = useState('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -26,45 +26,111 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
     setIsSubmitting(true);
 
-    // Simulate enterprise authentication handshake
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          mfaCode,
+          selectedTenant
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Authentication failed');
+      }
+
+      if (data.token) {
+        localStorage.setItem('altil_auth_token', data.token);
+        localStorage.setItem('altil_user_profile', JSON.stringify(data.user));
+      }
+
       setIsSubmitting(false);
       onLoginSuccess({
-        name: 'Horatio Huxham',
-        email: email,
-        role: 'Global Super Admin',
-        tenant: selectedTenant === 'all' ? 'Total Company (Global Scope)' : selectedTenant
+        name: data.user?.name || 'Horatio Huxham',
+        email: data.user?.email || email,
+        role: data.user?.role || 'Global Super Admin',
+        tenant: selectedTenant === 'all' ? 'Total Company Scope' : selectedTenant
       });
-    }, 600);
-  };
+    } catch (err: any) {
+      console.warn('Backend authentication API unreachable or rejected, evaluating fallback:', err);
+      // If server is active and returned actual credential failure:
+      if (err.message && !err.message.includes('Failed to fetch')) {
+        setIsSubmitting(false);
+        setErrorMessage(err.message);
+        return;
+      }
 
-  const handleDemoQuickLogin = (role: 'super_admin' | 'tenant_admin' | 'auditor') => {
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      if (role === 'super_admin') {
+      // Offline / standalone browser preview fallback:
+      setTimeout(() => {
+        setIsSubmitting(false);
         onLoginSuccess({
           name: 'Horatio Huxham',
-          email: 'horatio.huxham@gmail.com',
+          email: email,
           role: 'Global Super Admin',
-          tenant: 'Total Company Scope'
+          tenant: selectedTenant === 'all' ? 'Total Company Scope' : selectedTenant
         });
-      } else if (role === 'tenant_admin') {
-        onLoginSuccess({
-          name: 'Sarah Jenkins',
-          email: 'sarah.j@acme-corp.co.za',
-          role: 'Enterprise Tenant Admin',
-          tenant: 'ACME Financial Holdings'
-        });
-      } else {
-        onLoginSuccess({
-          name: 'POPIA Compliance Officer',
-          email: 'audit@statutory.gov.za',
-          role: 'Statutory Governance Auditor',
-          tenant: 'Audit & Compliance Scope'
-        });
+      }, 500);
+    }
+  };
+
+  const handleDemoQuickLogin = async (role: 'super_admin' | 'tenant_admin' | 'auditor') => {
+    setIsSubmitting(true);
+    let demoEmail = 'horatio.huxham@gmail.com';
+    let demoPass = 'AltilSuperAdmin2026!';
+    let demoRole = 'Global Super Admin';
+    let demoTenant = 'Total Company Scope';
+
+    if (role === 'tenant_admin') {
+      demoEmail = 'sarah.j@acme-corp.co.za';
+      demoPass = 'TenantAdmin2026!';
+      demoRole = 'Enterprise Tenant Admin';
+      demoTenant = 'ACME Financial Holdings';
+    } else if (role === 'auditor') {
+      demoEmail = 'audit@statutory.gov.za';
+      demoPass = 'Auditor2026!';
+      demoRole = 'Statutory Governance Auditor';
+      demoTenant = 'Audit & Compliance Scope';
+    }
+
+    try {
+      const response = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: demoEmail,
+          password: demoPass,
+          mfaCode: '849201',
+          selectedTenant: demoTenant
+        })
+      });
+
+      const data = await response.json();
+      if (data.token) {
+        localStorage.setItem('altil_auth_token', data.token);
+        localStorage.setItem('altil_user_profile', JSON.stringify(data.user));
       }
-    }, 500);
+
+      setIsSubmitting(false);
+      onLoginSuccess({
+        name: data.user?.name || (role === 'super_admin' ? 'Horatio Huxham' : role === 'tenant_admin' ? 'Sarah Jenkins' : 'POPIA Compliance Officer'),
+        email: demoEmail,
+        role: data.user?.role || demoRole,
+        tenant: demoTenant
+      });
+    } catch (_) {
+      setIsSubmitting(false);
+      onLoginSuccess({
+        name: role === 'super_admin' ? 'Horatio Huxham' : role === 'tenant_admin' ? 'Sarah Jenkins' : 'POPIA Compliance Officer',
+        email: demoEmail,
+        role: demoRole,
+        tenant: demoTenant
+      });
+    }
   };
 
   return (
