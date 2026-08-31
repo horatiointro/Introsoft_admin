@@ -97,7 +97,7 @@ async function runMigrationsCLI() {
             const statements = sqlContent
               .split(/;\s*$/m)
               .map(s => s.trim())
-              .filter(s => s.length > 0 && !s.startsWith('--'));
+              .filter(s => s.length > 0 && !s.startsWith('--') && !s.startsWith('/*'));
 
             for (const stmt of statements) {
               if (stmt.length > 0) {

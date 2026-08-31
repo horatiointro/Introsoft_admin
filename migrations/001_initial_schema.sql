@@ -203,11 +203,11 @@ CREATE TABLE IF NOT EXISTS payment_webhook_logs (
 CREATE TABLE IF NOT EXISTS financial_monthly_snapshots (
   id VARCHAR(64) PRIMARY KEY,
   tenant_id VARCHAR(64) NOT NULL,
-  year_month VARCHAR(7) NOT NULL,
+  snapshot_month VARCHAR(7) NOT NULL,
   spend_usd DECIMAL(12, 4) NOT NULL DEFAULT 0.0000,
   tokens_consumed_millions DECIMAL(10, 4) NOT NULL DEFAULT 0.0000,
   active_users_count INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_snap_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  UNIQUE KEY uk_tenant_month (tenant_id, year_month)
+  UNIQUE KEY uk_tenant_month (tenant_id, snapshot_month)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

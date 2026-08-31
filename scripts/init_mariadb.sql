@@ -277,13 +277,13 @@ DROP TABLE IF EXISTS `financial_monthly_snapshots`;
 CREATE TABLE `financial_monthly_snapshots` (
   `id` VARCHAR(64) NOT NULL,
   `tenant_id` VARCHAR(64) NOT NULL,
-  `year_month` VARCHAR(7) NOT NULL, -- e.g. '2026-08'
+  `snapshot_month` VARCHAR(7) NOT NULL, -- e.g. '2026-08'
   `spend_usd` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   `tokens_consumed_millions` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `active_users_count` INT UNSIGNED NOT NULL DEFAULT 0,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_tenant_month` (`tenant_id`, `year_month`),
+  UNIQUE KEY `uk_tenant_month` (`tenant_id`, `snapshot_month`),
   CONSTRAINT `fk_snap_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -375,7 +375,7 @@ INSERT INTO `payment_webhook_logs` (`id`, `timestamp`, `tenant_id`, `tenant_name
 ('paylog-203', '2026-08-01 00:00:01', 'tenant-gov', 'Department of Home Affairs', 'app-gov-doc', 'INV-2026-0601', 'license.auto_suspended', 12500.00, 'USD', 'SAP_S4HANA_Billing', 'hard_block_402', 'processed', 'Grace period expired without payment receipt. Tenant gateway hard blocked.');
 
 -- Seed 12: Monthly Financial Snapshots
-INSERT INTO `financial_monthly_snapshots` (`id`, `tenant_id`, `year_month`, `spend_usd`, `tokens_consumed_millions`, `active_users_count`) VALUES
+INSERT INTO `financial_monthly_snapshots` (`id`, `tenant_id`, `snapshot_month`, `spend_usd`, `tokens_consumed_millions`, `active_users_count`) VALUES
 ('snap-med-08', 'tenant-med', '2026-08', 4850.00, 18.50, 420),
 ('snap-fin-08', 'tenant-fin', '2026-08', 12400.00, 42.00, 1150),
 ('snap-retail-08', 'tenant-retail', '2026-08', 2150.00, 9.80, 890),
