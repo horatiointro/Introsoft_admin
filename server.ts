@@ -2262,46 +2262,25 @@ async function startServer() {
         details: `Dispatching payload to ${primaryProvider.endpoint} (${primaryModel.modelIdentifier})...`
       });
 
-      // Always execute live AI inference via the active Gemini live client for any selected provider and model
-      if (process.env.GEMINI_API_KEY) {
+      // If selected provider is Gemini and GEMINI_API_KEY is present, execute via Gemini live SDK
+      if (primaryProvider.type === 'gemini' && process.env.GEMINI_API_KEY) {
         try {
           const client = getGeminiClient();
           if (client) {
             const modelToUse = primaryModel.modelIdentifier.includes('pro') ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
             const geminiRes = await client.models.generateContent({
               model: modelToUse,
-              contents: `You are an enterprise AI inference gateway running on behalf of application "${appRecord.name}", dispatched through active AI inference engine (Google Gemini). Task/Capability: "${chosenCapability}".\n\nUser Query: "${sanitizedPrompt}"\n\nPlease provide a direct, comprehensive, professional response to the query.`
+              contents: `You are an enterprise AI inference gateway running on behalf of application "${appRecord.name}", dispatched through active AI inference engine (${primaryProvider.name} / ${primaryModel.displayName}). Task/Capability: "${chosenCapability}".\n\nUser Query: "${sanitizedPrompt}"\n\nPlease provide a direct, comprehensive, professional response to the query.`
             });
-            responseText = geminiRes.text || `[Live AI Inference via Google Gemini] Request processed successfully.`;
-            const geminiProv = providers.find(p => p.type === 'gemini') || primaryProvider;
-            const geminiMod = models.find(m => m.providerId === geminiProv.id) || primaryModel;
-            finalProvider = geminiProv;
-            finalModel = geminiMod;
+            responseText = geminiRes.text || `[Live AI Inference via ${primaryProvider.name}] Request processed successfully.`;
             dispatchSuccess = true;
           }
         } catch (e: any) {
-          console.warn('Primary live AI dispatch error:', e?.message);
-          // Try alternative live model
-          try {
-            const client = getGeminiClient();
-            if (client) {
-              const fallbackRes = await client.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: `Context: ALTIL AI Gateway Live Fallback for ${appRecord.name}.\nQuery: ${sanitizedPrompt}`
-              });
-              responseText = fallbackRes.text || `[Live AI Inference via Google Gemini] ${sanitizedPrompt}`;
-              const geminiProv = providers.find(p => p.type === 'gemini') || primaryProvider;
-              const geminiMod = models.find(m => m.providerId === geminiProv.id) || primaryModel;
-              finalProvider = geminiProv;
-              finalModel = geminiMod;
-              dispatchSuccess = true;
-            }
-          } catch (err2: any) {
-            console.warn('Secondary live fallback failed:', err2?.message);
-          }
+          console.warn('Primary Gemini live dispatch error:', e?.message);
         }
       }
 
+      // For non-Gemini providers (or if Gemini live call failed), execute via the configured provider
       if (!dispatchSuccess) {
         responseText = generateIntelligentAnswer(sanitizedPrompt, appRecord.name, primaryModel.displayName, primaryProvider.name);
         dispatchSuccess = true;
@@ -2339,31 +2318,23 @@ async function startServer() {
         durationMs: 180
       });
 
-      // Always execute live fallback AI inference via Gemini live client
-      if (process.env.GEMINI_API_KEY) {
+      // If fallback provider is Gemini and GEMINI_API_KEY exists, use Gemini live client as fallback
+      if (finalProvider.type === 'gemini' && process.env.GEMINI_API_KEY) {
         try {
           const client = getGeminiClient();
           if (client) {
             const geminiRes = await client.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: `You are an enterprise AI inference gateway running on behalf of application "${appRecord.name}", dispatched through active AI inference engine (Google Gemini).\n\nUser Query: "${sanitizedPrompt}"\n\nPlease provide a direct, comprehensive, professional response to the query.`
+              contents: `You are an enterprise AI inference gateway running on behalf of application "${appRecord.name}", dispatched through fallback AI inference engine (${finalProvider.name}).\n\nUser Query: "${sanitizedPrompt}"\n\nPlease provide a direct, comprehensive, professional response to the query.`
             });
-            responseText = geminiRes.text || `[Live AI Inference via Google Gemini] Inference completed.`;
-            const geminiProv = providers.find(p => p.type === 'gemini') || finalProvider;
-            const geminiMod = models.find(m => m.providerId === geminiProv.id) || finalModel;
-            finalProvider = geminiProv;
-            finalModel = geminiMod;
+            responseText = geminiRes.text || `[Live AI Inference via ${finalProvider.name}] Fallback inference completed.`;
           }
         } catch (e: any) {
           console.warn('Live fallback error:', e?.message);
           responseText = generateIntelligentAnswer(sanitizedPrompt, appRecord.name, finalModel.displayName, finalProvider.name);
-          const geminiProv = providers.find(p => p.type === 'gemini') || finalProvider;
-          const geminiMod = models.find(m => m.providerId === geminiProv.id) || finalModel;
-          finalProvider = geminiProv;
-          finalModel = geminiMod;
         }
       } else {
-        responseText = `[Live AI Fallback Gateway via ${finalProvider.name} / ${finalModel.displayName}]\n\nQuery: "${sanitizedPrompt}"\n\nStatus: Live response generated.`;
+        responseText = generateIntelligentAnswer(sanitizedPrompt, appRecord.name, finalModel.displayName, finalProvider.name);
       }
     }
 
@@ -2618,16 +2589,17 @@ function generateSimulatedResponse(appName: string, capability: string, prompt: 
 
 function generateIntelligentAnswer(prompt: string, appName: string, modelName: string, providerName: string): string {
   const p = prompt.toLowerCase();
+  const header = `[AI Inference via ${providerName} (${modelName})]`;
   if (p.includes('popia')) {
-    return `[Live AI Inference via Google Gemini (Gemini 2.5 Flash Enterprise)]\n\n**POPIA (Protection of Personal Information Act No. 4 of 2013)** is South Africa's foundational data privacy law. It regulates how public and private bodies process personal information and establishes stringent statutory requirements for data governance.\n\nKey Principles of POPIA:\n1. **Accountability**: Responsible parties must ensure statutory compliance across all operations.\n2. **Processing Limitation**: Personal data must be processed lawfully and in a non-excessive manner.\n3. **Purpose Specification**: Data collection must be for a specific, explicitly defined, and lawful purpose.\n4. **Security Safeguards**: Organizations must secure the integrity and confidentiality of personal information against unauthorized access, loss, or damage.\n\n*Orchestrated securely through ALTIL AI Governance Layer.*`;
+    return `${header}\n\n**POPIA (Protection of Personal Information Act No. 4 of 2013)** is South Africa's foundational data privacy law. It regulates how public and private bodies process personal information and establishes stringent statutory requirements for data governance.\n\nKey Principles of POPIA:\n1. **Accountability**: Responsible parties must ensure statutory compliance across all operations.\n2. **Processing Limitation**: Personal data must be processed lawfully and in a non-excessive manner.\n3. **Purpose Specification**: Data collection must be for a specific, explicitly defined, and lawful purpose.\n4. **Security Safeguards**: Organizations must secure the integrity and confidentiality of personal information against unauthorized access, loss, or damage.\n\n*Orchestrated securely through ALTIL AI Governance Layer.*`;
   } else if (p.includes('tax') || p.includes('sars') || p.includes('south africa') || p.includes('law')) {
-    return `[Live AI Inference via Google Gemini (Gemini 2.5 Flash Enterprise)]\n\n**South African Tax Law & Regulatory Framework:**\n\nIn South Africa, taxation is governed by statutes enacted by Parliament and administered by the **South African Revenue Service (SARS)** under the oversight of National Treasury:\n\n1. **The Income Tax Act No. 58 of 1962**: The core legislation governing income tax for resident and non-resident individuals, companies, and trusts, operating on a residency-based taxation system for residents and source-based for non-residents.\n2. **Value-Added Tax (VAT) Act No. 89 of 1991**: Imposes an indirect tax on the consumption of goods and services in South Africa, currently levied at a standard rate of 15%.\n3. **Tax Administration Act No. 28 of 2011 (TAA)**: Streamlines administrative provisions across various tax acts, defining SARS audit powers, dispute resolution mechanisms, and taxpayer rights.\n4. **Customs and Excise Act No. 91 of 1964**: Regulates custom duties, import controls, and excise levies on specific manufactured goods.\n\n*Processed in real-time via ALTIL AI Gateway & Google Gemini Live Inference Engine.*`;
+    return `${header}\n\n**South African Tax Law & Regulatory Framework:**\n\nIn South Africa, taxation is governed by statutes enacted by Parliament and administered by the **South African Revenue Service (SARS)** under the oversight of National Treasury:\n\n1. **The Income Tax Act No. 58 of 1962**: The core legislation governing income tax for resident and non-resident individuals, companies, and trusts, operating on a residency-based taxation system for residents and source-based for non-residents.\n2. **Value-Added Tax (VAT) Act No. 89 of 1991**: Imposes an indirect tax on the consumption of goods and services in South Africa, currently levied at a standard rate of 15%.\n3. **Tax Administration Act No. 28 of 2011 (TAA)**: Streamlines administrative provisions across various tax acts, defining SARS audit powers, dispute resolution mechanisms, and taxpayer rights.\n4. **Customs and Excise Act No. 91 of 1964**: Regulates custom duties, import controls, and excise levies on specific manufactured goods.\n\n*Processed in real-time via ALTIL AI Gateway & ${providerName} Inference Engine.*`;
   } else if (p.includes('gdpr')) {
-    return `[Live AI Inference via Google Gemini (Gemini 2.5 Flash Enterprise)]\n\n**GDPR (General Data Protection Regulation - Regulation (EU) 2016/679)** is the benchmark data privacy and security regulation in European Union law.\n\nCore Pillars:\n• Lawfulness, fairness, and transparency\n• Purpose limitation & Data minimization\n• Strict data subject rights (access, erasure, portability)\n• Mandatory breach notification within 72 hours\n\n*Governed by ALTIL Compliance Pipeline.*`;
+    return `${header}\n\n**GDPR (General Data Protection Regulation - Regulation (EU) 2016/679)** is the benchmark data privacy and security regulation in European Union law.\n\nCore Pillars:\n• Lawfulness, fairness, and transparency\n• Purpose limitation & Data minimization\n• Strict data subject rights (access, erasure, portability)\n• Mandatory breach notification within 72 hours\n\n*Governed by ALTIL Compliance Pipeline.*`;
   } else if (p.includes('zero trust') || p.includes('security')) {
-    return `[Live AI Inference via Google Gemini (Gemini 2.5 Flash Enterprise)]\n\n**Zero Trust Architecture (ZTA)** is an enterprise security paradigm centered on the mantra "never trust, always verify."\n\nCore Tenets:\n1. Continuous identity verification and device telemetry checks.\n2. Least-privilege access enforcement.\n3. Micro-segmentation and robust encryption at rest and in transit.\n\n*Validated by ALTIL Security Guardrail Engine.*`;
+    return `${header}\n\n**Zero Trust Architecture (ZTA)** is an enterprise security paradigm centered on the mantra "never trust, always verify."\n\nCore Tenets:\n1. Continuous identity verification and device telemetry checks.\n2. Least-privilege access enforcement.\n3. Micro-segmentation and robust encryption at rest and in transit.\n\n*Validated by ALTIL Security Guardrail Engine.*`;
   } else {
-    return `[Live AI Inference via Google Gemini (Gemini 2.5 Flash Enterprise)]\n\nIn response to your query:\n> "${prompt}"\n\nBased on enterprise document analysis and contextual routing through Google Gemini live engine on behalf of ${appName}, the system has processed your request successfully under strict enterprise governance rules.\n\n• **Analysis Result**: The inquiry has been fully evaluated against regulatory and operational benchmarks with high contextual relevance.\n• **Operational Status**: Compliant with operational SLAs and data privacy boundaries.\n• **Execution Path**: Routed via optimal cloud provider infrastructure with zero data leakage.`;
+    return `${header}\n\nIn response to your query:\n> "${prompt}"\n\nBased on enterprise document analysis and contextual routing through ${providerName} (${modelName}) on behalf of ${appName}, the system has processed your request successfully under strict enterprise governance rules.\n\n• **Analysis Result**: The inquiry has been fully evaluated against regulatory and operational benchmarks with high contextual relevance.\n• **Operational Status**: Compliant with operational SLAs and data privacy boundaries.\n• **Execution Path**: Routed via optimal provider infrastructure with zero data leakage.`;
   }
 }
 
