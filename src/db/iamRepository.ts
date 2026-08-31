@@ -19,6 +19,8 @@ export interface IamUserRecord {
   last_login_at: Date | null;
   last_login_ip: string | null;
   password_changed_at: Date;
+  force_password_change?: boolean;
+  password_history?: string[] | null;
   created_by: string | null;
   created_at: Date;
   updated_at: Date;
@@ -297,6 +299,27 @@ const inMemoryUsers: IamUserRecord[] = [
     created_by: 'SYSTEM_BOOTSTRAP',
     created_at: new Date(),
     updated_at: new Date(),
+  },
+  {
+    id: 'user_security_officer_005',
+    tenant_id: null,
+    email: 'security@altil.security',
+    password_hash: bcrypt.hashSync('SecurityOfficer2026!', 10),
+    first_name: 'Security',
+    last_name: 'Officer',
+    title: 'Enterprise Security Director',
+    department: 'Risk & Governance',
+    status: 'ACTIVE',
+    failed_login_attempts: 0,
+    lockout_until: null,
+    mfa_enabled: true,
+    mfa_enforced: true,
+    last_login_at: new Date(),
+    last_login_ip: '127.0.0.1',
+    password_changed_at: new Date(),
+    created_by: 'SYSTEM_BOOTSTRAP',
+    created_at: new Date(),
+    updated_at: new Date(),
   }
 ];
 
@@ -423,36 +446,73 @@ export class IamRepository {
       return {
         roles: ['SUPER_ADMIN'],
         permissions: [
-          'tenant.read', 'tenant.write', 'tenant.delete', 'routing.edit',
-          'models.configure', 'providers.write', 'apikeys.create', 'apikeys.revoke',
-          'policies.write', 'security.write', 'compliance.dsr', 'compliance.write', 'audit.export',
-          'billing.write', 'incidents.write', 'cmdb.write', 'sla.write',
-          'iam.users.write', 'iam.roles.write'
+          'tenant.read', 'tenant.create', 'tenant.update', 'tenant.delete',
+          'user.read', 'user.create', 'user.update', 'user.disable',
+          'role.read', 'role.assign', 'role.modify',
+          'provider.read', 'provider.configure', 'provider.disable',
+          'model.read', 'model.configure',
+          'routing.read', 'routing.modify',
+          'policy.read', 'policy.create', 'policy.modify', 'policy.disable',
+          'incident.read', 'incident.create', 'incident.update', 'incident.close',
+          'dsar.read', 'dsar.create', 'dsar.update', 'dsar.erase',
+          'billing.read', 'billing.modify',
+          'audit.read', 'audit.export',
+          'system.migrate', 'system.configure',
+          'secret.read', 'secret.rotate'
+        ],
+        tenantId: null,
+      };
+    } else if (userId === 'user_security_officer_005') {
+      return {
+        roles: ['SECURITY_OFFICER'],
+        permissions: [
+          'policy.read', 'policy.create', 'policy.modify', 'policy.disable',
+          'user.read', 'user.update', 'user.disable',
+          'role.read',
+          'audit.read',
+          'provider.read', 'model.read', 'routing.read'
         ],
         tenantId: null,
       };
     } else if (userId === 'user_tenant_admin_002') {
       return {
         roles: ['TENANT_ADMIN'],
-        permissions: ['tenant.read', 'apikeys.create', 'apikeys.revoke', 'incidents.write', 'iam.users.write'],
+        permissions: [
+          'tenant.read', 'tenant.update',
+          'user.read', 'user.create', 'user.update', 'user.disable',
+          'incident.read', 'incident.create', 'incident.update',
+          'dsar.read', 'dsar.create', 'dsar.update'
+        ],
         tenantId: 'cust-1',
       };
     } else if (userId === 'user_tenant_b_admin_004' || userId === 'user_tenant_b_admin_008') {
       return {
         roles: ['TENANT_ADMIN'],
-        permissions: ['tenant.read', 'apikeys.create', 'apikeys.revoke', 'incidents.write', 'iam.users.write'],
+        permissions: [
+          'tenant.read', 'tenant.update',
+          'user.read', 'user.create', 'user.update', 'user.disable',
+          'incident.read', 'incident.create', 'incident.update',
+          'dsar.read', 'dsar.create', 'dsar.update'
+        ],
         tenantId: 'cust-2',
       };
     } else if (userId === 'user_auditor_003' || userId === 'user_auditor_009') {
       return {
         roles: ['AUDITOR'],
-        permissions: ['tenant.read', 'audit.export'],
+        permissions: [
+          'audit.read', 'audit.export',
+          'dsar.read', 'policy.read', 'tenant.read'
+        ],
         tenantId: null,
       };
     } else if (userId === 'user_engineer_010') {
       return {
         roles: ['AI_ENGINEER'],
-        permissions: ['models.configure', 'providers.write', 'routing.edit'],
+        permissions: [
+          'provider.read', 'provider.configure',
+          'model.read', 'model.configure',
+          'routing.read', 'routing.modify'
+        ],
         tenantId: 'cust-1',
       };
     }
@@ -535,7 +595,28 @@ export class IamRepository {
       };
     }
 
-    // 4. Successful credentials verification: reset failure counters
+    // 4. Successful credentials verification: check password age and force-reset requirements
+    const passwordAgeDays = (Date.now() - new Date(user.password_changed_at).getTime()) / (1000 * 60 * 60 * 24);
+    const MAX_PASSWORD_AGE_DAYS = 90;
+    if (passwordAgeDays > MAX_PASSWORD_AGE_DAYS) {
+      user.force_password_change = true;
+      if (isDatabaseConnected()) {
+        try {
+          await executeQuery('UPDATE iam_users SET force_password_change = 1 WHERE id = ?', [user.id]);
+        } catch (_) {}
+      }
+    }
+
+    if (user.force_password_change) {
+      await this.logLoginEvent(email, 'INVALID_PASSWORD', user.id, user.tenant_id, ip, ua, 'Forced password reset required.');
+      return {
+        success: false,
+        error: 'FORCE_PASSWORD_CHANGE_REQUIRED',
+        message: 'Your corporate security password has expired or was reset by an administrator. You must configure a new security password before logging in.'
+      };
+    }
+
+    // 5. Successful credentials verification: reset failure counters
     await this.recordSuccessfulLogin(user, ip);
 
     // 5. Issue session
@@ -785,6 +866,37 @@ export class IamRepository {
    * Retrieves enterprise users with optional tenant filter
    */
   public static async getUsers(tenantFilter?: string): Promise<Partial<IamUserRecord>[]> {
+    if (isDatabaseConnected()) {
+      try {
+        let sql = 'SELECT id, tenant_id, email, first_name, last_name, title, department, status, failed_login_attempts, lockout_until, mfa_enabled, last_login_at, created_at, password_changed_at, force_password_change FROM iam_users';
+        const params: any[] = [];
+        if (tenantFilter && tenantFilter !== 'all') {
+          sql += ' WHERE tenant_id = ? OR tenant_id IS NULL';
+          params.push(tenantFilter);
+        }
+        const rows = await executeQuery<any>(sql, params);
+        return rows.map(r => ({
+          id: r.id,
+          tenant_id: r.tenant_id,
+          email: r.email,
+          first_name: r.first_name,
+          last_name: r.last_name,
+          title: r.title,
+          department: r.department,
+          status: r.status,
+          failed_login_attempts: r.failed_login_attempts,
+          lockout_until: r.lockout_until ? new Date(r.lockout_until) : null,
+          mfa_enabled: Boolean(r.mfa_enabled),
+          last_login_at: r.last_login_at ? new Date(r.last_login_at) : null,
+          created_at: new Date(r.created_at),
+          password_changed_at: r.password_changed_at ? new Date(r.password_changed_at) : new Date(),
+          force_password_change: Boolean(r.force_password_change)
+        }));
+      } catch (err) {
+        console.warn('[IAM Repository] Error fetching users from DB, falling back to memory:', err);
+      }
+    }
+
     let list = inMemoryUsers;
     if (tenantFilter && tenantFilter !== 'all') {
       list = list.filter(u => u.tenant_id === tenantFilter || u.tenant_id === null);
@@ -803,14 +915,16 @@ export class IamRepository {
       lockout_until: u.lockout_until,
       mfa_enabled: u.mfa_enabled,
       last_login_at: u.last_login_at,
-      created_at: u.created_at
+      created_at: u.created_at,
+      password_changed_at: u.password_changed_at,
+      force_password_change: u.force_password_change || false
     }));
   }
 
   /**
    * Upserts user record
    */
-  public static async upsertUser(user: Partial<IamUserRecord> & { password?: string }): Promise<IamUserRecord> {
+  public static async upsertUser(user: Partial<IamUserRecord> & { password?: string; name?: string }): Promise<IamUserRecord> {
     const existingIdx = inMemoryUsers.findIndex(u => u.id === user.id || u.email === user.email);
     let hash = existingIdx >= 0 ? inMemoryUsers[existingIdx].password_hash : '';
     if (user.password) {
@@ -819,27 +933,89 @@ export class IamRepository {
       hash = await this.hashPassword('AltilDefault2026!');
     }
 
+    let firstName = user.first_name || '';
+    let lastName = user.last_name || '';
+    if (!firstName && !lastName && user.name) {
+      const parts = user.name.trim().split(/\s+/);
+      firstName = parts[0] || 'Enterprise';
+      lastName = parts.slice(1).join(' ') || 'User';
+    }
+    if (!firstName) firstName = 'Enterprise';
+    if (!lastName) lastName = 'User';
+
     const fullRecord: IamUserRecord = {
       id: user.id || `user_${Date.now().toString(36)}`,
       tenant_id: user.tenant_id || null,
       email: user.email || 'user@altil.com',
       password_hash: hash,
-      first_name: user.first_name || 'Enterprise',
-      last_name: user.last_name || 'User',
+      first_name: firstName,
+      last_name: lastName,
       title: user.title || 'Team Member',
       department: user.department || 'Operations',
       status: user.status || 'ACTIVE',
-      failed_login_attempts: 0,
-      lockout_until: null,
+      failed_login_attempts: existingIdx >= 0 ? inMemoryUsers[existingIdx].failed_login_attempts : 0,
+      lockout_until: existingIdx >= 0 ? inMemoryUsers[existingIdx].lockout_until : null,
       mfa_enabled: user.mfa_enabled ?? true,
       mfa_enforced: user.mfa_enforced ?? false,
-      last_login_at: null,
-      last_login_ip: null,
-      password_changed_at: new Date(),
+      last_login_at: existingIdx >= 0 ? inMemoryUsers[existingIdx].last_login_at : null,
+      last_login_ip: existingIdx >= 0 ? inMemoryUsers[existingIdx].last_login_ip : null,
+      password_changed_at: user.password ? new Date() : (existingIdx >= 0 ? inMemoryUsers[existingIdx].password_changed_at : new Date()),
+      force_password_change: user.force_password_change ?? (existingIdx >= 0 ? inMemoryUsers[existingIdx].force_password_change : false),
+      password_history: existingIdx >= 0 ? (inMemoryUsers[existingIdx].password_history || []) : [],
       created_by: 'ADMIN',
-      created_at: new Date(),
+      created_at: existingIdx >= 0 ? inMemoryUsers[existingIdx].created_at : new Date(),
       updated_at: new Date()
     };
+
+    if (isDatabaseConnected()) {
+      try {
+        await executeQuery(
+          `INSERT INTO iam_users (
+            id, tenant_id, email, password_hash, first_name, last_name, title, department, status,
+            failed_login_attempts, lockout_until, mfa_enabled, mfa_enforced, last_login_at, last_login_ip,
+            password_changed_at, force_password_change, created_by, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            tenant_id = VALUES(tenant_id),
+            email = VALUES(email),
+            password_hash = VALUES(password_hash),
+            first_name = VALUES(first_name),
+            last_name = VALUES(last_name),
+            title = VALUES(title),
+            department = VALUES(department),
+            status = VALUES(status),
+            mfa_enabled = VALUES(mfa_enabled),
+            mfa_enforced = VALUES(mfa_enforced),
+            password_changed_at = VALUES(password_changed_at),
+            force_password_change = VALUES(force_password_change),
+            updated_at = NOW()`,
+          [
+            fullRecord.id,
+            fullRecord.tenant_id,
+            fullRecord.email,
+            fullRecord.password_hash,
+            fullRecord.first_name,
+            fullRecord.last_name,
+            fullRecord.title,
+            fullRecord.department,
+            fullRecord.status,
+            fullRecord.failed_login_attempts,
+            fullRecord.lockout_until,
+            fullRecord.mfa_enabled ? 1 : 0,
+            fullRecord.mfa_enforced ? 1 : 0,
+            fullRecord.last_login_at,
+            fullRecord.last_login_ip,
+            fullRecord.password_changed_at,
+            fullRecord.force_password_change ? 1 : 0,
+            fullRecord.created_by,
+            fullRecord.created_at,
+            fullRecord.updated_at
+          ]
+        );
+      } catch (err) {
+        console.warn('[IAM Repository] Failed to persist upserted user in DB, using memory fallback:', err);
+      }
+    }
 
     if (existingIdx >= 0) {
       inMemoryUsers[existingIdx] = fullRecord;
@@ -886,5 +1062,133 @@ export class IamRepository {
         permissions: ['tenant.read', 'audit.export']
       }
     ];
+  }
+
+  /**
+   * Validates a password against enterprise complexity policy
+   */
+  public static validatePasswordPolicy(password: string): { valid: boolean; error?: string } {
+    if (!password || password.length < 14) {
+      return { valid: false, error: 'Password must be at least 14 characters long according to enterprise NIST standards.' };
+    }
+    const hasUpper = /[A-Z]/.test(password);
+    const hasLower = /[a-z]/.test(password);
+    const hasDigit = /[0-9]/.test(password);
+    const hasSpecial = /[!@#$%^&*()_+\-=\[\]{}|;':",\./<>?]/.test(password);
+
+    if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
+      return {
+        valid: false,
+        error: 'Password must contain at least one uppercase letter, one lowercase letter, one numeric digit, and one special character.'
+      };
+    }
+
+    const sequentialPatterns = ['123456', 'abcdef', 'password', 'admin', 'qwerty'];
+    const lowerPass = password.toLowerCase();
+    for (const pattern of sequentialPatterns) {
+      if (lowerPass.includes(pattern)) {
+        return { valid: false, error: 'Password contains easily guessable sequential patterns.' };
+      }
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Checks if password has been used in previous history
+   */
+  public static async isPasswordInHistory(userId: string, newPlainTextPassword: string): Promise<boolean> {
+    const user = await this.getUserById(userId);
+    if (!user) return false;
+
+    // Check current active password first
+    const matchCurrent = await this.verifyPassword(newPlainTextPassword, user.password_hash);
+    if (matchCurrent) return true;
+
+    // Check historical passwords
+    const history = user.password_history || [];
+    for (const hash of history) {
+      const match = await this.verifyPassword(newPlainTextPassword, hash);
+      if (match) return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Changes a user's password securely
+   */
+  public static async changePassword(userId: string, newPlainTextPassword: string): Promise<boolean> {
+    const user = await this.getUserById(userId);
+    if (!user) return false;
+
+    const validation = this.validatePasswordPolicy(newPlainTextPassword);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+
+    const inHistory = await this.isPasswordInHistory(userId, newPlainTextPassword);
+    if (inHistory) {
+      throw new Error('Password cannot be reuse of recently used security passwords (enterprise reuse policy limit: 5).');
+    }
+
+    // Keep last 5 password hashes in history
+    const history = user.password_history || [];
+    history.push(user.password_hash);
+    if (history.length > 5) {
+      history.shift();
+    }
+
+    const newHash = await this.hashPassword(newPlainTextPassword);
+    const now = new Date();
+
+    if (isDatabaseConnected()) {
+      try {
+        await executeQuery(
+          'UPDATE iam_users SET password_hash = ?, password_history = ?, password_changed_at = ?, force_password_change = 0 WHERE id = ?',
+          [newHash, JSON.stringify(history), now, userId]
+        );
+      } catch (err) {
+        console.warn('[IAM Repository] Error persisting password update in DB:', err);
+      }
+    }
+
+    user.password_hash = newHash;
+    user.password_history = history;
+    user.password_changed_at = now;
+    user.force_password_change = false;
+
+    return true;
+  }
+
+  /**
+   * Resets a user's password administratively
+   */
+  public static async administrativelyResetPassword(userId: string, newPlainTextPassword: string, forceReset: boolean = true): Promise<void> {
+    const user = await this.getUserById(userId);
+    if (!user) throw new Error('User record not found.');
+
+    const validation = this.validatePasswordPolicy(newPlainTextPassword);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+
+    const newHash = await this.hashPassword(newPlainTextPassword);
+    const now = new Date();
+
+    if (isDatabaseConnected()) {
+      try {
+        await executeQuery(
+          'UPDATE iam_users SET password_hash = ?, password_changed_at = ?, force_password_change = ? WHERE id = ?',
+          [newHash, now, forceReset ? 1 : 0, userId]
+        );
+      } catch (err) {
+        console.warn('[IAM Repository] Error resetting password in DB:', err);
+      }
+    }
+
+    user.password_hash = newHash;
+    user.password_changed_at = now;
+    user.force_password_change = forceReset;
   }
 }

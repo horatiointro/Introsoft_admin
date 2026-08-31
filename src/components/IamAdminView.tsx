@@ -132,6 +132,50 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
   const [sessionTimeoutMins, setSessionTimeoutMins] = useState(30);
   const [maxFailedLogins, setMaxFailedLogins] = useState(5);
 
+  // Password Reset state
+  const [resetPasswordUser, setResetPasswordUser] = useState<IamUser | null>(null);
+  const [adminResetPasswordValue, setAdminResetPasswordValue] = useState('');
+  const [adminForcePasswordChange, setAdminForcePasswordChange] = useState(true);
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
+  const [resetPasswordSuccess, setResetPasswordSuccess] = useState<string | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+
+  const handleAdminResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordUser) return;
+    setResetPasswordError(null);
+    setResetPasswordSuccess(null);
+    setIsResettingPassword(true);
+
+    try {
+      const res = await fetch(`/api/v1/iam/users/${resetPasswordUser.id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: adminResetPasswordValue,
+          force_password_change: adminForcePasswordChange
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setResetPasswordSuccess(data.message || 'Password updated and security policy applied.');
+        setAdminResetPasswordValue('');
+        if (onUpdateUser) {
+          onUpdateUser(resetPasswordUser.id, {
+            forcePasswordChange: adminForcePasswordChange
+          });
+        }
+      } else {
+        setResetPasswordError(data.error || 'Failed to update user password. Ensure it satisfies security policy.');
+      }
+    } catch (err) {
+      setResetPasswordError('A network error occurred. Please try again.');
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   // Filtered Users
   const filteredUsers = users.filter(u => {
     const matchesSearch =
@@ -604,6 +648,20 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
                                 title="Edit User Identity & Roles"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setResetPasswordUser(u);
+                                  setAdminResetPasswordValue('');
+                                  setAdminForcePasswordChange(true);
+                                  setResetPasswordError(null);
+                                  setResetPasswordSuccess(null);
+                                }}
+                                className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#2a2a2a] text-amber-500 rounded transition-colors"
+                                title="Reset & Manage User Password Lifecycle"
+                              >
+                                <KeyRound className="w-3.5 h-3.5" />
                               </button>
 
                               <button
@@ -1201,6 +1259,122 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: RESET & MANAGE USER PASSWORD LIFECYCLE                            */}
+      {/* ========================================================================= */}
+      {resetPasswordUser && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <form onSubmit={handleAdminResetPassword} className="bg-[#141414] border border-[#2a2a2a] rounded-lg max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#222222] pb-3">
+              <div className="flex items-center space-x-2">
+                <KeyRound className="w-5 h-5 text-amber-500" />
+                <h3 className="text-base font-bold text-white">Reset User Password</h3>
+              </div>
+              <button type="button" onClick={() => setResetPasswordUser(null)} className="text-[#777777] hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-3 bg-[#111111] border border-[#222222] rounded space-y-1">
+                <div className="text-[#888888] font-mono text-[10px] uppercase">Target Identity Profile</div>
+                <div className="text-white font-bold text-sm">{resetPasswordUser.name}</div>
+                <div className="text-cyan-400 font-mono text-[11px]">{resetPasswordUser.email}</div>
+                <div className="text-[10px] text-[#666666]">
+                  Status: <span className="uppercase text-amber-500 font-semibold">{resetPasswordUser.status}</span>
+                </div>
+              </div>
+
+              {resetPasswordSuccess ? (
+                <div className="p-3.5 bg-emerald-950/40 border border-emerald-500/50 rounded text-emerald-300 space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Administrative Password Reset Complete</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-400/90 leading-relaxed">
+                    The local password credential has been updated successfully.
+                  </p>
+                  {adminForcePasswordChange && (
+                    <p className="text-[10px] text-amber-300 font-mono bg-amber-950/40 p-1.5 rounded border border-amber-800/40">
+                      ENFORCEMENT ENGAGED: User will be forced to rotate their password upon next authentication challenge.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setResetPasswordUser(null)}
+                    className="w-full mt-2 py-1.5 bg-emerald-900/60 hover:bg-emerald-900 text-white font-bold rounded text-xs transition-colors"
+                  >
+                    Close Panel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="block text-[#aaaaaa] font-semibold">New Administrative Password *</label>
+                    <input
+                      type="password"
+                      required
+                      value={adminResetPasswordValue}
+                      onChange={e => setAdminResetPasswordValue(e.target.value)}
+                      placeholder="Enter new strong password"
+                      className="w-full bg-[#181818] border border-[#2a2a2a] rounded p-2 text-white outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-amber-950/20 border border-amber-500/30 rounded space-y-1.5 text-[11px] text-amber-200">
+                    <div className="font-bold flex items-center gap-1">
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      <span>Enterprise Complexity Safeguards (NIST SP 800-63B)</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-[#aaaaaa] text-[10px]">
+                      <li>At least <span className="text-amber-300 font-bold">14 characters</span> in length</li>
+                      <li>Contains uppercase & lowercase alphabetical characters</li>
+                      <li>Contains numerical and special symbol characters</li>
+                      <li>No previous passwords (enforces 5-cycle history)</li>
+                    </ul>
+                  </div>
+
+                  <div className="flex items-center">
+                    <label className="flex items-center space-x-2 text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={adminForcePasswordChange}
+                        onChange={e => setAdminForcePasswordChange(e.target.checked)}
+                        className="rounded border-[#333333] bg-[#111111] text-amber-500 focus:ring-0"
+                      />
+                      <span className="font-semibold text-xs text-[#cccccc]">Force password change on next login (Recommended)</span>
+                    </label>
+                  </div>
+
+                  {resetPasswordError && (
+                    <div className="p-2.5 bg-red-950/40 border border-red-500/40 rounded text-red-300 font-mono text-[10px]">
+                      Error: {resetPasswordError}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end space-x-2 pt-2 border-t border-[#222222]">
+                    <button
+                      type="button"
+                      onClick={() => setResetPasswordUser(null)}
+                      className="px-4 py-2 bg-[#1a1a1a] text-[#888888] hover:text-white rounded font-semibold text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isResettingPassword}
+                      className="px-5 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded transition-colors"
+                    >
+                      {isResettingPassword ? 'Applying Policy...' : 'Confirm Reset'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </form>
         </div>
       )}
 

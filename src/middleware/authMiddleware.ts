@@ -69,6 +69,21 @@ export async function requireAuthentication(
       return;
     }
 
+    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const userAgent = req.headers['user-agent'] || 'ALTIL Control Console';
+
+    // 1. Session Hijacking / Suspicious IP Change Detection
+    if (session.ip_address && session.ip_address !== clientIp) {
+      console.warn(`[Security Alert] Session IP changed from ${session.ip_address} to ${clientIp}. Possible session hijacking! Revoking session.`);
+      await IamRepository.revokeSession(token);
+      res.status(401).json({
+        error: 'Unauthorized',
+        code: 'SUSPICIOUS_SESSION',
+        message: 'Security Boundary Enforced: Suspicious session activity detected (IP change). Session has been automatically revoked.'
+      });
+      return;
+    }
+
     const user = await IamRepository.getUserById(session.user_id);
     if (!user || user.status !== 'ACTIVE') {
       res.status(403).json({
@@ -80,6 +95,26 @@ export async function requireAuthentication(
     }
 
     const { roles, permissions, tenantId } = await IamRepository.getUserRolesAndPermissions(user.id);
+
+    // 2. Admin Session Security Idle Timeout (15-Minute maximum idle limit)
+    const isAdmin = roles.includes('SUPER_ADMIN') || roles.includes('SECURITY_OFFICER');
+    if (isAdmin) {
+      const maxIdleMs = 15 * 60 * 1000;
+      const lastActivity = new Date(session.last_activity_at).getTime();
+      if (Date.now() - lastActivity > maxIdleMs) {
+        console.warn(`[Security Lock] Idle timeout reached for admin user ${user.email}. Revoking session.`);
+        await IamRepository.revokeSession(token);
+        res.status(401).json({
+          error: 'Unauthorized',
+          code: 'SESSION_EXPIRED',
+          message: 'Admin session idle timeout exceeded (15-minute maximum). Please re-authenticate.'
+        });
+        return;
+      }
+    }
+
+    // Refresh last activity time
+    session.last_activity_at = new Date();
 
     req.user = {
       id: user.id,

@@ -472,7 +472,7 @@ print(response.output)`;
                 )}
               </div>
 
-              <div className="p-3 rounded bg-[#0a0a0a] border border-[#222222] text-xs text-[#e5e5e5] font-sans leading-relaxed min-h-[140px] whitespace-pre-wrap">
+              <div className="p-3 rounded bg-[#0a0a0a] border border-[#222222] text-xs text-[#e5e5e5] font-sans leading-relaxed min-h-[140px] max-h-80 overflow-y-auto whitespace-pre-wrap">
                 {loading ? (
                   <div className="flex flex-col items-center justify-center h-28 space-y-2 text-[#888888]">
                     <RefreshCw className="w-5 h-5 animate-spin text-blue-400" />

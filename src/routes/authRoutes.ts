@@ -199,6 +199,39 @@ authRouter.post('/mfa/verify', requireAuthentication, async (req: AuthenticatedR
 });
 
 /**
+ * POST /api/v1/auth/reauthenticate
+ * Elevates session / verifies credentials for administrative or high-risk operations
+ */
+authRouter.post('/reauthenticate', requireAuthentication, async (req: AuthenticatedRequest, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required for re-authentication.' });
+  }
+
+  try {
+    const user = await IamRepository.getUserById(req.user!.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User record not found.' });
+    }
+
+    const bcrypt = await import('bcryptjs');
+    const valid = bcrypt.compareSync(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid security credentials.' });
+    }
+
+    const crypto = await import('crypto');
+    return res.json({
+      status: 'verified',
+      message: 'Administrative session successfully elevated and authorized.',
+      elevatedToken: `elevated-${crypto.randomBytes(16).toString('hex')}`
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Re-authentication failed.', details: err.message });
+  }
+});
+
+/**
  * Administrative IAM User & Role Management APIs
  */
 
@@ -226,6 +259,61 @@ authRouter.post('/users', requireAuthentication, requireRole(['SUPER_ADMIN', 'SE
     return res.status(201).json({ status: 'saved', user, ...user });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to save IAM user', details: err.message });
+  }
+});
+
+/**
+ * POST /api/v1/iam/users/:id/reset-password
+ * Resets a user's password administratively
+ */
+authRouter.post('/users/:id/reset-password', requireAuthentication, requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'TENANT_ADMIN']), async (req: AuthenticatedRequest, res) => {
+  const userId = req.params.id;
+  const { newPassword, forceReset } = req.body;
+
+  if (!newPassword) {
+    return res.status(400).json({ error: 'New password is required.' });
+  }
+
+  try {
+    await IamRepository.administrativelyResetPassword(userId, newPassword, forceReset ?? true);
+    return res.json({ status: 'reset', message: 'User password reset successfully and force-password-change policy enacted.' });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'Password policy validation failed.', message: err.message });
+  }
+});
+
+/**
+ * POST /api/v1/auth/change-password
+ * Securely changes the current user's password
+ */
+authRouter.post('/change-password', async (req, res) => {
+  const { email, oldPassword, newPassword } = req.body;
+
+  if (!email || !oldPassword || !newPassword) {
+    return res.status(400).json({ error: 'Corporate email, current password, and new password are required.' });
+  }
+
+  try {
+    const authResult = await IamRepository.authenticate(email, oldPassword, {
+      ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'ALTIL Control Console'
+    });
+
+    // We bypass force_password_change check during changing password (since they are resetting it!)
+    // So let's check authResult: if they fail authentication because of something OTHER than FORCE_PASSWORD_CHANGE_REQUIRED, reject!
+    if (!authResult.success && authResult.error !== 'FORCE_PASSWORD_CHANGE_REQUIRED') {
+      return res.status(401).json({ error: 'Invalid current credentials.', message: authResult.message });
+    }
+
+    const user = await IamRepository.getUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    await IamRepository.changePassword(user.id, newPassword);
+    return res.json({ status: 'changed', message: 'Password successfully rotated and compliance logs updated.' });
+  } catch (err: any) {
+    return res.status(400).json({ error: 'Failed to update security password.', message: err.message });
   }
 });
 

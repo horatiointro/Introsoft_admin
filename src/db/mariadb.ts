@@ -109,6 +109,15 @@ export async function testAndInitMariaDb(): Promise<{ connected: boolean; versio
       if (tableCheck.length === 0) {
         console.log('[MariaDB] Bootstrapping schema from /scripts/init_mariadb.sql...');
         await runSchemaMigrationScript();
+      } else {
+        // Run database upgrades incrementally for password lifecycle management
+        try {
+          await executeQuery("ALTER TABLE iam_users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN NOT NULL DEFAULT FALSE");
+          await executeQuery("ALTER TABLE iam_users ADD COLUMN IF NOT EXISTS password_history JSON NULL");
+          console.log('[MariaDB] Incremental IAM database upgrades applied successfully.');
+        } catch (upgradeErr) {
+          console.warn('[MariaDB] Table upgrade warning (possibly columns exist):', upgradeErr);
+        }
       }
     } catch (schemaErr) {
       console.warn('[MariaDB] Schema check notice:', schemaErr);

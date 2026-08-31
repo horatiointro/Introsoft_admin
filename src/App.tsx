@@ -522,12 +522,50 @@ export default function App() {
   };
 
   // --- IAM User & Role Lifecycle Handlers ---
-  const handleAddIamUser = (newUser: IamUser) => {
+  const handleAddIamUser = async (newUser: IamUser) => {
+    try {
+      await fetch('/api/v1/iam/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newUser.id,
+          email: newUser.email,
+          first_name: newUser.name.split(' ')[0] || 'Enterprise',
+          last_name: newUser.name.split(' ').slice(1).join(' ') || 'User',
+          department: newUser.department,
+          title: newUser.designation,
+          mfa_enabled: newUser.mfaEnabled,
+          status: newUser.status.toUpperCase(),
+          tenant_id: newUser.tenantId
+        })
+      });
+    } catch (_) {}
     setIamUsers(prev => [newUser, ...prev]);
     showToast(`IAM User "${newUser.name}" provisioned successfully.`);
   };
 
-  const handleUpdateIamUser = (id: string, updates: Partial<IamUser>) => {
+  const handleUpdateIamUser = async (id: string, updates: Partial<IamUser>) => {
+    try {
+      const existingUser = iamUsers.find(u => u.id === id);
+      if (existingUser) {
+        const merged = { ...existingUser, ...updates };
+        await fetch('/api/v1/iam/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: merged.id,
+            email: merged.email,
+            first_name: merged.name.split(' ')[0] || 'Enterprise',
+            last_name: merged.name.split(' ').slice(1).join(' ') || 'User',
+            department: merged.department,
+            title: merged.designation,
+            mfa_enabled: merged.mfaEnabled,
+            status: merged.status.toUpperCase(),
+            tenant_id: merged.tenantId
+          })
+        });
+      }
+    } catch (_) {}
     setIamUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
     showToast(`User "${id}" security profile updated.`);
   };

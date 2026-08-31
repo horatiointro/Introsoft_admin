@@ -385,6 +385,7 @@ export interface AIPolicy {
   name: string;
   description: string;
   appliesToAppIds: string[]; // 'all' or list of appIds
+  tenantId?: string;         // tenant isolation binding
   rules: AIPolicyRules;
   status: 'active' | 'draft' | 'disabled';
   createdAt: string;
@@ -862,6 +863,8 @@ export interface IamUser {
   sessionTokenRevokedAt?: string | null;
   offboardedAt?: string | null;
   offboardedReason?: string | null;
+  forcePasswordChange?: boolean;
+  passwordHistory?: string[];
 }
 
 export interface IamRole {
