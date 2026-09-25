@@ -9,7 +9,10 @@ import {
   Lock,
   Layers,
   CheckCircle2,
-  Download
+  Download,
+  Building2,
+  RefreshCw,
+  ArrowRight
 } from 'lucide-react';
 import {
   EnterpriseRiskItem,
@@ -26,6 +29,7 @@ import {
 
 export const EnterpriseGovernanceRiskView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'risk_register' | 'security_posture' | 'data_gov' | 'evidence_centre'>('risk_register');
+  const [selectedScope, setSelectedScope] = useState<string>('all');
 
   // Risk Register State
   const [risks, setRisks] = useState<EnterpriseRiskItem[]>(initialRiskRegister);
@@ -38,7 +42,7 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
   const [posture, setPosture] = useState<SecurityPostureScorecard>(initialSecurityPosture);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-200">
       {/* View Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#12141c] border border-[#222636] p-5 rounded-xl">
         <div>
@@ -52,6 +56,78 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
           <p className="text-xs text-[#8890a6] mt-0.5">
             Manage enterprise risks, inspect visual 5x5 heatmaps, audit data classification flows, and verify mapped framework controls.
           </p>
+        </div>
+      </div>
+
+      {/* Global Hierarchical View Scope Section */}
+      <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 shadow-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#222636]">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-600 to-rose-700 flex items-center justify-center text-white shadow-md shadow-amber-600/30 shrink-0">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                  Global Hierarchical View Scope
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                  {selectedScope === 'all' ? 'CONSOLIDATED RISK REGISTER (ALL SUBSIDIARIES)' : `SCOPED ENTITY: ${selectedScope.toUpperCase()}`}
+                </span>
+              </div>
+              <h2 className="text-sm font-bold text-white mt-0.5">
+                Governance & Risk Scope: {selectedScope === 'all' ? 'Total Company View (Consolidated)' : selectedScope}
+              </h2>
+            </div>
+          </div>
+
+          {/* Scope Selectors */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-[#181c28] border border-[#283046] px-3 py-1.5 rounded-lg flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-amber-400 shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-[9px] font-mono text-[#8890a6] uppercase">Governance Scope</span>
+                <select
+                  value={selectedScope}
+                  onChange={(e) => setSelectedScope(e.target.value)}
+                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="all" className="bg-[#12141c] text-white">Total Enterprise (All Subsidiaries)</option>
+                  <option value="Introsoft Healthcare" className="bg-[#12141c] text-white">Introsoft Healthcare (HIPAA / POPIA)</option>
+                  <option value="Introsoft FinCorp" className="bg-[#12141c] text-white">Introsoft FinCorp (PCI-DSS / SOC2)</option>
+                  <option value="Acme Financial Technologies" className="bg-[#12141c] text-white">Acme Financial Technologies</option>
+                  <option value="Global Logistics Corp" className="bg-[#12141c] text-white">Global Logistics Corp</option>
+                </select>
+              </div>
+            </div>
+
+            {selectedScope !== 'all' && (
+              <button
+                onClick={() => setSelectedScope('all')}
+                className="px-2.5 py-1.5 rounded-lg bg-[#181c28] hover:bg-[#22283a] border border-[#283046] text-amber-400 text-xs font-mono flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Reset Scope
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Scope Risk Metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono pt-1">
+          <div className="bg-[#161a26] border border-[#242c40] p-3 rounded-lg flex items-center justify-between">
+            <span className="text-[#77809a]">Scoped Residual Risk:</span>
+            <span className="text-emerald-400 font-bold">Low (Score: 2.1 / 5.0)</span>
+          </div>
+          <div className="bg-[#161a26] border border-[#242c40] p-3 rounded-lg flex items-center justify-between">
+            <span className="text-[#77809a]">Mapped Controls Passed:</span>
+            <span className="text-blue-400 font-bold">14 / 14 (100% Audit Ready)</span>
+          </div>
+          <div className="bg-[#161a26] border border-[#242c40] p-3 rounded-lg flex items-center justify-between">
+            <span className="text-[#77809a]">Active Evidence Items:</span>
+            <span className="text-purple-400 font-bold">{evidence.length} Automated Proofs</span>
+          </div>
         </div>
       </div>
 

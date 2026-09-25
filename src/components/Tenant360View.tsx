@@ -80,16 +80,20 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
     setSelectedTileDetail(getTileDetailData(title, value, category || 'Platform Health'));
   };
 
-  // Active tenant object safely resolved
-  const tenant = customers.find(c => c.id === activeTenantId) || customers[0] || {
-    id: 'cust-acme-fintech',
-    name: 'Acme Financial Technologies',
-    code: 'ACME',
-    tier: 'enterprise',
-    status: 'active',
-    monthlySpendUsd: 3840.50,
-    monthlyTokenUsage: 50000000,
-    healthScore: 98
+  // Active tenant object safely resolved with robust numeric fallback properties
+  const rawTenant = customers.find(c => c.id === activeTenantId) || customers[0];
+  const tenant = {
+    id: rawTenant?.id || 'cust-acme-fintech',
+    name: rawTenant?.name || 'Acme Financial Technologies',
+    code: rawTenant?.code || 'ACME',
+    tier: rawTenant?.tier || 'enterprise',
+    status: rawTenant?.status || 'active',
+    healthScore: rawTenant?.healthScore ?? 98,
+    ...rawTenant,
+    monthlySpendUsd: Number(rawTenant?.monthlySpendUsd ?? (rawTenant as any)?.currentSpendUsd ?? 3840.50),
+    monthlyTokenUsage: Number(rawTenant?.monthlyTokenUsage ?? (rawTenant?.kpiProfile?.tokensMonthlyTarget) ?? 50000000),
+    currentSpendUsd: Number((rawTenant as any)?.currentSpendUsd ?? rawTenant?.monthlySpendUsd ?? 3840.50),
+    monthlyBudgetUsd: Number(rawTenant?.monthlyBudgetUsd ?? (rawTenant as any)?.contractTerms?.spendCeilingUsd ?? 15000)
   };
 
   const entitlements: EntitlementQuota[] = initialEntitlements;
@@ -122,23 +126,27 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
 
   // Aggregated Overall Data across all tenants for the OVERALL VIEW
   const overallTenantsCount = customers.length || 5;
-  const overallTotalSpendUsd = customers.reduce((sum, c) => sum + (c.monthlySpendUsd || 0), 0) || 28450;
-  const overallTotalTokensM = (customers.reduce((sum, c) => sum + (c.monthlyTokenUsage || 0), 0) || 124800000) / 1000000;
+  const overallTotalSpendUsd = customers.reduce((sum, c) => sum + (c.monthlySpendUsd || (c as any).currentSpendUsd || 0), 0) || 28450;
+  const overallTotalTokensM = (customers.reduce((sum, c) => sum + (c.monthlyTokenUsage || c.kpiProfile?.tokensMonthlyTarget || 0), 0) || 124800000) / 1000000;
   const overallAvgHealthScore = Math.round(
     customers.reduce((sum, c) => sum + (c.healthScore || 95), 0) / (customers.length || 1)
   );
 
   // Multi-Tenant Comparison Chart Data
-  const tenantComparisonData = customers.map(c => ({
-    name: c.name.length > 18 ? c.name.substring(0, 16) + '...' : c.name,
-    code: c.code || c.id.substring(5, 10).toUpperCase(),
-    spendUsd: Math.round(c.monthlySpendUsd || 3500),
-    spendZar: Math.round((c.monthlySpendUsd || 3500) * 18.2),
-    tokensM: Number(((c.monthlyTokenUsage || 25000000) / 1000000).toFixed(1)),
-    health: c.healthScore || 95,
-    p95Latency: c.kpiProfile?.p95LatencyMs || 280,
-    availability: c.kpiProfile?.availabilityPercent || 99.98
-  }));
+  const tenantComparisonData = customers.map(c => {
+    const sUsd = Number(c.monthlySpendUsd || (c as any).currentSpendUsd || 3500);
+    const tTokens = Number(c.monthlyTokenUsage || c.kpiProfile?.tokensMonthlyTarget || 25000000);
+    return {
+      name: c.name.length > 18 ? c.name.substring(0, 16) + '...' : c.name,
+      code: c.code || c.id.substring(5, 10).toUpperCase(),
+      spendUsd: Math.round(sUsd),
+      spendZar: Math.round(sUsd * 18.2),
+      tokensM: Number((tTokens / 1000000).toFixed(1)),
+      health: c.healthScore || 95,
+      p95Latency: c.kpiProfile?.p95LatencyMs || 280,
+      availability: c.kpiProfile?.availabilityPercent || 99.98
+    };
+  });
 
   // Global Capability Radar Comparison (Overall)
   const globalCapabilityRadarData = [
@@ -433,7 +441,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
                         const payload = state.activePayload[0].payload;
                         handleTileClick(
                           `Financial Spend & Token Breakdown (${payload.name})`,
-                          `$${payload.spendUsd.toLocaleString()} / ${payload.tokensM}M Tokens`,
+                          `$${(payload.spendUsd || 0).toLocaleString()} / ${payload.tokensM ?? 0}M Tokens`,
                           'FinOps & Cost'
                         );
                       }
@@ -609,7 +617,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
                         const payload = state.activePayload[0].payload;
                         handleTileClick(
                           `Traffic Velocity & Latency @ ${payload.hour}`,
-                          `${payload.requests.toLocaleString()} req/hr | Latency ${payload.latency}ms`,
+                          `${(payload.requests || 0).toLocaleString()} req/hr | Latency ${payload.latency ?? 0}ms`,
                           'AI Operations & Latency'
                         );
                       }
@@ -644,9 +652,9 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {customers.map((c) => {
-                const spendUsd = c.monthlySpendUsd || 3840;
-                const budgetUsd = c.monthlyBudgetUsd || 15000;
-                const spendPercent = Math.min(Math.round((spendUsd / budgetUsd) * 100), 100);
+                const spendUsd = Number(c.monthlySpendUsd || (c as any).currentSpendUsd || 3840);
+                const budgetUsd = Number(c.monthlyBudgetUsd || (c as any).contractTerms?.spendCeilingUsd || 15000);
+                const spendPercent = Math.min(Math.round((spendUsd / (budgetUsd || 1)) * 100), 100);
 
                 return (
                   <div
@@ -678,7 +686,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
                     <div className="space-y-1 text-xs font-mono">
                       <div className="flex justify-between text-[11px]">
                         <span className="text-[#8890a6]">Monthly Spend:</span>
-                        <span className="text-emerald-400 font-bold">${spendUsd.toLocaleString()} / ${budgetUsd.toLocaleString()}</span>
+                        <span className="text-emerald-400 font-bold">${(spendUsd || 0).toLocaleString()} / ${(budgetUsd || 0).toLocaleString()}</span>
                       </div>
                       <div className="w-full h-1.5 bg-[#22283a] rounded-full overflow-hidden">
                         <div
@@ -758,11 +766,11 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
               <span className="text-[10px] font-mono text-[#77809a] uppercase">Spend & Token Quota</span>
               <div className="flex justify-between font-mono">
                 <span className="text-[#77809a]">Monthly Spend:</span>
-                <span className="text-emerald-400 font-bold">${tenant.monthlySpendUsd.toLocaleString()} / R{(tenant.monthlySpendUsd * 18.2).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <span className="text-emerald-400 font-bold">${(Number(tenant.monthlySpendUsd) || 0).toLocaleString()} / R{((Number(tenant.monthlySpendUsd) || 0) * 18.2).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               </div>
               <div className="flex justify-between font-mono">
                 <span className="text-[#77809a]">Monthly Tokens:</span>
-                <span className="text-blue-400 font-bold">{(tenant.monthlyTokenUsage / 1_000_000).toFixed(1)}M Tokens</span>
+                <span className="text-blue-400 font-bold">{(((Number(tenant.monthlyTokenUsage) || 50000000)) / 1_000_000).toFixed(1)}M Tokens</span>
               </div>
               <div className="flex justify-between font-mono">
                 <span className="text-[#77809a]">Budget Ceiling:</span>

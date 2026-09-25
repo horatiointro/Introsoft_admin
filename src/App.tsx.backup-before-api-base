@@ -106,8 +106,6 @@ import { SplashScreen } from './components/SplashScreen';
 import { INITIAL_INCIDENTS_LIST, INITIAL_ALERTS_LIST, INITIAL_RAG_KNOWLEDGE_BASE } from './data/incidentData';
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
-const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
-
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isSplashActive, setIsSplashActive] = useState<boolean>(false);
@@ -279,16 +277,16 @@ export default function App() {
     const fetchInitialData = async () => {
       try {
         const [resProv, resMod, resCust, resApp, resKeys, resRoutes, resPol, resLogs, resComp, resDsar] = await Promise.allSettled([
-          fetch(`${API_BASE}/providers`).then(r => r.json()),
-          fetch(`${API_BASE}/models`).then(r => r.json()),
-          fetch(`${API_BASE}/customers`).then(r => r.json()),
-          fetch(`${API_BASE}/applications`).then(r => r.json()),
-          fetch(`${API_BASE}/api-keys`).then(r => r.json()),
-          fetch(`${API_BASE}/routes`).then(r => r.json()),
-          fetch(`${API_BASE}/policies`).then(r => r.json()),
-          fetch(`${API_BASE}/logs`).then(r => r.json()),
-          fetch(`${API_BASE}/compliance/config`).then(r => r.json()),
-          fetch(`${API_BASE}/compliance/dsar`).then(r => r.json())
+          fetch('/api/v1/providers').then(r => r.json()),
+          fetch('/api/v1/models').then(r => r.json()),
+          fetch('/api/v1/customers').then(r => r.json()),
+          fetch('/api/v1/applications').then(r => r.json()),
+          fetch('/api/v1/api-keys').then(r => r.json()),
+          fetch('/api/v1/routes').then(r => r.json()),
+          fetch('/api/v1/policies').then(r => r.json()),
+          fetch('/api/v1/logs').then(r => r.json()),
+          fetch('/api/v1/compliance/config').then(r => r.json()),
+          fetch('/api/v1/compliance/dsar').then(r => r.json())
         ]);
 
         if (resProv.status === 'fulfilled' && Array.isArray(resProv.value)) setProviders(resProv.value);
@@ -311,7 +309,7 @@ export default function App() {
   // --- Customer / Tenant Handlers ---
   const handleAddCustomer = async (customerData: any) => {
     try {
-      const res = await fetch(`${API_BASE}/customers`, {
+      const res = await fetch('/api/v1/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(customerData)
@@ -372,7 +370,7 @@ export default function App() {
 
   const handleUpdateCustomer = async (id: string, updates: Partial<Customer>) => {
     try {
-      await fetch(`${API_BASE}/customers/${id}`, {
+      await fetch(`/api/v1/customers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -385,7 +383,7 @@ export default function App() {
 
   const handleDeleteCustomer = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/customers/${id}`, { method: 'DELETE' });
+      await fetch(`/api/v1/customers/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setCustomers(prev => prev.filter(c => c.id !== id));
@@ -394,7 +392,7 @@ export default function App() {
 
   const handleAddCustomerUser = async (customerId: string, userData: Partial<CustomerUser>) => {
     try {
-      const res = await fetch(`${API_BASE}/customers/${customerId}/users`, {
+      const res = await fetch(`/api/v1/customers/${customerId}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData)
@@ -431,7 +429,7 @@ export default function App() {
 
   const handleUpdateCustomerUser = async (customerId: string, userId: string, updates: Partial<CustomerUser>) => {
     try {
-      await fetch(`${API_BASE}/customers/${customerId}/users/${userId}`, {
+      await fetch(`/api/v1/customers/${customerId}/users/${userId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -453,7 +451,7 @@ export default function App() {
 
   const handleDeleteCustomerUser = async (customerId: string, userId: string) => {
     try {
-      await fetch(`${API_BASE}/customers/${customerId}/users/${userId}`, { method: 'DELETE' });
+      await fetch(`/api/v1/customers/${customerId}/users/${userId}`, { method: 'DELETE' });
     } catch (_) {}
 
     setCustomers(prev =>
@@ -471,7 +469,7 @@ export default function App() {
     keyData: { name: string; appId?: string; rateLimitRpm?: number; expiresInDays?: number; ipWhitelist?: string[]; scopes?: string[] }
   ): Promise<ApiKey | null> => {
     try {
-      const res = await fetch(`${API_BASE}/customers/${customerId}/keys`, {
+      const res = await fetch(`/api/v1/customers/${customerId}/keys`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(keyData)
@@ -529,7 +527,7 @@ export default function App() {
   // --- IAM User & Role Lifecycle Handlers ---
   const handleAddIamUser = async (newUser: IamUser) => {
     try {
-      await fetch(`${API_BASE}/iam/users`, {
+      await fetch('/api/v1/iam/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -554,7 +552,7 @@ export default function App() {
       const existingUser = iamUsers.find(u => u.id === id);
       if (existingUser) {
         const merged = { ...existingUser, ...updates };
-        await fetch(`${API_BASE}/iam/users`, {
+        await fetch('/api/v1/iam/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -616,7 +614,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/providers`, {
+      await fetch('/api/v1/providers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProv)
@@ -629,7 +627,7 @@ export default function App() {
 
   const handleUpdateProvider = async (id: string, updates: Partial<AIProvider>) => {
     try {
-      await fetch(`${API_BASE}/providers/${id}`, {
+      await fetch(`/api/v1/providers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -642,7 +640,7 @@ export default function App() {
 
   const handleDeleteProvider = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/providers/${id}`, { method: 'DELETE' });
+      await fetch(`/api/v1/providers/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setProviders(prev => prev.filter(p => p.id !== id));
@@ -651,7 +649,7 @@ export default function App() {
 
   const handleTestProvider = async (providerId: string): Promise<ProviderTestResult> => {
     try {
-      const res = await fetch(`${API_BASE}/providers/${providerId}/test`, {
+      const res = await fetch(`/api/v1/providers/${providerId}/test`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -696,7 +694,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/models`, {
+      await fetch('/api/v1/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newMod)
@@ -709,7 +707,7 @@ export default function App() {
 
   const handleUpdateModel = async (id: string, updates: Partial<AIModel>) => {
     try {
-      await fetch(`${API_BASE}/models/${id}`, {
+      await fetch(`/api/v1/models/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -722,7 +720,7 @@ export default function App() {
 
   const handleDeleteModel = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/models/${id}`, { method: 'DELETE' });
+      await fetch(`/api/v1/models/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setModels(prev => prev.filter(m => m.id !== id));
@@ -766,12 +764,12 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/applications`, {
+      await fetch('/api/v1/applications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newApp)
       });
-      await fetch(`${API_BASE}/api-keys`, {
+      await fetch('/api/v1/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newKey)
@@ -785,7 +783,7 @@ export default function App() {
 
   const handleUpdateApplication = async (id: string, updates: Partial<Application>) => {
     try {
-      await fetch(`${API_BASE}/applications/${id}`, {
+      await fetch(`/api/v1/applications/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -798,7 +796,7 @@ export default function App() {
 
   const handleDeleteApplication = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/applications/${id}`, { method: 'DELETE' });
+      await fetch(`/api/v1/applications/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setApplications(prev => prev.filter(a => a.id !== id));
@@ -807,7 +805,7 @@ export default function App() {
 
   const handleToggleAppStatus = async (id: string, status: ApplicationStatus) => {
     try {
-      await fetch(`${API_BASE}/applications/${id}`, {
+      await fetch(`/api/v1/applications/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
@@ -836,7 +834,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/api-keys`, {
+      await fetch('/api/v1/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newKey)
@@ -849,7 +847,7 @@ export default function App() {
 
   const handleRevokeApiKey = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/api-keys/${id}/revoke`, { method: 'POST' });
+      await fetch(`/api/v1/api-keys/${id}/revoke`, { method: 'POST' });
     } catch (_) {}
 
     setApiKeys(prev =>
@@ -860,7 +858,7 @@ export default function App() {
 
   const handleDeleteApiKey = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/api-keys/${id}`, { method: 'DELETE' });
+      await fetch(`/api/v1/api-keys/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setApiKeys(prev => prev.filter(k => k.id !== id));
@@ -886,7 +884,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/routes`, {
+      await fetch('/api/v1/routes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRoute)
@@ -899,7 +897,7 @@ export default function App() {
 
   const handleUpdateRoute = async (id: string, updates: Partial<RoutingRule>) => {
     try {
-      await fetch(`${API_BASE}/routes/${id}`, {
+      await fetch(`/api/v1/routes/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -912,7 +910,7 @@ export default function App() {
 
   const handleDeleteRoute = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/routes/${id}`, { method: 'DELETE' });
+      await fetch(`/api/v1/routes/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setRoutingRules(prev => prev.filter(r => r.id !== id));
@@ -945,7 +943,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/policies`, {
+      await fetch('/api/v1/policies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPol)
@@ -958,7 +956,7 @@ export default function App() {
 
   const handleUpdatePolicy = async (id: string, updates: Partial<AIPolicy>) => {
     try {
-      await fetch(`${API_BASE}/policies/${id}`, {
+      await fetch(`/api/v1/policies/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -971,7 +969,7 @@ export default function App() {
 
   const handleDeletePolicy = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/policies/${id}`, { method: 'DELETE' });
+      await fetch(`/api/v1/policies/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setPolicies(prev => prev.filter(p => p.id !== id));
@@ -981,7 +979,7 @@ export default function App() {
   // --- Compliance & Data Subject Request Handlers ---
   const handleSaveGlobalComplianceConfig = async (newConfig: GlobalComplianceConfig) => {
     try {
-      await fetch(`${API_BASE}/compliance/config`, {
+      await fetch('/api/v1/compliance/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newConfig)
@@ -1007,7 +1005,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/compliance/dsar`, {
+      await fetch('/api/v1/compliance/dsar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newDsr)
@@ -1020,7 +1018,7 @@ export default function App() {
 
   const handleUpdateDataSubjectRequest = async (id: string, updates: Partial<DataSubjectRequest>) => {
     try {
-      await fetch(`${API_BASE}/compliance/dsar/${id}`, {
+      await fetch(`/api/v1/compliance/dsar/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -1034,7 +1032,7 @@ export default function App() {
   // --- Orchestration Execution in Playground ---
   const handleOrchestrate = async (payload: OrchestrationRequest): Promise<OrchestrationResponse> => {
     try {
-      const res = await fetch(`${API_BASE}/orchestrate`, {
+      const res = await fetch('/api/v1/orchestrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1152,7 +1150,7 @@ export default function App() {
     try {
       const token = localStorage.getItem('altil_auth_token');
       if (token) {
-        await fetch(`${API_BASE}/auth/logout`, {
+        await fetch('/api/v1/auth/logout', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

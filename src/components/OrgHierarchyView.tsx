@@ -135,6 +135,93 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
         </div>
       </div>
 
+      {/* Global Hierarchical View Scope Section */}
+      <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 shadow-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#222636]">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-600 to-blue-700 flex items-center justify-center text-white shadow-md shadow-cyan-600/30 shrink-0">
+              <Network className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                  Global Hierarchical View Scope
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                  {selectedNodeId ? `FOCUS: ${selectedNode?.name}` : 'GLOBAL HIERARCHY SCOPE'}
+                </span>
+              </div>
+              <h2 className="text-sm font-bold text-white mt-0.5">
+                Organizational Hierarchy Active Scope: {selectedNode?.name || 'Introsoft Corporation (Apex Root)'}
+              </h2>
+            </div>
+          </div>
+
+          {/* Scope Node Quick Select */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-mono text-[#8890a6] uppercase">Focus Node:</span>
+            <select
+              value={selectedNodeId || parentOwner?.id || ''}
+              onChange={e => setSelectedNodeId(e.target.value)}
+              className="bg-[#181c2b] border border-[#283046] px-3 py-1.5 rounded-lg text-xs font-semibold text-white focus:outline-none cursor-pointer"
+            >
+              <option value={parentOwner?.id}>{parentOwner?.name} (Parent Owner)</option>
+              {subsidiaries.map(s => (
+                <option key={s.id} value={s.id}>{s.name} (Subsidiary)</option>
+              ))}
+              {partners.map(p => (
+                <option key={p.id} value={p.id}>{p.name} (Partner/Reseller)</option>
+              ))}
+              {clients.map(c => (
+                <option key={c.id} value={c.id}>{c.name} (Direct Client)</option>
+              ))}
+            </select>
+
+            {selectedNodeId && onSelectCustomer && (
+              <button
+                onClick={() => onSelectCustomer(selectedNode?.id)}
+                className="px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-medium rounded-lg flex items-center gap-1.5 transition-colors"
+              >
+                <span>Manage Tenant</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Hierarchical Breadcrumb & Node Details */}
+        <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-mono pt-1">
+          <div className="flex items-center gap-2 text-[#8890a6] flex-wrap">
+            <span className="text-white font-bold">Scope Lineage:</span>
+            <span className="text-cyan-400 font-bold">Introsoft Corp [Root Level 0]</span>
+            <ChevronRight className="w-3.5 h-3.5 text-[#555e78]" />
+            <span className={selectedNode?.id !== parentOwner?.id ? 'text-emerald-400 font-bold' : 'text-[#666666]'}>
+              {selectedNode?.id !== parentOwner?.id ? `${selectedNode?.name} [${selectedNode?.orgRole || 'Subsidiary'}]` : 'Consolidated Fleet'}
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 text-[#555e78]" />
+            <span className="text-purple-400 font-bold">
+              {applications.filter(a => selectedNode?.id === parentOwner?.id || a.customerId === selectedNode?.id).length} Connected Apps
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4 text-[11px]">
+            <div>
+              <span className="text-[#666666]">Node Spend: </span>
+              <span className="text-white font-bold">${selectedNode?.currentSpendUsd?.toLocaleString() || '0'}</span>
+            </div>
+            <div>
+              <span className="text-[#666666]">Budget Cap: </span>
+              <span className="text-blue-400 font-bold">${selectedNode?.monthlyBudgetUsd?.toLocaleString() || '15,000'}</span>
+            </div>
+            <div>
+              <span className="text-[#666666]">SLA Tier: </span>
+              <span className="text-emerald-400 font-bold uppercase">{selectedNode?.slaTier || 'Mission Critical'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Main Graphical Tree View */}
       {viewMode === 'tree' && (
         <div className="bg-[#121212] border border-[#222222] rounded-lg p-6 space-y-8">
@@ -175,12 +262,12 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
                           </span>
                         </div>
                         <div className="text-xs text-[#888888] mt-0.5">
-                          {parentOwner.country} • {parentOwner.industry} • Budget: ${parentOwner.monthlyBudgetUsd.toLocaleString()} USD/mo
+                          {parentOwner.country} • {parentOwner.industry} • Budget: ${(parentOwner.monthlyBudgetUsd || 0).toLocaleString()} USD/mo
                         </div>
                       </div>
                     </div>
                     <div className="text-right font-mono text-xs">
-                      <div className="text-emerald-400 font-bold">${parentOwner.currentSpendUsd.toLocaleString()} Spend</div>
+                      <div className="text-emerald-400 font-bold">${(parentOwner.currentSpendUsd || 0).toLocaleString()} Spend</div>
                       <div className="text-[#888888]">{parentOwner.users?.length || 0} Users | {parentOwner.connectedAppIds.length} Apps</div>
                     </div>
                   </div>
@@ -229,11 +316,11 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
                       </div>
                       <div className="flex justify-between">
                         <span>Monthly Budget:</span>
-                        <span className="text-white">${sub.monthlyBudgetUsd.toLocaleString()}</span>
+                        <span className="text-white">${(sub.monthlyBudgetUsd || 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Current Spend:</span>
-                        <span className="text-emerald-400">${sub.currentSpendUsd.toLocaleString()}</span>
+                        <span className="text-emerald-400">${(sub.currentSpendUsd || 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Child Partners/Clients:</span>
@@ -275,11 +362,11 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
               <div className="grid grid-cols-2 gap-2 bg-[#181818] p-3 rounded border border-[#222222] text-xs font-mono">
                 <div>
                   <span className="text-[#888888] block text-[10px]">Budget</span>
-                  <span className="text-white font-bold">${cust.monthlyBudgetUsd.toLocaleString()}</span>
+                  <span className="text-white font-bold">${(cust.monthlyBudgetUsd || 0).toLocaleString()}</span>
                 </div>
                 <div>
                   <span className="text-[#888888] block text-[10px]">Spend</span>
-                  <span className="text-emerald-400 font-bold">${cust.currentSpendUsd.toLocaleString()}</span>
+                  <span className="text-emerald-400 font-bold">${(cust.currentSpendUsd || 0).toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -314,8 +401,8 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
                   <td className="p-4">
                     <span className="text-emerald-400 font-bold">{cust.tier}</span> / {cust.status}
                   </td>
-                  <td className="p-4 text-right font-mono">${cust.monthlyBudgetUsd.toLocaleString()}</td>
-                  <td className="p-4 text-right font-mono text-emerald-400">${cust.currentSpendUsd.toLocaleString()}</td>
+                  <td className="p-4 text-right font-mono">${(cust.monthlyBudgetUsd || 0).toLocaleString()}</td>
+                  <td className="p-4 text-right font-mono text-emerald-400">${(cust.currentSpendUsd || 0).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -347,9 +434,9 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
             <div className="space-y-3 bg-[#181818] p-4 rounded-lg border border-[#222222]">
               <h4 className="text-xs font-bold uppercase text-white font-mono">Primary Contact & Governance</h4>
               <div className="text-xs space-y-1 text-[#aaaaaa]">
-                <div><strong className="text-white">Name:</strong> {selectedNode.primaryContact.name}</div>
-                <div><strong className="text-white">Email:</strong> {selectedNode.primaryContact.email}</div>
-                <div><strong className="text-white">Phone:</strong> {selectedNode.primaryContact.phone || 'N/A'}</div>
+                <div><strong className="text-white">Name:</strong> {selectedNode.primaryContact?.name || 'Primary Admin'}</div>
+                <div><strong className="text-white">Email:</strong> {selectedNode.primaryContact?.email || 'admin@enterprise.com'}</div>
+                <div><strong className="text-white">Phone:</strong> {selectedNode.primaryContact?.phone || 'N/A'}</div>
                 <div><strong className="text-white">Jurisdiction:</strong> {selectedNode.country}</div>
               </div>
             </div>
@@ -357,9 +444,9 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
             <div className="space-y-3 bg-[#181818] p-4 rounded-lg border border-[#222222]">
               <h4 className="text-xs font-bold uppercase text-white font-mono">Quotas & Financial Ledger</h4>
               <div className="text-xs space-y-1 text-[#aaaaaa]">
-                <div><strong className="text-white">Monthly Budget:</strong> ${selectedNode.monthlyBudgetUsd.toLocaleString()} USD</div>
-                <div><strong className="text-white">Current Spend:</strong> ${selectedNode.currentSpendUsd.toLocaleString()} USD</div>
-                <div><strong className="text-white">Rate Limit:</strong> {selectedNode.rateLimitRpm} RPM</div>
+                <div><strong className="text-white">Monthly Budget:</strong> ${(selectedNode.monthlyBudgetUsd || 0).toLocaleString()} USD</div>
+                <div><strong className="text-white">Current Spend:</strong> ${(selectedNode.currentSpendUsd || 0).toLocaleString()} USD</div>
+                <div><strong className="text-white">Rate Limit:</strong> {selectedNode.rateLimitRpm || 600} RPM</div>
                 <div><strong className="text-white">Credit Balance:</strong> ${selectedNode.billingConfig?.creditBalanceUsd || 1500} USD</div>
               </div>
             </div>

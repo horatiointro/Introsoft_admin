@@ -13,6 +13,173 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
+    <script>
+      (function() {
+        function reportError(details) {
+          try {
+            fetch('/api/v1/client-error', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(details)
+            });
+          } catch (e) {}
+        }
+
+        // --- DEFENSIVE SHIMS AND POLYFILLS ---
+        if (typeof window !== 'undefined') {
+          // Shim Image if it throws on construct
+          try {
+            new window.Image();
+          } catch (e) {
+            const OriginalImage = window.Image;
+            window.Image = function() {
+              const img = document.createElement('img');
+              return img;
+            };
+            if (OriginalImage) {
+              window.Image.prototype = OriginalImage.prototype;
+            }
+          }
+
+          // Shim Audio if it throws on construct
+          try {
+            new window.Audio();
+          } catch (e) {
+            window.Audio = function() {
+              return document.createElement('audio');
+            };
+          }
+
+          // Shim Option if it throws on construct
+          try {
+            new window.Option();
+          } catch (e) {
+            window.Option = function(text, value) {
+              const opt = document.createElement('option');
+              if (text) opt.text = text;
+              if (value) opt.value = value;
+              return opt;
+            };
+          }
+
+          // Unconditional robust ResizeObserver Polyfill to avoid sandboxed Illegal constructor errors
+          window.ResizeObserver = function(callback) {
+            this.callback = callback;
+            this.elements = [];
+            
+            const handleResize = () => {
+              if (typeof this.callback === 'function') {
+                const entries = this.elements.map(el => ({
+                  target: el,
+                  contentRect: el.getBoundingClientRect()
+                }));
+                // Use requestAnimationFrame to avoid "ResizeObserver loop limit exceeded" warning
+                window.requestAnimationFrame(() => {
+                  try {
+                    this.callback(entries, this);
+                  } catch (e) {}
+                });
+              }
+            };
+
+            window.addEventListener('resize', handleResize);
+
+            this.observe = function(element) {
+              if (element && !this.elements.includes(element)) {
+                this.elements.push(element);
+                // Trigger an initial callback so Recharts knows the size immediately!
+                handleResize();
+              }
+            };
+
+            this.unobserve = function(element) {
+              this.elements = this.elements.filter(el => el !== element);
+            };
+
+            this.disconnect = function() {
+              this.elements = [];
+              window.removeEventListener('resize', handleResize);
+            };
+          };
+
+          // Unconditional robust IntersectionObserver Polyfill to avoid sandboxed Illegal constructor errors
+          window.IntersectionObserver = function(callback) {
+            this.callback = callback;
+            this.elements = [];
+            this.observe = function(element) {
+              if (element && !this.elements.includes(element)) {
+                this.elements.push(element);
+                try {
+                  this.callback([{
+                    target: element,
+                    isIntersecting: true,
+                    intersectionRatio: 1,
+                    boundingClientRect: element.getBoundingClientRect(),
+                    intersectionRect: element.getBoundingClientRect(),
+                    rootBounds: element.getBoundingClientRect(),
+                    time: Date.now()
+                  }], this);
+                } catch (e) {}
+              }
+            };
+            this.unobserve = function(element) {
+              this.elements = this.elements.filter(el => el !== element);
+            };
+            this.disconnect = function() {
+              this.elements = [];
+            };
+          };
+
+          // Shim customElements.define to prevent registration failures from crashing module load
+          if (typeof window.customElements !== 'undefined') {
+            const originalDefine = window.customElements.define;
+            window.customElements.define = function(name, constructor, options) {
+              try {
+                return originalDefine.call(this, name, constructor, options);
+              } catch (err) {
+                console.warn('[Defensive Shield] Prevented customElements.define crash:', err.message);
+                return;
+              }
+            };
+          }
+        }
+
+        window.addEventListener('error', function(event) {
+          // Ignore benign Vite HMR websocket disconnects which are disabled by platform design
+          if (event.message && (event.message.includes('WebSocket') || event.message.includes('failed to connect to websocket'))) {
+            return;
+          }
+          reportError({
+            type: 'error_event',
+            message: event.message,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno,
+            error: event.error ? {
+              name: event.error.name,
+              message: event.error.message,
+              stack: event.error.stack
+            } : null
+          });
+        });
+
+        window.addEventListener('unhandledrejection', function(event) {
+          const reasonStr = event.reason ? (event.reason.message || event.reason.stack || String(event.reason)) : '';
+          // Ignore benign Vite HMR websocket errors when HMR is disabled
+          if (reasonStr && (reasonStr.includes('WebSocket') || reasonStr.includes('websocket'))) {
+            return;
+          }
+          reportError({
+            type: 'unhandled_rejection',
+            reason: event.reason ? {
+              name: event.reason.name,
+              message: event.reason.message,
+              stack: event.reason.stack
+            } : String(event.reason)
+          });
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

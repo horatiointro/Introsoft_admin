@@ -25,12 +25,16 @@ import {
   CreditCard,
   LineChart,
   FileSpreadsheet,
-  Gauge
+  Gauge,
+  Lock,
+  Shield
 } from 'lucide-react';
 
 export type NavTabId =
   | 'command_centre'
+  | 'stack_wiring'
   | 'tenants'
+  | 'org_hierarchy'
   | 'tenant_360'
   | 'tenant_licensing'
   | 'service_management'
@@ -42,28 +46,28 @@ export type NavTabId =
   | 'api_mgmt'
   | 'sec_ops'
   | 'enterprise_risk'
-  | 'governance'
+  | 'policies'
+  | 'dcr_data_protection'
   | 'compliance'
+  | 'trust_fabric'
   | 'finops'
   | 'automation'
   | 'reporting'
   | 'iam_admin'
+  | 'admin_settings'
   | 'playground'
   | 'logs'
   // Legacy / Direct access mappings
   | 'dashboard'
   | 'customers'
-  | 'org_hierarchy'
   | 'providers'
   | 'telemetry'
   | 'models'
   | 'applications'
   | 'keys'
   | 'routing'
-  | 'policies'
   | 'usage'
-  | 'system'
-  | 'admin_settings';
+  | 'system';
 
 interface SidebarProps {
   activeTab: NavTabId;
@@ -84,6 +88,14 @@ interface SidebarProps {
   onToggleTheme?: () => void;
 }
 
+interface NavItem {
+  id: NavTabId;
+  label: string;
+  icon: any;
+  badge?: number;
+  isNew?: boolean;
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
@@ -91,50 +103,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
   theme = 'night',
   onToggleTheme
 }) => {
-  const navSections = [
+  const navSections: { title: string; items: NavItem[] }[] = [
     {
       title: 'Executive',
       items: [
-        { id: 'command_centre' as NavTabId, label: 'Executive Command Centre', icon: LayoutDashboard },
-        { id: 'reporting' as NavTabId, label: 'Executive & Audit Reports', icon: FileSpreadsheet }
+        { id: 'command_centre', label: 'Executive Command Centre', icon: LayoutDashboard },
+        { id: 'stack_wiring', label: '5-Layer Stack Architecture', icon: Network, isNew: true },
+        { id: 'reporting', label: 'Executive & Audit Reports', icon: FileSpreadsheet, isNew: true }
       ]
     },
     {
       title: 'Tenant Management & Governance',
       items: [
-        { id: 'tenants' as NavTabId, label: 'Tenant Portfolio Directory', icon: Building2, badge: counts?.customers },
-        { id: 'tenant_360' as NavTabId, label: 'Tenant 360 Diagnostics', icon: Gauge },
-        { id: 'tenant_licensing' as NavTabId, label: 'Licensing & Subscriptions', icon: CreditCard },
-        { id: 'sla_kpi_monitoring' as NavTabId, label: 'Tenant SLA & KPI Monitoring', icon: LineChart },
-        { id: 'iam_admin' as NavTabId, label: 'IAM Users, Roles & Access', icon: Users }
+        { id: 'tenants', label: 'Tenant Portfolio Directory', icon: Building2, badge: counts?.customers },
+        { id: 'org_hierarchy', label: 'Organization Hierarchy', icon: Network, isNew: true },
+        { id: 'tenant_360', label: 'Tenant 360 Diagnostics', icon: Gauge, isNew: true },
+        { id: 'tenant_licensing', label: 'Licensing & Subscriptions', icon: CreditCard, isNew: true },
+        { id: 'sla_kpi_monitoring', label: 'Tenant SLA & KPI Monitoring', icon: LineChart, isNew: true },
+        { id: 'iam_admin', label: 'IAM Users & Access Control', icon: Users, isNew: true },
+        { id: 'admin_settings', label: 'Admin & System Settings', icon: Settings, isNew: true }
       ]
     },
     {
       title: 'AI Infrastructure & Gateway',
       items: [
-        { id: 'ai_ops' as NavTabId, label: 'AI Gateway & Providers', icon: Server, badge: counts?.providers },
-        { id: 'api_mgmt' as NavTabId, label: 'Applications & Gateway Keys', icon: AppWindow, badge: counts?.applications },
-        { id: 'ai_governance_lab' as NavTabId, label: 'AI Model Evaluation Lab', icon: Boxes },
-        { id: 'playground' as NavTabId, label: 'Interactive API Playground', icon: PlaySquare }
+        { id: 'ai_ops', label: 'AI Gateway & Providers', icon: Server, badge: counts?.providers },
+        { id: 'api_mgmt', label: 'Applications & Gateway Keys', icon: AppWindow, badge: counts?.applications },
+        { id: 'ai_governance_lab', label: 'AI Model Evaluation Lab', icon: Boxes, isNew: true },
+        { id: 'playground', label: 'API Playground & Threat Simulator', icon: PlaySquare, isNew: true }
       ]
     },
     {
       title: 'Service Operations & Incidents',
       items: [
-        { id: 'service_management' as NavTabId, label: 'Services & SLA Engine', icon: Workflow },
-        { id: 'incidents' as NavTabId, label: 'Incidents, PIRs & Alerts', icon: AlertTriangle, badge: counts?.incidents },
-        { id: 'operations_cmdb' as NavTabId, label: 'CMDB, Change & BCDR', icon: Network },
-        { id: 'automation' as NavTabId, label: 'Workflows & Approvals', icon: GitFork }
+        { id: 'service_management', label: 'Services & SLA Engine', icon: Workflow, isNew: true },
+        { id: 'incidents', label: 'Incidents, PIRs & Alerts', icon: AlertTriangle, badge: counts?.incidents },
+        { id: 'operations_cmdb', label: 'CMDB, Change & BCDR', icon: Network, isNew: true },
+        { id: 'automation', label: 'Workflows & Approvals', icon: GitFork, isNew: true }
       ]
     },
     {
       title: 'Security, Risk & Compliance',
       items: [
-        { id: 'sec_ops' as NavTabId, label: 'Security Ops (SOC & Alerts)', icon: ShieldAlert },
-        { id: 'enterprise_risk' as NavTabId, label: 'Risk Register & 5x5 Heatmap', icon: ShieldCheck, badge: counts?.policies },
-        { id: 'compliance' as NavTabId, label: 'POPIA & GDPR Suite', icon: FileCheck, badge: counts?.complianceRequests },
-        { id: 'logs' as NavTabId, label: 'Audit Trail Ledger', icon: ScrollText, badge: counts?.logs },
-        { id: 'finops' as NavTabId, label: 'FinOps & Token Unit Economics', icon: DollarSign }
+        { id: 'sec_ops', label: 'Security Ops (SOC & Alerts)', icon: ShieldAlert },
+        { id: 'policies', label: 'AI Guardrails & Policies', icon: Shield, badge: counts?.policies, isNew: true },
+        { id: 'dcr_data_protection', label: 'Data Cloaking & Vault (DCR)', icon: Lock, isNew: true },
+        { id: 'enterprise_risk', label: 'Risk Register & 5x5 Heatmap', icon: ShieldCheck, isNew: true },
+        { id: 'compliance', label: 'POPIA & GDPR Suite', icon: FileCheck, badge: counts?.complianceRequests, isNew: true },
+        { id: 'trust_fabric', label: 'ALTIL Trust Fabric & Identity', icon: Lock, isNew: true },
+        { id: 'logs', label: 'Audit Trail Ledger', icon: ScrollText, badge: counts?.logs },
+        { id: 'finops', label: 'FinOps & Token Economics', icon: DollarSign, isNew: true }
       ]
     }
   ];
@@ -152,12 +170,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               // Check active status with legacy aliasing support
               const isActive = activeTab === item.id || 
                 (item.id === 'command_centre' && activeTab === 'dashboard') ||
-                (item.id === 'tenants' && (activeTab === 'customers' || activeTab === 'org_hierarchy')) ||
+                (item.id === 'tenants' && activeTab === 'customers') ||
                 (item.id === 'ai_ops' && (activeTab === 'providers' || activeTab === 'telemetry' || activeTab === 'models' || activeTab === 'routing')) ||
                 (item.id === 'api_mgmt' && (activeTab === 'applications' || activeTab === 'keys')) ||
-                (item.id === 'governance' && activeTab === 'policies') ||
-                (item.id === 'finops' && activeTab === 'usage') ||
-                (item.id === 'iam_admin' && activeTab === 'admin_settings');
+                (item.id === 'finops' && activeTab === 'usage');
 
               return (
                 <button
@@ -171,21 +187,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-blue-400' : 'text-[#666666]'}`} />
+                    {Icon && typeof Icon === 'function' && (
+                      <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-blue-400' : 'text-[#666666]'}`} />
+                    )}
                     <span className="truncate">{item.label}</span>
                   </div>
 
-                  {item.badge !== undefined && item.badge !== null && (
-                    <span
-                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded shrink-0 ${
-                        isActive
-                          ? 'bg-blue-500/20 text-blue-300'
-                          : 'bg-[#1a1a1a] text-[#666666]'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.isNew && (
+                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        NEW
+                      </span>
+                    )}
+                    {item.badge !== undefined && item.badge !== null && (
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
+                          isActive
+                            ? 'bg-blue-500/20 text-blue-300'
+                            : 'bg-[#1a1a1a] text-[#666666]'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
                 </button>
               );
             })}

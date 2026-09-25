@@ -254,6 +254,9 @@ export interface Customer {
   contractTerms?: TenantContractTerms;
   securityProfile?: TenantSecurityProfile;
   healthScore?: number; // 0 - 100 composite score
+  code?: string;
+  monthlySpendUsd?: number;
+  monthlyTokenUsage?: number;
   monthlyBudgetUsd: number;
   currentSpendUsd: number;
   rateLimitRpm: number;
@@ -385,6 +388,7 @@ export interface AIPolicy {
   name: string;
   description: string;
   appliesToAppIds: string[]; // 'all' or list of appIds
+  tenantId?: string;         // tenant isolation binding
   rules: AIPolicyRules;
   status: 'active' | 'draft' | 'disabled';
   createdAt: string;
@@ -862,6 +866,8 @@ export interface IamUser {
   sessionTokenRevokedAt?: string | null;
   offboardedAt?: string | null;
   offboardedReason?: string | null;
+  forcePasswordChange?: boolean;
+  passwordHistory?: string[];
 }
 
 export interface IamRole {
@@ -1255,19 +1261,397 @@ export interface TenantAppLicense {
 
 export interface PaymentWebhookLog {
   id: string;
-  timestamp: string;
   tenantId: string;
   tenantName: string;
-  applicationId: string;
-  invoiceId: string;
-  eventType: 'invoice.paid' | 'invoice.payment_failed' | 'license.grace_period_entered' | 'license.auto_suspended' | 'license.reinstated' | 'payment.reconciled_eft';
-  amount: number;
-  currency: 'USD' | 'ZAR' | 'EUR';
-  gatewayProvider: 'Stripe' | 'PayFast' | 'SAP_Billing' | 'Direct_EFT' | 'Manual_Admin';
-  enforcementTriggered: EnforcementAction | 'none';
-  status: 'processed' | 'rejected' | 'pending_reconciliation';
-  rawPayloadSummary: string;
+  applicationId?: string;
+  invoiceId?: string;
+  gateway?: 'stripe' | 'paypal' | 'payfast' | 'eft_manual' | string;
+  gatewayProvider?: string;
+  eventType: string;
+  amountUsd?: number;
+  amount?: number;
+  currency?: string;
+  status: 'success' | 'failed' | 'pending' | 'processed' | string;
+  timestamp?: string;
+  receivedAt?: string;
+  payloadSummary?: string;
+  rawPayloadSummary?: string;
+  enforcementTriggered?: boolean | string;
 }
 
+export interface DeviceTrustRecord {
+  id: string;
+  modelId: string;
+  modelName: string;
+  immutableDeviceId: string;
+  phoneNumber: string;
+  trustLevel: 'ultra_secure' | 'secure' | 'not_trusted';
+  secureEnclave: string;
+  consentHash: string;
+  lastHandshake: string;
+  fingerprintHash: string;
+  sharedSecretToken: string;
+  registeredAt: string;
+  description: string;
+}
 
+export interface ComplianceSegment {
+  text: string;
+  compliant: boolean;
+  reason: string;
+}
 
+export interface AIMessageLog {
+  id: string;
+  deviceId: string;
+  phoneNumber: string;
+  modelId: string;
+  modelName: string;
+  timestamp: string;
+  promptText: string;
+  responseText: string;
+  trustLevel: 'ultra_secure' | 'secure' | 'not_trusted';
+  popiaSegments: ComplianceSegment[];
+  gdprSegments: ComplianceSegment[];
+  latencyMs: number;
+  tokenCount: number;
+}
+
+export type PrincipalType = 'PERSON' | 'ORGANISATION' | 'APPLICATION' | 'SERVICE' | 'AI_AGENT';
+
+export type CredentialType = 'APPLICATION_API_KEY' | 'USER_CREDENTIAL' | 'DEVICE_CREDENTIAL' | 'SERVICE_CREDENTIAL' | 'AI_AGENT_CREDENTIAL';
+
+export type DataClassificationType =
+  | 'PUBLIC'
+  | 'INTERNAL'
+  | 'CONFIDENTIAL'
+  | 'RESTRICTED'
+  | 'PERSONAL'
+  | 'SPECIAL_PERSONAL'
+  | 'FINANCIAL'
+  | 'HEALTH'
+  | 'LOCATION'
+  | 'COMMERCIAL';
+
+export type AIDecisionType = 'ALLOW' | 'BLOCK' | 'REDACT' | 'TRANSFORM' | 'REQUIRE_APPROVAL';
+
+export interface Tenant {
+  id: string;
+  name: string;
+  domain?: string;
+  status: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
+  planId?: string;
+  createdAt: string;
+}
+
+export interface Principal {
+  id: string;
+  tenantId: string;
+  principalType: PrincipalType;
+  displayName: string;
+  status: 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
+}
+
+export interface Identity {
+  id: string;
+  principalId: string;
+  altilId: string; // e.g. ALTIL-USR-xxxxxxxx
+  createdAt: string;
+}
+
+export interface Device {
+  id: string;
+  identityId: string;
+  deviceFingerprintHash: string;
+  secureEnclaveStatus: string;
+  trustLevel: 'ultra_secure' | 'secure' | 'not_trusted';
+  revokedAt?: string | null;
+  registeredAt: string;
+}
+
+export interface Credential {
+  id: string;
+  tenantId: string;
+  principalId: string;
+  applicationId?: string;
+  credentialType: CredentialType;
+  keyPrefix: string;
+  keyHash: string;
+  scopes: string[];
+  status: 'ACTIVE' | 'REVOKED' | 'EXPIRED';
+  expiresAt?: string | null;
+  lastUsedAt?: string | null;
+  createdAt: string;
+}
+
+export interface Contract {
+  id: string;
+  tenantId: string;
+  contractType: string;
+  version: string;
+  effectiveDate: string;
+  status: 'ACTIVE' | 'PENDING' | 'EXPIRED';
+  termsReference: string;
+  acceptanceTimestamp: string;
+  acceptingIdentityId: string;
+  evidenceReference: string;
+}
+
+export interface Consent {
+  id: string;
+  principalId: string;
+  tenantId: string;
+  purpose: string;
+  scope: string[];
+  policyVersionId: string;
+  granted: boolean;
+  timestamp: string;
+  evidenceReference: string;
+}
+
+export interface TrustRelationship {
+  relationshipId: string;
+  sourceIdentityId: string;
+  targetIdentityId: string;
+  relationshipType: string;
+  status: 'ACTIVE' | 'REVOKED' | 'SUSPENDED';
+  scope: string[];
+  createdAt: string;
+  effectiveAt: string;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
+  contractId?: string;
+  policyId?: string;
+  consentId?: string;
+  evidenceId?: string;
+}
+
+export interface PolicyVersion {
+  id: string;
+  policyId: string;
+  versionNumber: number;
+  rulesSummary: string;
+  effectiveAt: string;
+  author: string;
+  description: string;
+}
+
+export interface AIDecision {
+  decision: AIDecisionType;
+  tenantId: string;
+  principalId: string;
+  applicationId: string;
+  credentialId: string;
+  policyVersion: string;
+  dataClassification: DataClassificationType;
+  provider: string;
+  model: string;
+  transformations: string[];
+  timestamp: string;
+}
+
+export interface EvidenceEvent {
+  eventId: string;
+  eventType: string;
+  tenantId: string;
+  principalId: string;
+  identityId: string;
+  applicationId: string;
+  credentialId: string;
+  timestamp: string;
+  actor: string;
+  action: string;
+  policyVersion: string;
+  previousEventHash: string;
+  eventHash: string;
+  metadata?: Record<string, any>;
+}
+
+// =========================================================================
+// ALTIL DATA CLOAKING, TOKENISATION & RECONSTRUCTION (DCR) TYPES
+// =========================================================================
+
+export type DcrTransformationStrategy =
+  | 'EXACT_TOKEN'           // Deterministic tokenisation (e.g. John Smith -> ALTIL_PERSON_7F82A1)
+  | 'PSEUDONYM'             // Semantic synthetic cloaking (e.g. John Smith -> David Miller)
+  | 'SYNTHETIC_VALUE'       // Synthetic entity generation (e.g. 12 Main St -> 84 Oak Avenue)
+  | 'RANGE_PRESERVE'        // Semantic magnitude preserving (e.g. age 47 -> 46, salary R48,732 -> R49,105)
+  | 'RELATIONSHIP_PRESERVE' // Structural entity mapping across relationships
+  | 'FORMAT_PRESERVE'       // Preserves syntax shape (e.g. +27 82 123 4567 -> +27 82 894 1029)
+  | 'SEMANTIC_GENERALISE'   // Categorical generalisation (e.g. Lung Cancer -> Thoracic Oncology Class B)
+  | 'STATISTICAL_PRESERVE'  // Retains statistical distribution characteristics
+  | 'HASH'                  // One-way cryptographic hash
+  | 'ENCRYPT'               // Reversible AES-256 encrypted payload
+  | 'REDACT'                // Mask with [REDACTED_ENTITY]
+  | 'REMOVE'                // Strip entity entirely from payload
+  | 'LEAVE_UNCHANGED';      // Permitted cleartext passthrough
+
+export type DcrTransformationScope =
+  | 'REQUEST'       // Auto-expires immediately upon response delivery
+  | 'SESSION'       // Persists for the active user/agent session
+  | 'CONVERSATION'  // Persists across multi-turn thread
+  | 'APPLICATION'   // Consistent surrogate across application lifetime
+  | 'TENANT'        // Enterprise-wide consistent surrogate
+  | 'LONG_TERM';    // Retained for statutory audit window
+
+export type DcrProvenanceCategory =
+  | 'ORIGINAL'          // Source enterprise ground truth (ALTIL transformed)
+  | 'ALTIL_SURROGATE'   // ALTIL-generated token/synthetic surrogate
+  | 'AI_GENERATED'      // Newly invented content produced by AI model
+  | 'AI_DERIVED'        // AI output calculated from surrogate context
+  | 'SYSTEM_GENERATED'  // Orchestration metadata injected by platform
+  | 'UNKNOWN';          // Unverified provenance (strictly blocked from reconstruction)
+
+export interface DcrClassificationResult {
+  id: string;
+  originalText: string;
+  startIndex: number;
+  endIndex: number;
+  classification: DataClassificationType;
+  entityType: string; // e.g. PERSON_NAME, ID_NUMBER, SALARY_AMOUNT, ADDRESS, PHONE_NUMBER, MEDICAL_DIAGNOSIS, COMPANY_NAME
+  confidence: number; // 0.0 - 1.0
+  suggestedStrategy: DcrTransformationStrategy;
+  jurisdiction: 'POPIA' | 'GDPR' | 'HIPAA' | 'PCI_DSS' | 'GLOBAL';
+  statutoryReference?: string; // e.g. "POPIA Section 1 / GDPR Article 4(1)"
+  metadata?: Record<string, any>;
+}
+
+export interface DcrTransformationRecord {
+  id: string;
+  requestId: string;
+  tenantId: string;
+  principalId?: string;
+  identityId?: string;
+  applicationId?: string;
+  classification: DataClassificationType;
+  dataType: string;
+  originalValueCiphertext: string;
+  originalValueHash: string; // SHA-256 for O(1) matching without decrypting
+  originalMaskedPreview: string; // e.g. "J*** S***"
+  surrogateValue: string; // e.g. "David Miller" or "ALTIL_PERSON_7F82A1"
+  transformationStrategy: DcrTransformationStrategy;
+  scope: DcrTransformationScope;
+  keyReference: string; // e.g. "KEY-TENANT-T1-V2"
+  semanticConstraints?: {
+    rangeDelta?: number;
+    currency?: string;
+    preserveCase?: boolean;
+    relationshipFamilyId?: string;
+    originalMagnitude?: number;
+  };
+  status: 'ACTIVE' | 'RECONSTRUCTED' | 'EXPIRED' | 'REVOKED';
+  reconstructionCount: number;
+  createdAt: string;
+  expiresAt: string;
+  lastReconstructedAt?: string;
+}
+
+export interface DcrPolicyRule {
+  id: string;
+  tenantId: string;
+  tenantName?: string;
+  classification: DataClassificationType;
+  entityType?: string;
+  strategy: DcrTransformationStrategy;
+  scope: DcrTransformationScope;
+  providerRestrictions: string[]; // Providers forbidden from raw data (e.g. ['openai', 'anthropic'])
+  permittedProviders: string[];    // Providers allowed raw data (e.g. ['ollama_sovereign_local'])
+  semanticConfig?: {
+    rangeVariancePercent?: number;
+    preserveCurrency?: boolean;
+    maskFormat?: string;
+    generalisationLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+    preserveCase?: boolean;
+  };
+  status: 'ACTIVE' | 'DISABLED';
+  priority: number;
+  updatedAt: string;
+}
+
+export type DcrEventType =
+  | 'DATA_DETECTED'
+  | 'DATA_CLASSIFIED'
+  | 'TRANSFORMATION_SELECTED'
+  | 'VALUE_TRANSFORMED'
+  | 'PROTECTED_REQUEST_CREATED'
+  | 'AI_REQUEST_SENT'
+  | 'AI_RESPONSE_RECEIVED'
+  | 'SURROGATE_DETECTED'
+  | 'PROVENANCE_VERIFIED'
+  | 'VALUE_RECONSTRUCTED'
+  | 'RECONSTRUCTION_BLOCKED'
+  | 'TRANSFORMATION_EXPIRED'
+  | 'KEY_ROTATED';
+
+export interface DcrProvenanceEvent {
+  eventId: string;
+  eventType: DcrEventType;
+  requestId: string;
+  tenantId: string;
+  identityId?: string;
+  classification: DataClassificationType;
+  sourceHash: string;
+  surrogateHash: string;
+  transformationStrategy: DcrTransformationStrategy;
+  provenanceCategory: DcrProvenanceCategory;
+  policyVersion: string;
+  timestamp: string;
+  previousEventHash: string;
+  eventHash: string;
+  description: string;
+  details?: Record<string, any>;
+}
+
+export interface DcrVaultKeyMetadata {
+  keyId: string;
+  tenantId: string;
+  algorithm: 'AES-256-GCM' | 'CHACHA20-POLY1305';
+  version: number;
+  status: 'ACTIVE' | 'ROTATED' | 'REVOKED';
+  createdAt: string;
+  expiresAt?: string;
+  activeTransformationsCount: number;
+}
+
+export interface DcrPipelineResult {
+  requestId: string;
+  tenantId: string;
+  timestamp: string;
+  originalPayload: string;
+  cloakedPayload: string;
+  rawAiResponse?: string;
+  reconstructedResponse?: string;
+  transformationsApplied: {
+    originalMasked: string;
+    surrogate: string;
+    dataType: string;
+    classification: DataClassificationType;
+    strategy: DcrTransformationStrategy;
+    scope: DcrTransformationScope;
+    provenance: DcrProvenanceCategory;
+  }[];
+  reconstructedItems: {
+    surrogate: string;
+    restoredMasked: string;
+    dataType: string;
+    provenance: DcrProvenanceCategory;
+    reconstructed: boolean;
+    reason?: string;
+  }[];
+  unreconstructedItems: {
+    value: string;
+    reason: string;
+    provenance: DcrProvenanceCategory;
+  }[];
+  stats: {
+    detectedEntitiesCount: number;
+    transformedEntitiesCount: number;
+    reconstructedEntitiesCount: number;
+    blockedReconstructionsCount: number;
+    finesPreventedZar: number;
+    finesPreventedEur: number;
+    durationMs: number;
+  };
+  policyPassed: boolean;
+  ledgerEventsCount: number;
+}

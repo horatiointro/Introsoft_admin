@@ -1,52 +1,78 @@
 import React from 'react';
-import { Building2, Layers, Filter, CheckCircle2, ChevronDown, RefreshCw, Smartphone, Plus } from 'lucide-react';
+import { Building2, Layers, Filter, CheckCircle2, ChevronDown, RefreshCw, Smartphone, Plus, ArrowRight, ShieldCheck, DollarSign, Activity } from 'lucide-react';
 import { CompanyScopeFilter, Customer, Application } from '../types';
 
-interface ScopeHeaderBarProps {
-  scopeFilter: CompanyScopeFilter;
-  onScopeChange: (newScope: CompanyScopeFilter) => void;
-  customers: Customer[];
-  applications: Application[];
+export interface ScopeHeaderBarProps {
+  scopeFilter?: CompanyScopeFilter;
+  onScopeChange?: (newScope: CompanyScopeFilter) => void;
+  customers?: Customer[];
+  applications?: Application[];
   activeIncidentsCount?: number;
   scopedSpendUsd?: number;
   onNavigateToTenants?: () => void;
+  variant?: 'full' | 'compact' | 'embedded';
+  title?: string;
+  activeScopeName?: string;
+  tenantCount?: number;
+  appCount?: number;
+  isAudited?: boolean;
 }
 
 export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
-  scopeFilter,
+  scopeFilter = { tenantId: 'all', appId: 'all', scopeName: 'Total Company View' },
   onScopeChange,
-  customers,
-  applications,
+  customers = [],
+  applications = [],
   activeIncidentsCount = 0,
-  scopedSpendUsd = 1482.40,
-  onNavigateToTenants
+  scopedSpendUsd,
+  onNavigateToTenants,
+  variant = 'full',
+  title = 'Global Hierarchical View Scope',
+  activeScopeName,
+  tenantCount,
+  appCount,
+  isAudited
 }) => {
-  const selectedTenant = customers.find(c => c.id === scopeFilter.tenantId);
-  const filteredApps = scopeFilter.tenantId === 'all'
-    ? applications
-    : applications.filter(a => a.customerId === scopeFilter.tenantId);
+  const safeCustomers = Array.isArray(customers) ? customers : [];
+  const safeApps = Array.isArray(applications) ? applications : [];
+  const safeScope = scopeFilter || { tenantId: 'all', appId: 'all', scopeName: activeScopeName || 'Total Company View' };
 
-  const selectedApp = applications.find(a => a.id === scopeFilter.appId);
+  const selectedTenant = safeCustomers.find(c => c && c.id === safeScope.tenantId);
+  const filteredApps = safeScope.tenantId === 'all'
+    ? safeApps
+    : safeApps.filter(a => a && a.customerId === safeScope.tenantId);
+
+  const selectedApp = safeApps.find(a => a && a.id === safeScope.appId);
+
+  // Auto calculate spend if not provided
+  const calculatedSpend = scopedSpendUsd !== undefined
+    ? scopedSpendUsd
+    : safeScope.tenantId === 'all'
+      ? safeCustomers.reduce((sum, c) => sum + (c?.currentSpendUsd || c?.monthlySpendUsd || 0), 0)
+      : (selectedTenant?.currentSpendUsd || selectedTenant?.monthlySpendUsd || 0);
 
   const handleTenantSelect = (tenantId: string) => {
+    if (!onScopeChange) return;
     onScopeChange({
       tenantId,
       appId: 'all',
-      scopeName: tenantId === 'all' ? 'Total Company View' : customers.find(c => c.id === tenantId)?.name
+      scopeName: tenantId === 'all' ? 'Total Company View' : safeCustomers.find(c => c?.id === tenantId)?.name
     });
   };
 
   const handleAppSelect = (appId: string) => {
+    if (!onScopeChange) return;
     onScopeChange({
-      ...scopeFilter,
+      ...safeScope,
       appId,
       scopeName: appId === 'all'
-        ? (scopeFilter.tenantId === 'all' ? 'Total Company View' : selectedTenant?.name)
+        ? (safeScope.tenantId === 'all' ? 'Total Company View' : selectedTenant?.name)
         : selectedApp?.name
     });
   };
 
   const handleResetToTotalCompany = () => {
+    if (!onScopeChange) return;
     onScopeChange({
       tenantId: 'all',
       appId: 'all',
@@ -55,43 +81,64 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
   };
 
   return (
-    <div className="bg-[#12141c] border border-[#222636] rounded-xl p-4 shadow-xl">
+    <div id="global-hierarchical-view-scope-bar" className="bg-[#12141c] border border-[#222636] rounded-xl p-4 shadow-xl transition-all">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         {/* Scope Title & Badge */}
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-600/30">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-600/30 shrink-0">
             <Building2 className="w-5 h-5" />
           </div>
 
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-400">
-                Global Hierarchical View Scope
+            <div className="flex items-center flex-wrap gap-2">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-blue-400" />
+                {title}
               </span>
 
               {/* Dynamic Scope Badge */}
-              {scopeFilter.tenantId === 'all' ? (
+              {safeScope.tenantId === 'all' ? (
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                   TOTAL COMPANY VIEW (ALL TENANTS)
                 </span>
-              ) : scopeFilter.appId === 'all' ? (
+              ) : safeScope.appId === 'all' ? (
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  TENANT SCOPE: {selectedTenant?.name || scopeFilter.tenantId}
+                  TENANT SCOPE: {selectedTenant?.name || safeScope.tenantId}
                 </span>
               ) : (
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                  APP SCOPE: {selectedApp?.name || scopeFilter.appId}
+                  APP SCOPE: {selectedApp?.name || safeScope.appId}
                 </span>
               )}
             </div>
 
-            <h2 className="text-base font-bold text-white tracking-tight flex items-center space-x-2 mt-0.5">
-              <span>{selectedApp?.name || selectedTenant?.name || 'All Organizations & Enterprise Applications'}</span>
-              {scopeFilter.tenantId !== 'all' && (
+            {/* Hierarchical Breadcrumb */}
+            <div className="flex items-center gap-1.5 text-xs text-white tracking-tight mt-1 flex-wrap">
+              <span className="font-semibold text-white">
+                {selectedApp?.name || selectedTenant?.name || 'All Organizations & Enterprise Applications'}
+              </span>
+              
+              <span className="text-[#555e78] flex items-center gap-1 text-[11px] font-mono">
+                <span>[Introsoft Holding</span>
+                <ArrowRight className="w-2.5 h-2.5 text-[#555e78]" />
+                <span className={safeScope.tenantId !== 'all' ? 'text-emerald-400 font-bold' : 'text-[#8890a6]'}>
+                  {selectedTenant?.name || 'All Tenants'}
+                </span>
+                {safeScope.appId !== 'all' && (
+                  <>
+                    <ArrowRight className="w-2.5 h-2.5 text-[#555e78]" />
+                    <span className="text-purple-400 font-bold">{selectedApp?.name}</span>
+                  </>
+                )}
+                <span>]</span>
+              </span>
+
+              {safeScope.tenantId !== 'all' && (
                 <button
+                  id="reset-scope-btn"
                   onClick={handleResetToTotalCompany}
                   className="text-[10px] font-mono text-blue-400 hover:text-blue-300 underline flex items-center gap-1 ml-2"
                 >
@@ -99,7 +146,7 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
                   Reset to Company View
                 </button>
               )}
-            </h2>
+            </div>
           </div>
         </div>
 
@@ -110,14 +157,15 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
             <div className="flex items-center space-x-2 bg-[#181c2b] border border-[#283046] px-3 py-1.5 rounded-lg">
               <Building2 className="w-4 h-4 text-blue-400 shrink-0" />
               <div className="flex flex-col">
-                <span className="text-[9px] font-mono text-[#8890a6] uppercase">Tenant / Customer</span>
+                <span className="text-[9px] font-mono text-[#8890a6] uppercase">Tenant / Organization</span>
                 <select
-                  value={scopeFilter.tenantId}
+                  id="scope-tenant-selector"
+                  value={safeScope.tenantId}
                   onChange={e => handleTenantSelect(e.target.value)}
                   className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer pr-2"
                 >
                   <option value="all" className="bg-[#12141c] text-white">Total Company (All Tenants)</option>
-                  {customers.map(c => (
+                  {safeCustomers.map(c => (
                     <option key={c.id} value={c.id} className="bg-[#12141c] text-white">
                       {c.name} ({c.tier || 'Enterprise'})
                     </option>
@@ -145,7 +193,8 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
             <div className="flex flex-col">
               <span className="text-[9px] font-mono text-[#8890a6] uppercase">Application</span>
               <select
-                value={scopeFilter.appId}
+                id="scope-app-selector"
+                value={safeScope.appId}
                 onChange={e => handleAppSelect(e.target.value)}
                 className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer pr-2"
               >
@@ -171,7 +220,7 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
             <div className="text-right">
               <div className="text-[9px] font-mono text-[#8890a6] uppercase">Monthly AI Spend</div>
               <div className="text-xs font-mono font-bold text-amber-400">
-                ${scopedSpendUsd.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                ${calculatedSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </div>
           </div>
@@ -180,3 +229,4 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
     </div>
   );
 };
+

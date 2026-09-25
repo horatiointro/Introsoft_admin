@@ -17,7 +17,12 @@ import {
   Zap,
   Lock,
   AppWindow,
-  KeyRound
+  KeyRound,
+  Activity,
+  ShieldAlert,
+  Radio,
+  Sliders,
+  Terminal
 } from 'lucide-react';
 import {
   Application,
@@ -27,6 +32,7 @@ import {
   OrchestrationRequest,
   OrchestrationResponse
 } from '../types';
+import { TrafficComplianceSimulatorView } from './TrafficComplianceSimulatorView';
 
 interface PlaygroundViewProps {
   applications: Application[];
@@ -43,6 +49,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   policies,
   onOrchestrate
 }) => {
+  const [activePlaygroundMode, setActivePlaygroundMode] = useState<'simulator' | 'tester'>('simulator');
   const [selectedAppId, setSelectedAppId] = useState(applications[0]?.id || 'app-introsoft');
   const [selectedCapability, setSelectedCapability] = useState('general_ai');
   const [promptText, setPromptText] = useState(
@@ -161,47 +168,80 @@ print(response.output)`;
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
+      {/* Top Level Mode Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#222222]">
         <div className="flex items-center gap-3.5">
           <AltilLogo size="lg" />
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold tracking-tight text-white">
-                ALTIL API Playground & Ingress Tester
+                ALTIL Interactive AI Gateway & Threat Simulator
               </h1>
               <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                Interactive Testbench
+                Interactive Suite
               </span>
             </div>
             <p className="text-xs text-[#888888] mt-0.5">
-              Simulate how Introsoft applications invoke ALTIL without needing to know which provider or model executes behind the scenes.
+              Simulate enterprise company traffic with live POPIA/GDPR law-breakers, cryptographic tokenization, and sovereign reroutes or test single-call ingress payloads.
             </p>
           </div>
         </div>
-      </div>
 
-      {/* Quick Presets Bar */}
-      <div className="space-y-1.5">
-        <span className="text-[10px] font-bold text-[#666666] uppercase tracking-wider font-mono">
-          Quick Capability Presets
-        </span>
-        <div className="flex flex-wrap gap-2">
-          {samplePresets.map(p => (
-            <button
-              key={p.label}
-              onClick={() => handleApplyPreset(p)}
-              className="px-2.5 py-1 rounded bg-[#141414] hover:bg-[#1a1a1a] border border-[#222222] text-[#e5e5e5] text-xs font-mono transition-colors flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3 h-3 text-blue-400" />
-              <span>{p.label}</span>
-            </button>
-          ))}
+        {/* Mode Toggle Pills */}
+        <div className="flex items-center gap-2 bg-[#121212] p-1.5 rounded-xl border border-[#262626]">
+          <button
+            id="btn-mode-simulator"
+            onClick={() => setActivePlaygroundMode('simulator')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activePlaygroundMode === 'simulator'
+                ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/30'
+                : 'text-[#888888] hover:text-white hover:bg-[#181818]'
+            }`}
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+            <span>Company Law-Breaker Simulator</span>
+          </button>
+
+          <button
+            id="btn-mode-tester"
+            onClick={() => setActivePlaygroundMode('tester')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activePlaygroundMode === 'tester'
+                ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/30'
+                : 'text-[#888888] hover:text-white hover:bg-[#181818]'
+            }`}
+          >
+            <Terminal className="w-3.5 h-3.5 text-blue-400" />
+            <span>Single-Call Ingress Tester</span>
+          </button>
         </div>
       </div>
 
-      {/* Main Split Interface */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      {activePlaygroundMode === 'simulator' ? (
+        <TrafficComplianceSimulatorView />
+      ) : (
+        <div className="space-y-6">
+          {/* Quick Presets Bar */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-bold text-[#666666] uppercase tracking-wider font-mono">
+              Quick Capability Presets
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {samplePresets.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => handleApplyPreset(p)}
+                  className="px-2.5 py-1 rounded bg-[#141414] hover:bg-[#1a1a1a] border border-[#222222] text-[#e5e5e5] text-xs font-mono transition-colors flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3 h-3 text-blue-400" />
+                  <span>{p.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Main Split Interface */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Left Form: Caller Setup & Prompt (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="p-4 rounded bg-[#141414] border border-[#222222] space-y-4 text-xs">
@@ -472,7 +512,7 @@ print(response.output)`;
                 )}
               </div>
 
-              <div className="p-3 rounded bg-[#0a0a0a] border border-[#222222] text-xs text-[#e5e5e5] font-sans leading-relaxed min-h-[140px] whitespace-pre-wrap">
+              <div className="p-3 rounded bg-[#0a0a0a] border border-[#222222] text-xs text-[#e5e5e5] font-sans leading-relaxed min-h-[140px] max-h-80 overflow-y-auto whitespace-pre-wrap">
                 {loading ? (
                   <div className="flex flex-col items-center justify-center h-28 space-y-2 text-[#888888]">
                     <RefreshCw className="w-5 h-5 animate-spin text-blue-400" />
@@ -502,6 +542,8 @@ print(response.output)`;
           </div>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 };

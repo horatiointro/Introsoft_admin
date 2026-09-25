@@ -1,10 +1,11 @@
+import 'dotenv/config';
 import mysql from 'mysql2/promise';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
 function getDatabaseConfig() {
-  if (process.env.DATABASE_URL) {
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     try {
       const parsedUrl = new URL(process.env.DATABASE_URL);
       return {
@@ -97,7 +98,7 @@ async function runMigrationsCLI() {
             const statements = sqlContent
               .split(/;\s*$/m)
               .map(s => s.trim())
-              .filter(s => s.length > 0 && !s.startsWith('--'));
+              .filter(s => s.length > 0 && !s.startsWith('--') && !s.startsWith('/*'));
 
             for (const stmt of statements) {
               if (stmt.length > 0) {

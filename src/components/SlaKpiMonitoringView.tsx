@@ -150,35 +150,92 @@ export const SlaKpiMonitoringView: React.FC<SlaKpiMonitoringViewProps> = ({
             Real-time evaluation of SLA compliance, P95/P99 latencies, RTO/RPO targets, and automated penalty credit calculations per tenant. Click any scorecard row to expand detailed telemetry graphs.
           </p>
         </div>
+      </div>
 
-        {/* Filter selectors */}
-        <div className="flex items-center gap-3">
-          <div>
-            <label className="text-[10px] uppercase font-semibold text-[#666666] block mb-1">Select Tenant</label>
-            <select
-              value={selectedTenantId}
-              onChange={(e) => setSelectedTenantId(e.target.value)}
-              className="bg-[#181c28] border border-[#283046] text-white text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 font-mono"
-            >
-              <option value="all">All Tenants ({customers.length})</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+      {/* Global Hierarchical View Scope Section */}
+      <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 shadow-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#222636]">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-600/30 shrink-0">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                  Global Hierarchical View Scope
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                  {selectedTenantId === 'all' ? 'CONSOLIDATED FLEET SLA (99.98%)' : `SCOPED TENANT: ${customers.find(c => c.id === selectedTenantId)?.name}`}
+                </span>
+              </div>
+              <h2 className="text-sm font-bold text-white mt-0.5">
+                SLA & KPI Evaluation Scope: {selectedTenantId === 'all' ? 'Total Company View (All Tenants)' : customers.find(c => c.id === selectedTenantId)?.name}
+              </h2>
+            </div>
           </div>
 
-          <div>
-            <label className="text-[10px] uppercase font-semibold text-[#666666] block mb-1">Filter SLA Tier</label>
-            <select
-              value={selectedSlaId}
-              onChange={(e) => setSelectedSlaId(e.target.value)}
-              className="bg-[#181c28] border border-[#283046] text-white text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 font-mono"
-            >
-              <option value="all">All SLA Profiles ({slaProfiles.length})</option>
-              {slaProfiles.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+          {/* Filter selectors */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-[#181c28] border border-[#283046] px-3 py-1.5 rounded-lg flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-blue-400 shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-[9px] font-mono text-[#8890a6] uppercase">Tenant Scope</span>
+                <select
+                  value={selectedTenantId}
+                  onChange={(e) => setSelectedTenantId(e.target.value)}
+                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="all" className="bg-[#12141c] text-white">Total Company (All Tenants)</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id} className="bg-[#12141c] text-white">{c.name} ({c.tier || 'Enterprise'})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="bg-[#181c28] border border-[#283046] px-3 py-1.5 rounded-lg flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-purple-400 shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-[9px] font-mono text-[#8890a6] uppercase">SLA Profile Filter</span>
+                <select
+                  value={selectedSlaId}
+                  onChange={(e) => setSelectedSlaId(e.target.value)}
+                  className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="all" className="bg-[#12141c] text-white">All Profiles ({slaProfiles.length})</option>
+                  {slaProfiles.map(s => (
+                    <option key={s.id} value={s.id} className="bg-[#12141c] text-white">{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {selectedTenantId !== 'all' && (
+              <button
+                onClick={() => setSelectedTenantId('all')}
+                className="px-2.5 py-1.5 rounded-lg bg-[#181c28] hover:bg-[#22283a] border border-[#283046] text-blue-400 text-xs font-mono flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Reset Scope
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Scoped SLA Highlights */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono pt-1">
+          <div className="bg-[#161a26] border border-[#242c40] p-3 rounded-lg flex items-center justify-between">
+            <span className="text-[#77809a]">Scoped Uptime Benchmark:</span>
+            <span className="text-emerald-400 font-bold">{selectedTenantId === 'all' ? '99.98%' : '99.99% Guaranteed'}</span>
+          </div>
+          <div className="bg-[#161a26] border border-[#242c40] p-3 rounded-lg flex items-center justify-between">
+            <span className="text-[#77809a]">P95 Latency Ceiling:</span>
+            <span className="text-blue-400 font-bold">&lt; 850 ms (Gateway Router)</span>
+          </div>
+          <div className="bg-[#161a26] border border-[#242c40] p-3 rounded-lg flex items-center justify-between">
+            <span className="text-[#77809a]">Penalty Credits Risk:</span>
+            <span className="text-amber-400 font-bold">$0.00 / 100% In Compliance</span>
           </div>
         </div>
       </div>
