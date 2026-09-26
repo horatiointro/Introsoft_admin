@@ -10,6 +10,15 @@ import {
 
 export const authRouter = express.Router();
 
+function isLoopbackRequest(req: express.Request): boolean {
+  const remoteAddress = req.socket.remoteAddress || '';
+  return remoteAddress === '::1' || remoteAddress === '127.0.0.1' || remoteAddress.startsWith('127.') || remoteAddress.startsWith('::ffff:127.');
+}
+
+function quickAccessEnabled(req: express.Request): boolean {
+  return process.env.NODE_ENV !== 'production' && isLoopbackRequest(req);
+}
+
 /**
  * Helper to set secure session cookie
  */
@@ -23,6 +32,59 @@ function setSessionCookie(res: Response, token: string) {
     maxAge
   });
 }
+
+/** Local Super Admin access is limited to non-production loopback requests. */
+authRouter.get('/super-admin-access/availability', (req, res) => {
+  res.json({ available: quickAccessEnabled(req) });
+});
+
+authRouter.post('/super-admin-access', async (req, res) => {
+  if (!quickAccessEnabled(req)) return res.status(404).json({ error: 'Not found' });
+
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+  if (!email) return res.status(400).json({ error: 'Enter the Super Admin account email.' });
+
+  try {
+    const user = await IamRepository.prepareSuperAdminQuickAccess(email);
+    if (!user) {
+      return res.status(403).json({ error: 'That account is not an active Super Admin account.' });
+    }
+
+    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const userAgent = req.headers['user-agent'] || 'ALTIL Control Console';
+    const token = IamRepository.generateSessionToken();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const session = await IamRepository.createSession(user.id, token, ipAddress, userAgent, expiresAt);
+    setSessionCookie(res, token);
+    await IamRepository.logLoginEvent(email, 'SUCCESS', user.id, user.tenant_id, ipAddress, userAgent, 'Super Admin quick access session issued from loopback.');
+
+    const { roles, permissions, tenantId } = await IamRepository.getUserRolesAndPermissions(user.id);
+    return res.json({
+      status: 'authenticated',
+      token,
+      sessionId: session.id,
+      expiresAt: session.expires_at,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: `${user.first_name} ${user.last_name}`.trim(),
+        firstName: user.first_name,
+        lastName: user.last_name,
+        title: user.title,
+        status: user.status,
+        tenantId: tenantId || user.tenant_id,
+        tenant: 'Total Company Scope',
+        roles,
+        role: roles[0] || 'SUPER_ADMIN',
+        permissions,
+        mfaEnabled: user.mfa_enabled
+      }
+    });
+  } catch (err: any) {
+    console.error('[Super Admin Quick Access Error]:', err);
+    return res.status(500).json({ error: 'Could not create the Super Admin session.' });
+  }
+});
 
 /**
  * POST /api/v1/auth/login

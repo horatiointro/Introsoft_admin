@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Customer,
@@ -634,7 +635,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               <Building2 className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+              <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2"><InfoButton />
                 Tenant Directory & Enterprise Onboarding Engine
                 <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
                   Multi-Tenant Platform
@@ -876,7 +877,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
                       <div>
                         <div className="flex items-center flex-wrap gap-2">
-                          <h2 className="text-base font-bold text-white tracking-tight">
+                          <h2 className="text-base font-bold text-white tracking-tight"><InfoButton />
                             {customer.name}
                           </h2>
                           <span
@@ -1270,7 +1271,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             {filteredCustomers.length === 0 && (
               <div className="bg-[#111111] border border-[#222222] rounded p-12 text-center space-y-3">
                 <Building2 className="w-10 h-10 text-[#444444] mx-auto" />
-                <h3 className="text-base font-semibold text-white">No customers matched your filter</h3>
+                <h3 className="text-base font-semibold text-white"><InfoButton />No customers matched your filter</h3>
                 <p className="text-xs text-[#777777] max-w-md mx-auto">
                   Try adjusting your search criteria or click "Activate Customer" to onboard an enterprise organization or individual consumer.
                 </p>
@@ -1356,7 +1357,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           <div className="bg-[#111111] border border-[#222222] rounded p-4 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#222222]">
               <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                   <Clock className="w-4 h-4 text-purple-400" />
                   Tenant Lifecycle & Offboarding Console
                 </h3>
@@ -1538,7 +1539,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           <div className="bg-[#111111] border border-[#222222] rounded p-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#222222]">
               <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   Statutory Regulatory Nominations & Compliance Accountability
                 </h3>
@@ -1652,7 +1653,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         <div className="space-y-4">
           <div className="bg-[#111111] border border-[#222222] rounded p-4 space-y-4">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <Terminal className="w-4 h-4 text-blue-400" />
                 Live Customer API Key Validator & Gateway Inspection
               </h3>
@@ -1794,7 +1795,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-white">
+                  <h2 className="text-base font-bold text-white"><InfoButton />
                     {editingCustomer ? `Edit Customer: ${editingCustomer.name}` : 'Activate New Customer / Organization'}
                   </h2>
                   <p className="text-xs text-[#888888]">
@@ -2258,7 +2259,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <Users className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-white">
+                  <h2 className="text-base font-bold text-white"><InfoButton />
                     Team Members & Access Control: {managingUsersCustomer.name}
                   </h2>
                   <p className="text-xs text-[#888888]">
@@ -2478,7 +2479,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-white">
+                  <h2 className="text-base font-bold text-white"><InfoButton />
                     Statutory Regulatory Nominations: {managingOfficersCustomer.name}
                   </h2>
                   <p className="text-xs text-[#888888]">
@@ -2684,7 +2685,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-white">
+                  <h2 className="text-base font-bold text-white"><InfoButton />
                     Generate Customer API Key: {generatingKeyForCustomer.name}
                   </h2>
                   <p className="text-xs text-[#888888]">
@@ -2881,7 +2882,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <CreditCard className="w-4 h-4" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-white tracking-tight">
+                  <h2 className="text-base font-bold text-white tracking-tight"><InfoButton />
                     Billing, Credits & Invoices: {billingModalCustomer.name}
                   </h2>
                   <p className="text-xs text-[#888888]">
@@ -3213,7 +3214,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Adjust Tier: {tierModalCustomer.name}</h3>
+                  <h3 className="text-base font-bold text-white"><InfoButton />Adjust Tier: {tierModalCustomer.name}</h3>
                   <p className="text-xs text-[#888888]">Modify commercial tier, RPM rate limits, and budget caps.</p>
                 </div>
               </div>
@@ -3307,7 +3308,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">
+                  <h3 className="text-base font-bold text-white"><InfoButton />
                     Tenant Offboarding Wizard: {offboardingCustomer.name}
                   </h3>
                   <p className="text-xs text-[#888888]">

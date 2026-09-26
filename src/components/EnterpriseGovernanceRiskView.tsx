@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   ShieldAlert,
@@ -52,7 +53,7 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
             </span>
             <span className="text-xs text-emerald-400 font-mono">Control Mapping & Audit Readiness</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Enterprise Risk Register, Security Posture & Controls</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Enterprise Risk Register, Security Posture & Controls</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Manage enterprise risks, inspect visual 5x5 heatmaps, audit data classification flows, and verify mapped framework controls.
           </p>
@@ -76,7 +77,7 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
                   {selectedScope === 'all' ? 'CONSOLIDATED RISK REGISTER (ALL SUBSIDIARIES)' : `SCOPED ENTITY: ${selectedScope.toUpperCase()}`}
                 </span>
               </div>
-              <h2 className="text-sm font-bold text-white mt-0.5">
+              <h2 className="text-sm font-bold text-white mt-0.5"><InfoButton />
                 Governance & Risk Scope: {selectedScope === 'all' ? 'Total Company View (Consolidated)' : selectedScope}
               </h2>
             </div>
@@ -168,7 +169,7 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
         <div className="space-y-6">
           {/* Visual 5x5 Risk Heatmap */}
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white">Enterprise 5x5 Risk Heatmap Matrix (Probability vs Impact)</h3>
+            <h3 className="text-sm font-bold text-white"><InfoButton />Enterprise 5x5 Risk Heatmap Matrix (Probability vs Impact)</h3>
             <div className="grid grid-cols-5 gap-2 text-center text-xs font-mono">
               <div className="p-3 bg-rose-500/30 border border-rose-500/50 rounded-lg text-rose-300 font-bold">5. Catastrophic Impact (CRITICAL)</div>
               <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-lg text-amber-300 font-bold">4. High Impact (HIGH)</div>
@@ -180,7 +181,7 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
 
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Enterprise Risk Register</h3>
+              <h3 className="text-sm font-bold text-white"><InfoButton />Enterprise Risk Register</h3>
               <button className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold font-mono">
                 + Register Enterprise Risk
               </button>
@@ -223,7 +224,7 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
         <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <ShieldCheck className="w-4 h-4 text-blue-400" />
                 Executive Security Posture Scorecard
               </h3>
@@ -256,7 +257,7 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
       {/* 3. DATA GOVERNANCE */}
       {activeTab === 'data_gov' && (
         <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
             <Database className="w-4 h-4 text-purple-400" />
             Data Classification & Processing Traceability
           </h3>
@@ -298,7 +299,7 @@ export const EnterpriseGovernanceRiskView: React.FC = () => {
         <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <FileCheck className="w-4 h-4 text-emerald-400" />
                 Audit Evidence Repository & Mapped Framework Controls
               </h3>

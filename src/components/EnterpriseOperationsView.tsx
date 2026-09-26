@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Network,
@@ -73,7 +74,7 @@ export const EnterpriseOperationsView: React.FC = () => {
             </span>
             <span className="text-xs text-emerald-400 font-mono">Operations Control & CMDB</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">CMDB, Change Management, BCDR & Vendor 360</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />CMDB, Change Management, BCDR & Vendor 360</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Visualize multi-tier dependency chains, execute controlled DR exercises, audit vendor concentration risk, and track ITIL changes.
           </p>
@@ -125,7 +126,7 @@ export const EnterpriseOperationsView: React.FC = () => {
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                   <Network className="w-4 h-4 text-blue-400" />
                   ALTIL CMDB Architecture Dependency Topology
                 </h3>
@@ -209,7 +210,7 @@ export const EnterpriseOperationsView: React.FC = () => {
         <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <GitFork className="w-4 h-4 text-purple-400" />
                 ITIL Change Management & PIR Chain
               </h3>
@@ -250,7 +251,7 @@ export const EnterpriseOperationsView: React.FC = () => {
         <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <RotateCcw className="w-4 h-4 text-emerald-400" />
                 Business Continuity & Disaster Recovery (BCDR) Centre
               </h3>
@@ -294,7 +295,7 @@ export const EnterpriseOperationsView: React.FC = () => {
       {/* 4. VENDOR 360 */}
       {activeTab === 'vendor_360' && (
         <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
             <Building2 className="w-4 h-4 text-amber-400" />
             Vendor 360 & Concentration Exposure Analysis
           </h3>

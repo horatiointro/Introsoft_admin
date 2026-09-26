@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Users,
@@ -310,7 +311,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
               </span>
               <span className="text-xs text-emerald-400 font-mono font-medium">SAM / SSO Enterprise OAuth Directory</span>
             </div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Identity & Access Management (IAM) Directory</h1>
+            <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Identity & Access Management (IAM) Directory</h1>
             <p className="text-xs text-[#888888] mt-0.5">
               Manage platform administrators, tenant operators, statutory Information Officers, granular RBAC permissions, and automated user lifecycle offboarding.
             </p>
@@ -707,7 +708,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <ShieldCheck className="w-4 h-4 text-purple-400" />
                 Configured System & Tenant Roles ({roles.length})
               </h2>
@@ -808,7 +809,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
 
           {/* Visual RBAC Permission Matrix Grid */}
           <div className="bg-[#111111] border border-[#222222] rounded p-4 space-y-3">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Sliders className="w-4 h-4 text-cyan-400" />
               Interactive Permission Coverage Matrix
             </h3>
@@ -868,7 +869,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
               <div className="flex items-center space-x-2 border-b border-[#222222] pb-3">
                 <Lock className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <h3 className="text-sm font-bold text-white">Multi-Factor Authentication (MFA) Policy</h3>
+                  <h3 className="text-sm font-bold text-white"><InfoButton />Multi-Factor Authentication (MFA) Policy</h3>
                   <p className="text-xs text-[#888888]">Enforce step-up TOTP / WebAuthn tokens across identity profiles.</p>
                 </div>
               </div>
@@ -926,7 +927,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
               <div className="flex items-center space-x-2 border-b border-[#222222] pb-3">
                 <ShieldAlert className="w-5 h-5 text-amber-400" />
                 <div>
-                  <h3 className="text-sm font-bold text-white">Password & Session Safeguards</h3>
+                  <h3 className="text-sm font-bold text-white"><InfoButton />Password & Session Safeguards</h3>
                   <p className="text-xs text-[#888888]">Set complexity thresholds, session timeouts, and lockout limits.</p>
                 </div>
               </div>
@@ -990,7 +991,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
         <div className="bg-[#111111] border border-[#222222] rounded p-4 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <Clock className="w-4 h-4 text-amber-400" />
                 IAM & Identity Audit Trail
               </h3>
@@ -1040,7 +1041,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
               <div className="flex items-center space-x-2">
                 <UserPlus className="w-5 h-5 text-blue-400" />
-                <h3 className="text-base font-bold text-white">Provision New IAM User</h3>
+                <h3 className="text-base font-bold text-white"><InfoButton />Provision New IAM User</h3>
               </div>
               <button type="button" onClick={() => setProvisionModalOpen(false)} className="text-[#777777] hover:text-white">
                 <X className="w-5 h-5" />
@@ -1180,7 +1181,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="bg-[#141414] border border-[#2a2a2a] rounded-lg max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
-              <h3 className="text-base font-bold text-white">Edit User: {editUserModal.name}</h3>
+              <h3 className="text-base font-bold text-white"><InfoButton />Edit User: {editUserModal.name}</h3>
               <button onClick={() => setEditUserModal(null)} className="text-[#777777] hover:text-white">
                 <X className="w-5 h-5" />
               </button>
@@ -1271,7 +1272,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
               <div className="flex items-center space-x-2">
                 <KeyRound className="w-5 h-5 text-amber-500" />
-                <h3 className="text-base font-bold text-white">Reset User Password</h3>
+                <h3 className="text-base font-bold text-white"><InfoButton />Reset User Password</h3>
               </div>
               <button type="button" onClick={() => setResetPasswordUser(null)} className="text-[#777777] hover:text-white">
                 <X className="w-5 h-5" />
@@ -1387,7 +1388,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
               <div className="flex items-center space-x-2">
                 <Key className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-base font-bold text-white">Security & Active Tokens</h3>
+                <h3 className="text-base font-bold text-white"><InfoButton />Security & Active Tokens</h3>
               </div>
               <button onClick={() => setUserSecurityModal(null)} className="text-[#777777] hover:text-white">
                 <X className="w-5 h-5" />
@@ -1453,7 +1454,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
               <div className="flex items-center space-x-2">
                 <ShieldCheck className="w-5 h-5 text-purple-400" />
-                <h3 className="text-base font-bold text-white">
+                <h3 className="text-base font-bold text-white"><InfoButton />
                   {roleModal === 'new' ? 'Create Custom RBAC Role' : `Edit Role: ${roleModal.name}`}
                 </h3>
               </div>
@@ -1566,7 +1567,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
               <div className="flex items-center space-x-2">
                 <UserX className="w-5 h-5 text-red-400" />
-                <h3 className="text-base font-bold text-white">User Offboarding Wizard: {offboardUserModal.name}</h3>
+                <h3 className="text-base font-bold text-white"><InfoButton />User Offboarding Wizard: {offboardUserModal.name}</h3>
               </div>
               <button onClick={() => setOffboardUserModal(null)} className="text-[#777777] hover:text-white">
                 <X className="w-5 h-5" />

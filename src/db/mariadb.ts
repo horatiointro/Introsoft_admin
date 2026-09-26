@@ -22,6 +22,13 @@ import {
 
 // Configurable MariaDB connection pool parameters
 function getDatabaseConfig(): mysql.PoolOptions {
+  const ssl = process.env.MARIADB_SSL?.toLowerCase() === 'true'
+    ? {
+        rejectUnauthorized: true,
+        ...(process.env.MARIADB_SSL_CA ? { ca: fs.readFileSync(process.env.MARIADB_SSL_CA, 'utf8') } : {})
+      }
+    : undefined;
+
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     try {
       const parsedUrl = new URL(process.env.DATABASE_URL);
@@ -35,6 +42,7 @@ function getDatabaseConfig(): mysql.PoolOptions {
         connectionLimit: 10,
         queueLimit: 0,
         connectTimeout: 4000,
+        ...(ssl ? { ssl } : {}),
       };
     } catch (e) {
       console.warn('[MariaDB Config] Failed to parse DATABASE_URL, falling back to discrete env vars:', e);
@@ -51,6 +59,7 @@ function getDatabaseConfig(): mysql.PoolOptions {
     connectionLimit: 10,
     queueLimit: 0,
     connectTimeout: 4000,
+    ...(ssl ? { ssl } : {}),
   };
 }
 
@@ -99,34 +108,49 @@ export async function testAndInitMariaDb(): Promise<{ connected: boolean; versio
   try {
     const rows = await executeQuery<{ version: string }>('SELECT VERSION() as version');
     const version = rows[0]?.version || 'MariaDB 10.11.18';
+    const tableCheck = await executeQuery("SHOW TABLES LIKE 'tenants'");
+    if (tableCheck.length === 0) {
+      if (process.env.NODE_ENV === 'production') {
+        isDbConnected = false;
+        dbStatusMessage = `MariaDB is reachable, but the ALTIL schema is missing from '${dbConfig.database}'. Run 'npm run db:migrate' before starting the production server.`;
+        console.error(`[MariaDB] ${dbStatusMessage}`);
+        return { connected: false, version, message: dbStatusMessage };
+      }
+
+      // Keep the legacy bootstrap available for an empty local development database.
+      try {
+        console.log('[MariaDB] Bootstrapping schema from /scripts/init_mariadb.sql...');
+        const result = await runSchemaMigrationScript();
+        if (!result.success) console.warn(`[MariaDB] Local schema bootstrap failed: ${result.message}`);
+      } catch (schemaErr) {
+        console.warn('[MariaDB] Schema check notice:', schemaErr);
+      }
+    } else {
+      if (process.env.NODE_ENV === 'production') {
+        const requiredTables = await Promise.all([
+          executeQuery("SHOW TABLES LIKE 'iam_users'"),
+          executeQuery("SHOW TABLES LIKE 'schema_migrations'")
+        ]);
+        const missingTables = ['iam_users', 'schema_migrations']
+          .filter((_, index) => requiredTables[index].length === 0);
+        if (missingTables.length > 0) {
+          isDbConnected = false;
+          dbStatusMessage = `MariaDB is reachable, but required ALTIL tables are missing (${missingTables.join(', ')}). Run 'npm run db:migrate' before starting the production server.`;
+          console.error(`[MariaDB] ${dbStatusMessage}`);
+          return { connected: false, version, message: dbStatusMessage };
+        }
+      }
+    }
+
     isDbConnected = true;
     dbStatusMessage = `Connected to MariaDB (${version}) at ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`;
     console.log(`[MariaDB 10.11.18] ${dbStatusMessage}`);
-
-    // Verify if tables exist, if not auto-bootstrap schema from script
-    try {
-      const tableCheck = await executeQuery("SHOW TABLES LIKE 'tenants'");
-      if (tableCheck.length === 0) {
-        console.log('[MariaDB] Bootstrapping schema from /scripts/init_mariadb.sql...');
-        await runSchemaMigrationScript();
-      } else {
-        // Run database upgrades incrementally for password lifecycle management
-        try {
-          await executeQuery("ALTER TABLE iam_users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN NOT NULL DEFAULT FALSE");
-          await executeQuery("ALTER TABLE iam_users ADD COLUMN IF NOT EXISTS password_history JSON NULL");
-          console.log('[MariaDB] Incremental IAM database upgrades applied successfully.');
-        } catch (upgradeErr) {
-          console.warn('[MariaDB] Table upgrade warning (possibly columns exist):', upgradeErr);
-        }
-      }
-    } catch (schemaErr) {
-      console.warn('[MariaDB] Schema check notice:', schemaErr);
-    }
-
     return { connected: true, version, message: dbStatusMessage };
   } catch (error: any) {
     isDbConnected = false;
-    dbStatusMessage = `MariaDB connection offline (${error.code || error.message}). Operating in synchronized enterprise memory store with full CRUD capabilities.`;
+    dbStatusMessage = process.env.NODE_ENV === 'production'
+      ? `MariaDB connection failed (${error.code || error.message}); production startup requires a working database.`
+      : `MariaDB connection offline (${error.code || error.message}). Operating in synchronized enterprise memory store with full CRUD capabilities.`;
     console.warn(`[MariaDB 10.11.18] ${dbStatusMessage}`);
     return { connected: false, message: dbStatusMessage };
   }

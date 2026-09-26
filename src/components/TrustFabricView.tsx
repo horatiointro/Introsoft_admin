@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState, useEffect } from 'react';
 import {
   Shield,
@@ -172,7 +173,7 @@ export function TrustFabricView() {
             </span>
             <span className="text-xs font-mono text-[#777]">Zero-Trust Cryptographic Control Plane</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2"><InfoButton />
             <ShieldCheck className="w-6 h-6 text-emerald-400" />
             <span>Identity, Device Attestation & Tamper-Evident Evidence</span>
           </h1>
@@ -239,7 +240,7 @@ export function TrustFabricView() {
                   <span className="text-[11px] font-mono text-[#777]">{t.id}</span>
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">{t.name}</h3>
+                  <h3 className="text-sm font-bold text-white"><InfoButton />{t.name}</h3>
                   <p className="text-xs font-mono text-emerald-400 mt-0.5">{t.domain || 'No custom domain'}</p>
                 </div>
                 <div className="pt-2 border-t border-[#222] flex items-center justify-between text-[11px] font-mono text-[#888]">
@@ -255,7 +256,7 @@ export function TrustFabricView() {
       {activeTab === 'identities' && (
         <div className="p-5 rounded bg-[#141414] border border-[#222] space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Users className="w-4 h-4 text-emerald-400" />
               <span>Universal ALTIL Identities & Principals</span>
             </h3>
@@ -291,7 +292,7 @@ export function TrustFabricView() {
       {activeTab === 'devices' && (
         <div className="p-5 rounded bg-[#141414] border border-[#222] space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Smartphone className="w-4 h-4 text-emerald-400" />
               <span>Bound Mobile & Hardware Enclave Devices</span>
             </h3>
@@ -317,7 +318,7 @@ export function TrustFabricView() {
       {activeTab === 'credentials' && (
         <div className="p-5 rounded bg-[#141414] border border-[#222] space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Key className="w-4 h-4 text-emerald-400" />
               <span>Enterprise Credentials & Bearer Tokens</span>
             </h3>
@@ -360,7 +361,7 @@ export function TrustFabricView() {
       {activeTab === 'evidence' && (
         <div className="p-5 rounded bg-[#141414] border border-[#222] space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <LinkIcon className="w-4 h-4 text-emerald-400" />
               <span>Tamper-Evident Cryptographic Evidence Chain</span>
             </h3>
@@ -392,7 +393,7 @@ export function TrustFabricView() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs">
           <div className="bg-[#111] border border-[#222] rounded-lg max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#222] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <Building2 className="w-4 h-4 text-emerald-400" />
                 <span>Onboard New Enterprise Tenant</span>
               </h3>
@@ -447,7 +448,7 @@ export function TrustFabricView() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs">
           <div className="bg-[#111] border border-[#222] rounded-lg max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#222] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <Key className="w-4 h-4 text-emerald-400" />
                 <span>Issue Cryptographic Bearer Credential</span>
               </h3>

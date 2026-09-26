@@ -403,6 +403,36 @@ export class IamRepository {
   }
 
   /**
+   * Local recovery path for the Super Admin quick-access button.
+   * It never grants access to suspended or offboarded identities.
+   */
+  public static async prepareSuperAdminQuickAccess(email: string): Promise<IamUserRecord | null> {
+    const user = await this.getUserByEmail(email);
+    if (!user) return null;
+
+    const { roles } = await this.getUserRolesAndPermissions(user.id);
+    if (!roles.some(role => role.toUpperCase() === 'SUPER_ADMIN')) return null;
+    if (user.status !== 'ACTIVE' && user.status !== 'LOCKED') return null;
+
+    if (isDatabaseConnected()) {
+      try {
+        await executeQuery(
+          "UPDATE iam_users SET status = 'ACTIVE', failed_login_attempts = 0, lockout_until = NULL WHERE id = ?",
+          [user.id]
+        );
+      } catch (err) {
+        console.warn('[IAM Repository] Could not clear Super Admin lockout for quick access:', err);
+        return null;
+      }
+    }
+
+    user.status = 'ACTIVE';
+    user.failed_login_attempts = 0;
+    user.lockout_until = null;
+    return user;
+  }
+
+  /**
    * Fetches roles and aggregated permissions for a given user ID
    */
   public static async getUserRolesAndPermissions(userId: string): Promise<{

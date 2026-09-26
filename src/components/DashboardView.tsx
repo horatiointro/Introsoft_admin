@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React from 'react';
 import { AltilLogo } from './AltilLogo';
 import {
@@ -67,7 +68,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <AltilLogo size="lg" />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white">
+              <h1 className="text-xl font-bold tracking-tight text-white"><InfoButton />
                 Control Centre Dashboard
               </h1>
               <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
@@ -173,7 +174,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-8 bg-[#141414] border border-[#222222] rounded flex flex-col overflow-hidden">
           <div className="p-4 border-b border-[#222222] flex justify-between items-center bg-[#141414]">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-[#e5e5e5]">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-[#e5e5e5]"><InfoButton />
                 Model Orchestration & Routing Matrix
               </h3>
               <p className="text-[10px] text-[#666666] font-mono mt-0.5">
@@ -256,7 +257,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="lg:col-span-4 flex flex-col gap-4">
           {/* Infrastructure Health */}
           <div className="bg-[#141414] border border-[#222222] p-4 rounded">
-            <h3 className="text-xs font-bold uppercase tracking-widest border-b border-[#222222] pb-2 mb-4 text-[#e5e5e5]">
+            <h3 className="text-xs font-bold uppercase tracking-widest border-b border-[#222222] pb-2 mb-4 text-[#e5e5e5]"><InfoButton />
               Infrastructure Health
             </h3>
             <div className="space-y-4">
@@ -296,7 +297,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="bg-[#141414] border border-[#222222] p-4 rounded flex-1 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between border-b border-[#222222] pb-2 mb-3">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-[#e5e5e5]">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-[#e5e5e5]"><InfoButton />
                   Live Audit Feed
                 </h3>
                 <button

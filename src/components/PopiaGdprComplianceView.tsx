@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState, useEffect } from 'react';
 import {
   Shield,
@@ -381,7 +382,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#222222]">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2"><InfoButton />
               <ShieldCheck className="w-5 h-5 text-emerald-400" />
               <span>POPIA & GDPR Regulatory Privacy Governance</span>
             </h1>
@@ -559,7 +560,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
                     ZA
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white">
+                    <h3 className="text-sm font-bold text-white"><InfoButton />
                       South Africa POPIA Policy Suite
                     </h3>
                     <p className="text-[10px] text-[#777777] font-mono">
@@ -741,7 +742,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
                     EU
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white">
+                    <h3 className="text-sm font-bold text-white"><InfoButton />
                       European Union GDPR Policy Suite
                     </h3>
                     <p className="text-[10px] text-[#777777] font-mono">
@@ -918,7 +919,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
 
           {/* Statutory Officers & Accountability Details */}
           <div className="p-5 rounded bg-[#141414] border border-[#222222] space-y-3">
-            <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
               <Building2 className="w-4 h-4 text-purple-400" />
               <span>Statutory Information Officer & Data Protection Officer (DPO) Registration</span>
             </h3>
@@ -1194,7 +1195,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
         <div className="space-y-4">
           <div className="p-4 rounded bg-[#111111] border border-[#222222] flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white">
+              <h3 className="text-sm font-bold text-white"><InfoButton />
                 Global AI Provider Sovereignty & Residency Topology
               </h3>
               <p className="text-xs text-[#888888]">
@@ -1270,7 +1271,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#222222]">
             <div>
-              <h3 className="text-sm font-bold text-white">
+              <h3 className="text-sm font-bold text-white"><InfoButton />
                 Statutory Data Subject Access & Erasure Requests (DSAR)
               </h3>
               <p className="text-xs text-[#888888]">
@@ -1369,7 +1370,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-[#111111] border border-[#222222] rounded max-w-md w-full p-6 shadow-2xl space-y-4 text-[#e5e5e5]">
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <UserCheck className="w-4 h-4 text-amber-400" />
                 <span>Log New Data Subject Request (DSR)</span>
               </h3>
@@ -1497,7 +1498,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
             {/* Header & Register Action */}
             <div className="p-5 rounded bg-[#141414] border border-[#222222] flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                   <Lock className="w-4 h-4 text-emerald-400" />
                   <span>Cryptographic Immutable AI-Device Mutual Trust Registry</span>
                 </h3>
@@ -1598,7 +1599,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
 
             {/* AI Models Trust Grid */}
             <div className="p-5 rounded bg-[#141414] border border-[#222222] space-y-4">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <Cpu className="w-4 h-4 text-emerald-400" />
                 <span>AI Models & Immutable Device Ledgers</span>
               </h3>
@@ -1744,7 +1745,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs animate-in fade-in duration-150">
                 <div className="bg-[#111] border border-[#222] rounded-lg max-w-md w-full p-6 space-y-4 shadow-2xl">
                   <div className="flex items-center justify-between border-b border-[#222] pb-3">
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                       <Lock className="w-4 h-4 text-emerald-400" />
                       <span>Register Handset Device & Key Binding</span>
                     </h3>
@@ -1811,7 +1812,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
                         </span>
                         <span className="text-xs font-mono text-[#888]">{selectedCellMessages.phoneNumber}</span>
                       </div>
-                      <h3 className="text-lg font-bold text-white mt-1 flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-white mt-1 flex items-center gap-2"><InfoButton />
                         <Phone className="w-5 h-5 text-emerald-400" />
                         <span>AI Message Logs & Compliance Segments ({selectedCellMessages.totalMessages} Messages)</span>
                       </h3>
@@ -1947,7 +1948,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
                     </span>
                     <span className="text-xs font-mono text-[#888888]">{selectedModelForTrust.modelIdentifier}</span>
                   </div>
-                  <h3 className="text-lg font-bold text-white mt-1">
+                  <h3 className="text-lg font-bold text-white mt-1"><InfoButton />
                     {selectedModelForTrust.displayName} — Bound Mobile Devices ({totalCount.toLocaleString()} Total)
                   </h3>
                 </div>

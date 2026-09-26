@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   LineChart,
@@ -145,7 +146,7 @@ export const SlaKpiMonitoringView: React.FC<SlaKpiMonitoringViewProps> = ({
             </span>
             <span className="text-xs text-emerald-400 font-mono">Live KPI Evaluation</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Service Level & KPI Monitoring Dashboard</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Service Level & KPI Monitoring Dashboard</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Real-time evaluation of SLA compliance, P95/P99 latencies, RTO/RPO targets, and automated penalty credit calculations per tenant. Click any scorecard row to expand detailed telemetry graphs.
           </p>
@@ -169,7 +170,7 @@ export const SlaKpiMonitoringView: React.FC<SlaKpiMonitoringViewProps> = ({
                   {selectedTenantId === 'all' ? 'CONSOLIDATED FLEET SLA (99.98%)' : `SCOPED TENANT: ${customers.find(c => c.id === selectedTenantId)?.name}`}
                 </span>
               </div>
-              <h2 className="text-sm font-bold text-white mt-0.5">
+              <h2 className="text-sm font-bold text-white mt-0.5"><InfoButton />
                 SLA & KPI Evaluation Scope: {selectedTenantId === 'all' ? 'Total Company View (All Tenants)' : customers.find(c => c.id === selectedTenantId)?.name}
               </h2>
             </div>
@@ -242,7 +243,7 @@ export const SlaKpiMonitoringView: React.FC<SlaKpiMonitoringViewProps> = ({
 
       {/* Global KPI Target Evaluation Matrix */}
       <div>
-        <h2 className="text-xs font-bold uppercase tracking-wider text-[#77809a] mb-3 flex items-center gap-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-[#77809a] mb-3 flex items-center gap-2"><InfoButton />
           <Zap className="w-4 h-4 text-blue-400" />
           Active Service Level KPI Engine Controls (Click card for detail inspection)
         </h2>
@@ -304,7 +305,7 @@ export const SlaKpiMonitoringView: React.FC<SlaKpiMonitoringViewProps> = ({
       <div className="bg-[#12141c] border border-[#222636] rounded-xl overflow-hidden">
         <div className="p-4 border-b border-[#222636] flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Building2 className="w-4 h-4 text-blue-400" />
               Tenant SLA & KPI Profile Scorecards
               <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded">

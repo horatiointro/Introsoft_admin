@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React from 'react';
 import { Workflow, Zap, CheckCircle2, AlertTriangle, Plus, ToggleLeft, ToggleRight } from 'lucide-react';
 import { WorkflowRule } from '../types';
@@ -17,7 +18,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({ workflows }) => 
             </span>
             <span className="text-xs text-emerald-400 font-mono">Event-Driven Automation Rules</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Automation & Workflow Rules Engine</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Automation & Workflow Rules Engine</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Configure automated policies for budget ceiling actions, SLA latency escalations, PII breach alerts, and automatic provider failovers.
           </p>

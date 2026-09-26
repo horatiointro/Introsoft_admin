@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState, useEffect } from 'react';
 import {
   Shield,
@@ -298,7 +299,7 @@ export const DataProtectionDcrView: React.FC<DataProtectionDcrViewProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2"><InfoButton />
                 Data Cloaking, Tokenisation & Reconstruction (DCR)
               </h1>
               <span className="text-[10px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
@@ -565,7 +566,7 @@ export const DataProtectionDcrView: React.FC<DataProtectionDcrViewProps> = ({
             <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
               {/* Diff Mode Selector */}
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                   <Layers className="w-4 h-4 text-emerald-400" />
                   DCR Pipeline Execution Output & Provenance Telemetry
                 </h3>
@@ -795,7 +796,7 @@ export const DataProtectionDcrView: React.FC<DataProtectionDcrViewProps> = ({
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-[#0e121b] border border-[#222c3d] flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white">Active Transformation Policy Rules Matrix</h3>
+              <h3 className="text-sm font-bold text-white"><InfoButton />Active Transformation Policy Rules Matrix</h3>
               <p className="text-xs text-slate-400 mt-0.5">
                 Defines which transformation strategy is enforced for each data classification and provider restriction profile.
               </p>
@@ -918,7 +919,7 @@ export const DataProtectionDcrView: React.FC<DataProtectionDcrViewProps> = ({
       {activeTab === 'architecture' && (
         <div className="space-y-6 text-xs text-slate-300 leading-relaxed font-sans">
           <div className="p-5 rounded-xl bg-[#0e121b] border border-[#222c3d] space-y-3">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Shield className="w-4 h-4 text-blue-400" />
               ALTIL Data Cloaking, Tokenisation & Reconstruction (DCR) Mathematical Specification
             </h3>

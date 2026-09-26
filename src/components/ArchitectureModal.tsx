@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React from 'react';
 import { AltilLogo } from './AltilLogo';
 import {
@@ -33,7 +34,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
           <div className="flex items-center space-x-3.5">
             <AltilLogo size="lg" />
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight">
+              <h2 className="text-base font-bold text-white tracking-tight"><InfoButton />
                 Introsoft ALTIL 3-Layer Architecture
               </h2>
               <p className="text-xs text-[#888888]">
@@ -71,7 +72,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#0a0a0a] text-blue-300 border border-[#222222] uppercase font-mono">
                   Layer 1
                 </span>
-                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5"><InfoButton />
                   <AppWindow className="w-4 h-4 text-blue-400" />
                   Consumers (Introsoft Applications)
                 </h3>
@@ -103,7 +104,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-300 border border-blue-500/20 uppercase font-mono">
                   Layer 2
                 </span>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                   <Layers className="w-4 h-4 text-blue-400" />
                   ALTIL AI Orchestration & Governance Engine
                 </h3>
@@ -153,7 +154,7 @@ export const ArchitectureModal: React.FC<ArchitectureModalProps> = ({
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#0a0a0a] text-[#888888] border border-[#222222] uppercase font-mono">
                   Layer 3
                 </span>
-                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5"><InfoButton />
                   <Server className="w-4 h-4 text-blue-400" />
                   AI Infrastructure & Providers
                 </h3>

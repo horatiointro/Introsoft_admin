@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Layers,
@@ -398,7 +399,7 @@ export const AltilStackWiringView: React.FC<AltilStackWiringViewProps> = ({
                 <Network className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2"><InfoButton />
                   ALTIL 5-Layer Stack Architecture & Operational Fabric
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                     LIVE FABRIC
@@ -568,7 +569,7 @@ export const AltilStackWiringView: React.FC<AltilStackWiringViewProps> = ({
                         >
                           Layer {layer.number}
                         </span>
-                        <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                        <h2 className="text-sm sm:text-base font-bold text-white tracking-tight"><InfoButton />
                           {layer.title}
                         </h2>
                       </div>
@@ -655,7 +656,7 @@ export const AltilStackWiringView: React.FC<AltilStackWiringViewProps> = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1c2538] pb-3">
                       <div className="flex items-center space-x-2">
                         <Activity className="w-4 h-4 text-blue-400" />
-                        <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider">
+                        <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider"><InfoButton />
                           Layer {layer.number} Deep-Dive Diagnostics ({timeRange.toUpperCase()})
                         </h3>
                       </div>
@@ -767,7 +768,7 @@ export const AltilStackWiringView: React.FC<AltilStackWiringViewProps> = ({
         {/* End-to-End Latency Waterfall */}
         <div className="bg-[#0f141e] border border-[#1f293d] rounded-2xl p-5 shadow-xl space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
+            <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2"><InfoButton />
               <Clock className="w-4 h-4 text-emerald-400" />
               Pipeline Latency Waterfall
             </h3>
@@ -797,7 +798,7 @@ export const AltilStackWiringView: React.FC<AltilStackWiringViewProps> = ({
         {/* AI Gateway Provider Distribution Donut */}
         <div className="bg-[#0f141e] border border-[#1f293d] rounded-2xl p-5 shadow-xl space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
+            <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2"><InfoButton />
               <Cpu className="w-4 h-4 text-amber-400" />
               Layer 4 Provider Routing Split
             </h3>
@@ -836,7 +837,7 @@ export const AltilStackWiringView: React.FC<AltilStackWiringViewProps> = ({
         {/* Layer 5 Immutable Ledger Block Stream */}
         <div className="bg-[#0f141e] border border-[#1f293d] rounded-2xl p-5 shadow-xl space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
+            <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2"><InfoButton />
               <Database className="w-4 h-4 text-emerald-400" />
               Layer 5 Cryptographic Ledger
             </h3>
@@ -882,7 +883,7 @@ export const AltilStackWiringView: React.FC<AltilStackWiringViewProps> = ({
                     <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400">
                       Layer {activeDomain.layer.number}
                     </span>
-                    <h3 className="text-base font-bold text-white">
+                    <h3 className="text-base font-bold text-white"><InfoButton />
                       {activeDomain.name}
                     </h3>
                   </div>

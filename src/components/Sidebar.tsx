@@ -27,7 +27,8 @@ import {
   FileSpreadsheet,
   Gauge,
   Lock,
-  Shield
+  Shield,
+  BookOpen
 } from 'lucide-react';
 
 export type NavTabId =
@@ -67,7 +68,8 @@ export type NavTabId =
   | 'keys'
   | 'routing'
   | 'usage'
-  | 'system';
+  | 'system'
+  | 'help_guide';
 
 interface SidebarProps {
   activeTab: NavTabId;
@@ -219,7 +221,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* Footer info in sidebar */}
-      <div className="p-3 border-t border-[#222222] flex items-center justify-between gap-2 bg-[#0d0d0d]">
+      <div className="p-3 border-t border-[#222222] bg-[#0d0d0d]">
+        <button
+          id="nav-btn-help_guide"
+          onClick={() => setActiveTab('help_guide')}
+          className={`w-full flex items-center gap-2.5 px-2 py-2 mb-3 rounded text-xs text-left transition-colors ${activeTab === 'help_guide' ? 'text-blue-300 bg-blue-500/10' : 'text-[#999] hover:text-white hover:bg-[#151515]'}`}
+        >
+          <BookOpen className="w-4 h-4 shrink-0" />
+          <span>Help & Screen Guide</span>
+        </button>
+        <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-800 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
             H
@@ -228,6 +239,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-xs font-semibold text-white truncate">Horatio Huxham</span>
             <span className="text-[10px] text-green-500 font-mono">Platform Admin</span>
           </div>
+        </div>
         </div>
       </div>
     </aside>

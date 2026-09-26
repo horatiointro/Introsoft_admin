@@ -68,6 +68,10 @@ import { UsageLogsView } from './components/UsageLogsView';
 import { PlaygroundView } from './components/PlaygroundView';
 import { OrgHierarchyView } from './components/OrgHierarchyView';
 import { AdminSettingsView } from './components/AdminSettingsView';
+import { HelpGuideView } from './components/HelpGuideView';
+import { HelpContext, InfoButton } from './components/InfoButton';
+import { getHelpTopic } from './data/helpTopics';
+import { ScreenAssistant } from './components/ScreenAssistant';
 
 // Enterprise Governance & Command Views
 import { CommandCentreView } from './components/CommandCentreView';
@@ -1199,6 +1203,7 @@ export default function App() {
   }
 
   return (
+    <HelpContext.Provider value={{ activeTab, onOpenGuide: () => setActiveTab('help_guide') }}>
     <div className="h-screen bg-[#0a0a0a] text-[#e5e5e5] flex flex-col font-sans selection:bg-blue-600 selection:text-white overflow-hidden">
       {/* Top Navigation Header */}
       <Header
@@ -1250,6 +1255,13 @@ export default function App() {
             activeIncidentsCount={incidents.filter(i => i.status !== 'closed' && i.status !== 'resolved').length}
             onNavigateToTenants={() => setActiveTab('tenants')}
           />
+          {activeTab !== 'help_guide' && (
+            <div className="flex justify-end -mt-4">
+              <InfoButton title={getHelpTopic(activeTab)?.title || 'Current screen'} description={getHelpTopic(activeTab)?.description || `You are viewing ${activeTab.replace(/_/g, ' ')}. Use this screen's headings for section-specific help, or open the full guide for all screen and feature descriptions.`} />
+            </div>
+          )}
+
+          {activeTab === 'help_guide' && <HelpGuideView onNavigate={setActiveTab} />}
 
           {(activeTab === 'command_centre' || activeTab === 'dashboard') && (
             <CommandCentreView
@@ -1665,6 +1677,8 @@ export default function App() {
           <span>{toast.message}</span>
         </div>
       )}
+      <ScreenAssistant activeTab={activeTab} onNavigate={setActiveTab} />
     </div>
+    </HelpContext.Provider>
   );
 }

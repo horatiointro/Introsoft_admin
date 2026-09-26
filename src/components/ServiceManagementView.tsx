@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   LineChart,
@@ -81,7 +82,7 @@ export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () =>
             </span>
             <span className="text-xs text-emerald-400 font-mono">Service Management & SLA Engine</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Services, SLAs, KPIs & Service Catalogue</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Services, SLAs, KPIs & Service Catalogue</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Design reusable SLA profiles, monitor business & AI operational KPIs, publish ITIL Service Catalogues, and process approval workflows.
           </p>
@@ -158,7 +159,7 @@ export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () =>
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-white">SLA Metric Commitments for: {currentSlaProfile.name}</h3>
+                <h3 className="text-sm font-bold text-white"><InfoButton />SLA Metric Commitments for: {currentSlaProfile.name}</h3>
                 <p className="text-xs text-[#8890a6]">Configuration Object: Tenant → SLA Profile → Individual SLA Metrics</p>
               </div>
               <button className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold font-mono">
@@ -231,7 +232,7 @@ export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () =>
       {activeTab === 'kpi_centre' && (
         <div className="space-y-6">
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Sparkles className="w-4 h-4 text-emerald-400" />
               Operational & Business Performance KPI Definitions
             </h3>
@@ -293,7 +294,7 @@ export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () =>
                     </span>
                     <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase">{item.criticality.replace(/_/g, ' ')}</span>
                   </div>
-                  <h3 className="text-sm font-bold text-white">{item.name}</h3>
+                  <h3 className="text-sm font-bold text-white"><InfoButton />{item.name}</h3>
                   <p className="text-xs text-[#8890a6]">{item.description}</p>
 
                   <div className="bg-[#161a26] border border-[#242c40] rounded-lg p-3 text-xs font-mono space-y-1.5 mt-2">
@@ -321,7 +322,7 @@ export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () =>
         <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <Send className="w-4 h-4 text-amber-400" />
                 Enterprise Service Desk & Change Request Portal
               </h3>
@@ -372,7 +373,7 @@ export const ServiceManagementView: React.FC<ServiceManagementViewProps> = () =>
       {/* 5. WORKFLOW & APPROVAL ENGINE */}
       {activeTab === 'workflow_approvals' && (
         <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
             <Workflow className="w-4 h-4 text-cyan-400" />
             Generic Workflow Engine: Trigger → Conditions → Approvals → Actions
           </h3>

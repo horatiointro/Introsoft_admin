@@ -4,7 +4,18 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
+function getSslConfig() {
+  if (process.env.MARIADB_SSL?.toLowerCase() !== 'true') return undefined;
+  return {
+    rejectUnauthorized: true,
+    ...(process.env.MARIADB_SSL_CA
+      ? { ca: fs.readFileSync(process.env.MARIADB_SSL_CA, 'utf8') }
+      : {})
+  };
+}
+
 function getDatabaseConfig() {
+  const ssl = getSslConfig();
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     try {
       const parsedUrl = new URL(process.env.DATABASE_URL);
@@ -16,7 +27,8 @@ function getDatabaseConfig() {
         database: parsedUrl.pathname ? parsedUrl.pathname.replace(/^\//, '') : 'altil_db',
         waitForConnections: true,
         connectionLimit: 5,
-        connectTimeout: 4000
+        connectTimeout: 4000,
+        ...(ssl ? { ssl } : {})
       };
     } catch (e) {
       console.warn('[Migrate CLI] Failed parsing DATABASE_URL, using discrete variables.');
@@ -31,7 +43,8 @@ function getDatabaseConfig() {
     database: process.env.MARIADB_DATABASE || 'altil_db',
     waitForConnections: true,
     connectionLimit: 5,
-    connectTimeout: 4000
+    connectTimeout: 4000,
+    ...(ssl ? { ssl } : {})
   };
 }
 
@@ -96,12 +109,24 @@ async function runMigrationsCLI() {
           try {
             await conn.query('SET FOREIGN_KEY_CHECKS = 0;');
             const statements = sqlContent
+              // Discard standalone SQL comment lines, not the SQL statement that follows them.
+              .replace(/^[ \t]*--.*(?:\r?\n|$)/gm, '')
               .split(/;\s*$/m)
               .map(s => s.trim())
-              .filter(s => s.length > 0 && !s.startsWith('--') && !s.startsWith('/*'));
+              .filter(s => s.length > 0);
 
             for (const stmt of statements) {
               if (stmt.length > 0) {
+                // Make additive column migrations safe to retry after a partial apply,
+                // and keep the syntax compatible with both MySQL and MariaDB.
+                const addColumn = stmt.match(/^ALTER\s+TABLE\s+`?(\w+)`?\s+ADD\s+COLUMN\s+`?(\w+)`?/i);
+                if (addColumn) {
+                  const [existingColumns] = await conn.query(
+                    'SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1',
+                    [addColumn[1], addColumn[2]]
+                  );
+                  if (existingColumns.length > 0) continue;
+                }
                 await conn.query(stmt);
               }
             }
@@ -125,8 +150,9 @@ async function runMigrationsCLI() {
     console.log('\nMigration run completed successfully.\n');
     await pool.end();
   } catch (error) {
-    console.warn(`\n⚠️  Database notice: ${error.message}`);
-    console.log('Note: If MariaDB is unreachable in current environment, in-memory repository fallback is active.');
+    console.error(`\nDatabase migration failed: ${error.message}`);
+    process.exitCode = 1;
+    if (pool) await pool.end().catch(() => {});
   }
 }
 

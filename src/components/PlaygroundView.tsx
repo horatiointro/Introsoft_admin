@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import { AltilLogo } from './AltilLogo';
 import {
@@ -174,7 +175,7 @@ print(response.output)`;
           <AltilLogo size="lg" />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white">
+              <h1 className="text-xl font-bold tracking-tight text-white"><InfoButton />
                 ALTIL Interactive AI Gateway & Threat Simulator
               </h1>
               <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
@@ -245,7 +246,7 @@ print(response.output)`;
         {/* Left Form: Caller Setup & Prompt (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="p-4 rounded bg-[#141414] border border-[#222222] space-y-4 text-xs">
-            <h2 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+            <h2 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
               <AppWindow className="w-3.5 h-3.5 text-blue-400" />
               <span>1. Application Identity & Capability</span>
             </h2>
@@ -405,7 +406,7 @@ print(response.output)`;
         <div className="lg:col-span-7 space-y-4">
           <div className="p-4 rounded bg-[#141414] border border-[#222222] space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
-              <h2 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+              <h2 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
                 <Zap className="w-3.5 h-3.5 text-blue-400" />
                 <span>2. ALTIL Orchestration Lifecycle</span>
               </h2>

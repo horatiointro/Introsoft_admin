@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AltilLogo } from './AltilLogo';
 import { Shield, Lock, User, Key, ArrowRight, CheckCircle2, AlertCircle, Building2, Smartphone, Eye, EyeOff } from 'lucide-react';
 
@@ -8,14 +8,33 @@ interface LoginScreenProps {
 
 const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
 
+async function readAuthResponse(response: Response) {
+  const body = await response.text();
+  try {
+    return body ? JSON.parse(body) : {};
+  } catch {
+    throw new Error(`Authentication service returned an unreadable response (HTTP ${response.status}).`);
+  }
+}
+
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('horatio.huxham@gmail.com');
-  const [password, setPassword] = useState('AltilSuperAdmin2026!');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [mfaCode, setMfaCode] = useState('849201');
   const [selectedTenant, setSelectedTenant] = useState('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [quickAccessAvailable, setQuickAccessAvailable] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/auth/super-admin-access/availability`)
+      .then(response => response.ok ? response.json() : { available: false })
+      .then(data => { if (active) setQuickAccessAvailable(data.available === true); })
+      .catch(() => { if (active) setQuickAccessAvailable(false); });
+    return () => { active = false; };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +59,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         })
       });
 
-      const data = await response.json();
+      const data = await readAuthResponse(response);
 
       if (!response.ok) {
         throw new Error(data.message || 'Authentication failed');
@@ -59,79 +78,42 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         tenant: selectedTenant === 'all' ? 'Total Company Scope' : selectedTenant
       });
     } catch (err: any) {
-      console.warn('Backend authentication API unreachable or rejected, evaluating fallback:', err);
-      // If server is active and returned actual credential failure:
-      if (err.message && !err.message.includes('Failed to fetch')) {
-        setIsSubmitting(false);
-        setErrorMessage(err.message);
-        return;
-      }
-
-      // Offline / standalone browser preview fallback:
-      setTimeout(() => {
-        setIsSubmitting(false);
-        onLoginSuccess({
-          name: 'Horatio Huxham',
-          email: email,
-          role: 'Global Super Admin',
-          tenant: selectedTenant === 'all' ? 'Total Company Scope' : selectedTenant
-        });
-      }, 500);
+      console.warn('Backend authentication API unreachable or rejected:', err);
+      setIsSubmitting(false);
+      setErrorMessage(err instanceof Error && err.message === 'Failed to fetch'
+        ? 'Unable to reach the authentication service. Check the server connection and try again.'
+        : (err.message || 'Authentication failed. Please try again.'));
     }
   };
 
-  const handleDemoQuickLogin = async (role: 'super_admin' | 'tenant_admin' | 'auditor') => {
+  const handleSuperAdminQuickAccess = async () => {
     setIsSubmitting(true);
-    let demoEmail = 'horatio.huxham@gmail.com';
-    let demoPass = 'AltilSuperAdmin2026!';
-    let demoRole = 'Global Super Admin';
-    let demoTenant = 'Total Company Scope';
-
-    if (role === 'tenant_admin') {
-      demoEmail = 'sarah.j@acme-corp.co.za';
-      demoPass = 'TenantAdmin2026!';
-      demoRole = 'Enterprise Tenant Admin';
-      demoTenant = 'ACME Financial Holdings';
-    } else if (role === 'auditor') {
-      demoEmail = 'audit@statutory.gov.za';
-      demoPass = 'Auditor2026!';
-      demoRole = 'Statutory Governance Auditor';
-      demoTenant = 'Audit & Compliance Scope';
-    }
-
+    setErrorMessage('');
     try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
+      const response = await fetch(`${API_BASE}/auth/super-admin-access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: demoEmail,
-          password: demoPass,
-          mfaCode: '849201',
-          selectedTenant: demoTenant
-        })
+        body: JSON.stringify({ email })
       });
 
-      const data = await response.json();
-      if (data.token) {
-        localStorage.setItem('altil_auth_token', data.token);
-        localStorage.setItem('altil_user_profile', JSON.stringify(data.user));
+      const data = await readAuthResponse(response);
+      if (!response.ok || !data.token || !data.user) {
+        throw new Error(data.error || data.message || 'Super Admin access could not be created.');
       }
 
+      localStorage.setItem('altil_auth_token', data.token);
+      localStorage.setItem('altil_user_profile', JSON.stringify(data.user));
+
       setIsSubmitting(false);
       onLoginSuccess({
-        name: data.user?.name || (role === 'super_admin' ? 'Horatio Huxham' : role === 'tenant_admin' ? 'Sarah Jenkins' : 'POPIA Compliance Officer'),
-        email: demoEmail,
-        role: data.user?.role || demoRole,
-        tenant: demoTenant
+        name: data.user.name || 'Super Administrator',
+        email: data.user.email || email,
+        role: data.user.role || 'SUPER_ADMIN',
+        tenant: 'Total Company Scope'
       });
-    } catch (_) {
+    } catch (err: any) {
       setIsSubmitting(false);
-      onLoginSuccess({
-        name: role === 'super_admin' ? 'Horatio Huxham' : role === 'tenant_admin' ? 'Sarah Jenkins' : 'POPIA Compliance Officer',
-        email: demoEmail,
-        role: demoRole,
-        tenant: demoTenant
-      });
+      setErrorMessage(err.message || 'Super Admin access could not be created. Please try again.');
     }
   };
 
@@ -294,32 +276,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </button>
           </form>
 
-          {/* Quick Demo Access Roles */}
-          <div className="pt-4 border-t border-[#1e2738] space-y-2">
-            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block text-center">
-              Quick Role One-Click Bypasses
-            </span>
-            <div className="grid grid-cols-3 gap-2 text-[10px] font-mono">
+          {quickAccessAvailable && (
+            <div className="pt-4 border-t border-[#1e2738]">
               <button
-                onClick={() => handleDemoQuickLogin('super_admin')}
-                className="p-2 bg-[#141a29] hover:bg-[#1f283d] border border-[#232d42] hover:border-emerald-500 text-slate-300 hover:text-white rounded-lg transition-colors text-center"
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleSuperAdminQuickAccess}
+                className="w-full p-3 bg-[#141a29] hover:bg-[#1f283d] border border-[#232d42] hover:border-emerald-500 text-slate-200 hover:text-white rounded-xl transition-colors text-center text-xs font-bold disabled:opacity-50"
               >
-                Super Admin
-              </button>
-              <button
-                onClick={() => handleDemoQuickLogin('tenant_admin')}
-                className="p-2 bg-[#141a29] hover:bg-[#1f283d] border border-[#232d42] hover:border-blue-500 text-slate-300 hover:text-white rounded-lg transition-colors text-center"
-              >
-                Tenant Admin
-              </button>
-              <button
-                onClick={() => handleDemoQuickLogin('auditor')}
-                className="p-2 bg-[#141a29] hover:bg-[#1f283d] border border-[#232d42] hover:border-purple-500 text-slate-300 hover:text-white rounded-lg transition-colors text-center"
-              >
-                POPIA Auditor
+                Super Admin Access
               </button>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

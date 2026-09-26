@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import { Customer, Application, ApiKey } from '../types';
 import { AltilLogo } from './AltilLogo';
@@ -53,7 +54,7 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
           <AltilLogo size="lg" />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white">
+              <h1 className="text-xl font-bold tracking-tight text-white"><InfoButton />
                 Enterprise Multi-Tenant Hierarchy & Org Governance
               </h1>
               <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
@@ -152,7 +153,7 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
                   {selectedNodeId ? `FOCUS: ${selectedNode?.name}` : 'GLOBAL HIERARCHY SCOPE'}
                 </span>
               </div>
-              <h2 className="text-sm font-bold text-white mt-0.5">
+              <h2 className="text-sm font-bold text-white mt-0.5"><InfoButton />
                 Organizational Hierarchy Active Scope: {selectedNode?.name || 'Introsoft Corporation (Apex Root)'}
               </h2>
             </div>
@@ -227,7 +228,7 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
         <div className="bg-[#121212] border border-[#222222] rounded-lg p-6 space-y-8">
           <div className="flex items-center justify-between border-b border-[#222222] pb-4">
             <div>
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider">Organizational Ecosystem Topology</h2>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider"><InfoButton />Organizational Ecosystem Topology</h2>
               <p className="text-xs text-[#888888]">Hierarchical lineage from Introsoft Parent Corporation down to subsidiaries, reseller partners, and clients.</p>
             </div>
             <div className="flex items-center gap-3 text-xs text-[#888888]">
@@ -296,7 +297,7 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
                           <Layers className="w-4 h-4" />
                         </div>
                         <div>
-                          <h3 className="text-xs font-bold text-white">{sub.name}</h3>
+                          <h3 className="text-xs font-bold text-white"><InfoButton />{sub.name}</h3>
                           <span className="text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
                             Subsidiary Entity
                           </span>
@@ -354,7 +355,7 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
                   }`}>
                     {cust.orgRole?.replace('_', ' ') || 'Direct Tenant'}
                   </span>
-                  <h3 className="text-sm font-bold text-white mt-2">{cust.name}</h3>
+                  <h3 className="text-sm font-bold text-white mt-2"><InfoButton />{cust.name}</h3>
                   <p className="text-xs text-[#888888]">{cust.industry} • {cust.country}</p>
                 </div>
               </div>
@@ -419,7 +420,7 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
                 <Building2 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">{selectedNode.name}</h3>
+                <h3 className="text-base font-bold text-white"><InfoButton />{selectedNode.name}</h3>
                 <p className="text-xs text-[#888888]">ID: {selectedNode.id} • {selectedNode.legalName || selectedNode.name}</p>
               </div>
             </div>

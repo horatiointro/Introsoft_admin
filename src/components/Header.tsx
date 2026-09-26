@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import { AltilLogo } from './AltilLogo';
 import {
@@ -287,7 +288,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <Layers className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                         Enterprise Application Menus & Portals
                         <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
                           22 Menus Total

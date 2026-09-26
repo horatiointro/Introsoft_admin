@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Server,
@@ -281,7 +282,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#222222]">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2"><InfoButton />
               <Server className="w-5 h-5 text-blue-400" />
               <span>AI Provider Management & Key Vault</span>
             </h1>
@@ -391,7 +392,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
                       <Server className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-sm font-bold text-white leading-tight truncate">
+                      <h3 className="text-sm font-bold text-white leading-tight truncate"><InfoButton />
                         {provider.name}
                       </h3>
                       <div className="flex items-center gap-1.5 mt-0.5">
@@ -551,7 +552,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
                   <Zap className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">
+                  <h3 className="text-sm font-bold text-white"><InfoButton />
                     Provider Handshake & Diagnostics Probe
                   </h3>
                   <p className="text-[10px] text-[#666666] font-mono">
@@ -687,7 +688,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto">
           <div className="bg-[#111111] border border-[#222222] rounded max-w-xl w-full p-6 shadow-2xl space-y-4 text-[#e5e5e5] my-8">
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <Server className="w-4 h-4 text-blue-400" />
                 <span>{editingProvider ? `Configure Provider: ${editingProvider.name}` : 'Connect New AI Provider'}</span>
               </h3>

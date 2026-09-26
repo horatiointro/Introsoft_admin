@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Sparkles,
@@ -78,7 +79,7 @@ export const AiGovernanceModelLabView: React.FC = () => {
             </span>
             <span className="text-xs text-emerald-400 font-mono">Model Lifecycle & Evaluation Matrix</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">AI Model Governance & Evaluation Lab</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />AI Model Governance & Evaluation Lab</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Audit AI model lifecycles, enforce approved use cases, and run weighted benchmark evaluations across Gemini, Groq, Ollama & OpenAI.
           </p>
@@ -108,7 +109,7 @@ export const AiGovernanceModelLabView: React.FC = () => {
         <div className="space-y-6">
           {/* Lifecycle State Pipeline */}
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-3">
-            <h3 className="text-xs font-mono font-bold text-[#77809a] uppercase">Enterprise AI Model Lifecycle Pipeline</h3>
+            <h3 className="text-xs font-mono font-bold text-[#77809a] uppercase"><InfoButton />Enterprise AI Model Lifecycle Pipeline</h3>
             <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
               {lifecycleSteps.map((step, idx) => (
                 <div
@@ -133,7 +134,7 @@ export const AiGovernanceModelLabView: React.FC = () => {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#222636] pb-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold text-white">{rec.name}</h3>
+                      <h3 className="text-sm font-bold text-white"><InfoButton />{rec.name}</h3>
                       <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 uppercase">
                         {rec.lifecycleState}
                       </span>
@@ -181,7 +182,7 @@ export const AiGovernanceModelLabView: React.FC = () => {
         <div className="space-y-6">
           {/* Workload Weighting Controls */}
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Sliders className="w-4 h-4 text-emerald-400" />
               Configure Workload Priority Weightings
             </h3>
@@ -209,7 +210,7 @@ export const AiGovernanceModelLabView: React.FC = () => {
 
           {/* Benchmark Evaluation Matrix */}
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white">Side-by-Side Model Benchmark Comparison</h3>
+            <h3 className="text-sm font-bold text-white"><InfoButton />Side-by-Side Model Benchmark Comparison</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-mono">
                 <thead className="bg-[#181c28] text-[#77809a] uppercase border-b border-[#242c40]">

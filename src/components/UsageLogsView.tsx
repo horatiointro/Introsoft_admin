@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Activity,
@@ -112,7 +113,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#222222]">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white">
+            <h1 className="text-xl font-bold tracking-tight text-white"><InfoButton />
               Usage Metrics & Audit Trail
             </h1>
             <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
@@ -198,7 +199,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
           <div className="p-4 rounded bg-[#141414] border border-[#222222] space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xs font-bold text-white tracking-wider uppercase font-mono">
+                <h3 className="text-xs font-bold text-white tracking-wider uppercase font-mono"><InfoButton />
                   INFERENCE THROUGHPUT & PROVIDER DISPATCH OVER TIME
                 </h3>
                 <p className="text-xs text-[#888888]">
@@ -284,7 +285,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
             {/* Usage by App Table */}
             <div className="lg:col-span-2 p-4 rounded bg-[#141414] border border-[#222222] space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
-                <h3 className="text-xs font-bold text-white uppercase font-mono">
+                <h3 className="text-xs font-bold text-white uppercase font-mono"><InfoButton />
                   USAGE BY APPLICATION
                 </h3>
                 <span className="text-[10px] text-[#666666] font-mono">Consuming Ecosystem</span>
@@ -327,7 +328,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
             <div className="p-4 rounded bg-[#141414] border border-[#222222] space-y-4 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
-                  <h3 className="text-xs font-bold text-white uppercase font-mono">
+                  <h3 className="text-xs font-bold text-white uppercase font-mono"><InfoButton />
                     PROVIDER COST ATTRIBUTION
                   </h3>
                 </div>
@@ -503,7 +504,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                   <Clock className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white font-sans">
+                  <h3 className="text-sm font-bold text-white font-sans"><InfoButton />
                     Audit Log Inspector: <span className="font-mono text-blue-400">{inspectingLog.id}</span>
                   </h3>
                   <div className="text-[10px] text-[#666666]">

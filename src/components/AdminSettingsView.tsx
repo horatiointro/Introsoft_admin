@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import { AltilLogo } from './AltilLogo';
 import {
@@ -54,7 +55,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({ onSaveSett
           <AltilLogo size="lg" />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white">
+              <h1 className="text-xl font-bold tracking-tight text-white"><InfoButton />
                 Admin Control Panel: Currency & System Variables
               </h1>
               <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -84,7 +85,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({ onSaveSett
                 <Coins className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Currency & Monetary Standards</h2>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider"><InfoButton />Currency & Monetary Standards</h2>
                 <p className="text-xs text-[#888888]">Enforces South African Rand (ZAR / R) across all tenant invoicing and ledgers.</p>
               </div>
             </div>
@@ -150,7 +151,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({ onSaveSett
                 <Sliders className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Default Tenant Onboarding & Credit Variables</h2>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider"><InfoButton />Default Tenant Onboarding & Credit Variables</h2>
                 <p className="text-xs text-[#888888]">Default credit limits, initial balances, and billing cycle configurations for newly provisioned entities.</p>
               </div>
             </div>
@@ -214,7 +215,7 @@ export const AdminSettingsView: React.FC<AdminSettingsViewProps> = ({ onSaveSett
         {/* Right Col: Admin Actions & Summary */}
         <div className="space-y-6">
           <div className="bg-[#121212] border border-[#222222] rounded-lg p-6 space-y-4">
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Admin Actions</h2>
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono"><InfoButton />Admin Actions</h2>
             <p className="text-xs text-[#888888]">
               Apply changes immediately across all active subsidiary, partner, and client tenant ledgers.
             </p>

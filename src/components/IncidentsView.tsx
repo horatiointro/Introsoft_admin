@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   AlertTriangle,
@@ -37,7 +38,7 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
             <ProvenanceBadge type="LIVE" source="MariaDB `itil_incidents`" size="xs" />
             <span className="text-xs text-blue-400 font-mono">PIR & Root Cause Ledger</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Incident & Problem Management Centre</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Incident & Problem Management Centre</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Track active platform outages, latency spikes, commander escalations, Post-Incident Reviews (PIR), and root cause problem records.
           </p>
@@ -52,7 +53,7 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Incidents List */}
         <div className="lg:col-span-1 bg-[#12141c] border border-[#222636] rounded-xl p-4 space-y-3">
-          <h2 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+          <h2 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2"><InfoButton />
             <AlertTriangle className="w-4 h-4 text-amber-400" />
             Active & Historic Incidents ({incidents.length})
           </h2>
@@ -85,7 +86,7 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
                     </span>
                   </div>
 
-                  <h3 className="text-xs font-semibold text-white line-clamp-2">{inc.title}</h3>
+                  <h3 className="text-xs font-semibold text-white line-clamp-2"><InfoButton />{inc.title}</h3>
                   <div className="mt-2 flex items-center justify-between text-[10px] text-[#666666]">
                     <span>Commander: {inc.commander}</span>
                     <span className="capitalize text-emerald-400 font-mono">{inc.status}</span>
@@ -106,7 +107,7 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
                     <span className="text-xs font-mono font-bold text-blue-400">{selectedIncident.id}</span>
                     <span className="text-xs text-[#666666]">• Started: {selectedIncident.startTime}</span>
                   </div>
-                  <h2 className="text-lg font-bold text-white">{selectedIncident.title}</h2>
+                  <h2 className="text-lg font-bold text-white"><InfoButton />{selectedIncident.title}</h2>
                   <p className="text-xs text-[#8890a6] mt-1">{selectedIncident.summary}</p>
                 </div>
                 <span
@@ -122,7 +123,7 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
 
               {/* Timeline */}
               <div>
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-2">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-2"><InfoButton />
                   <Clock className="w-4 h-4 text-blue-400" />
                   Real-time Incident Event Timeline
                 </h3>
@@ -141,7 +142,7 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
               {selectedIncident.postIncidentReview && (
                 <div className="bg-[#161a26] border border-[#283046] rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between border-b border-[#283046] pb-2">
-                    <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                    <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2"><InfoButton />
                       <CheckCircle2 className="w-4 h-4" />
                       Statutory Post-Incident Review (PIR)
                     </h3>

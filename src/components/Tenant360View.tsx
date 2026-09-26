@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Building2,
@@ -217,7 +218,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
               Live Multi-Tenant Telemetry
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2"><InfoButton />
             <Building2 className="w-6 h-6 text-blue-400" />
             {viewMode === 'overall' ? 'Overall Multi-Tenant Platform Summary' : `${tenant.name} (${tenant.code || 'TENANT'})`}
           </h1>
@@ -418,7 +419,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2 group-hover:text-blue-400 transition-colors">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2 group-hover:text-blue-400 transition-colors"><InfoButton />
                     <BarChart3 className="w-5 h-5 text-blue-400" />
                     Multi-Tenant Financial Spend & Token Volume Breakdown
                   </h3>
@@ -482,7 +483,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
             >
               <div>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-base font-bold text-white flex items-center gap-2 group-hover:text-purple-400 transition-colors">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2 group-hover:text-purple-400 transition-colors"><InfoButton />
                     <PieChartIcon className="w-5 h-5 text-purple-400" />
                     Token Volume by Capability Function
                   </h3>
@@ -552,7 +553,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2 group-hover:text-emerald-400 transition-colors">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2 group-hover:text-emerald-400 transition-colors"><InfoButton />
                     <Sliders className="w-5 h-5 text-emerald-400" />
                     Multi-Capability Platform Performance Radar
                   </h3>
@@ -598,7 +599,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2 group-hover:text-amber-400 transition-colors">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2 group-hover:text-amber-400 transition-colors"><InfoButton />
                     <TrendingUp className="w-5 h-5 text-amber-400" />
                     Multi-Tenant Request Velocity & Latency Curve
                   </h3>
@@ -639,7 +640,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
           <div className="bg-[#12141c] border border-[#222636] p-5 rounded-2xl space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                   <Layers className="w-5 h-5 text-blue-400" />
                   Onboarded Enterprise Tenants Diagnostic Register
                 </h3>
@@ -883,7 +884,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
               <div className="bg-[#12141c] border border-[#222636] rounded-2xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                       <Cpu className="w-5 h-5 text-blue-400" />
                       Active Deployed Capability Functions ({tenant.name})
                     </h3>
@@ -948,7 +949,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
           {/* Sub-Tab 2: Commercial Terms */}
           {configSubTab === 'commercial' && (
             <div className="bg-[#12141c] border border-[#222636] rounded-2xl p-5 space-y-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <DollarSign className="w-5 h-5 text-emerald-400" />
                 Commercial & Contractual Terms ({tenant.name})
               </h3>
@@ -980,7 +981,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
           {/* Sub-Tab 3: Service & SLA */}
           {configSubTab === 'service' && (
             <div className="bg-[#12141c] border border-[#222636] rounded-2xl p-5 space-y-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <Activity className="w-5 h-5 text-blue-400" />
                 Service Level Agreement (SLA) & Resilience
               </h3>
@@ -1012,7 +1013,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
           {/* Sub-Tab 4: Security */}
           {configSubTab === 'security' && (
             <div className="bg-[#12141c] border border-[#222636] rounded-2xl p-5 space-y-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <Lock className="w-5 h-5 text-purple-400" />
                 Security Rules & Data Guardrails
               </h3>
@@ -1039,7 +1040,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
           {/* Sub-Tab 5: Compliance */}
           {configSubTab === 'compliance' && (
             <div className="bg-[#12141c] border border-[#222636] rounded-2xl p-5 space-y-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <FileCheck className="w-5 h-5 text-emerald-400" />
                 Statutory POPIA & GDPR Compliance Configuration
               </h3>
@@ -1066,7 +1067,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
           {/* Sub-Tab 6: Entitlements Matrix */}
           {configSubTab === 'entitlements' && (
             <div className="bg-[#12141c] border border-[#222636] rounded-2xl p-5 space-y-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <Sliders className="w-5 h-5 text-blue-400" />
                 Contracted vs Entitled vs Consumed Matrix
               </h3>
@@ -1112,7 +1113,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
             <div className="bg-[#12141c] border border-[#222636] rounded-2xl p-5 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                     <BarChart3 className="w-5 h-5 text-emerald-400" />
                     Configurable Weighted Tenant Health Scorecard
                   </h3>

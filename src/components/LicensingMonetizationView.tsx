@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   CreditCard,
@@ -282,7 +283,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
             <DollarSign className="w-3.5 h-3.5" />
             <span>COMMERCIAL & MONETIZATION ENGINE</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Enterprise Multi-Tenant Licensing & Automated Payment Enforcement</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Enterprise Multi-Tenant Licensing & Automated Payment Enforcement</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Configure flexible per-app licensing models (transaction, daily, monthly, annual, custom SLA) and set automated gateway enforcement on unpaid accounts.
           </p>
@@ -404,7 +405,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
       {activeTab === 'plans' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono"><InfoButton />
               Application Licensing Blueprints & Pricing Rules
             </h2>
             <span className="text-xs text-[#8890a6]">
@@ -426,7 +427,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
                     <span className="text-[10px] font-mono text-[#8890a6] uppercase">{plan.billingCycle}</span>
                   </div>
 
-                  <h3 className="text-base font-bold text-white">{plan.name}</h3>
+                  <h3 className="text-base font-bold text-white"><InfoButton />{plan.name}</h3>
                   <div className="text-2xl font-bold font-mono text-emerald-400 mt-2">
                     {plan.currency === 'USD' ? '$' : plan.currency === 'ZAR' ? 'R' : '€'}
                     {plan.basePrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -491,7 +492,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
       {activeTab === 'subscriptions' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono"><InfoButton />
               Active Tenant Application Licensing Matrix & Real-Time Enforcement
             </h2>
             <button
@@ -638,7 +639,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
             <div className="flex items-center gap-2 border-b border-[#222636] pb-3">
               <Zap className="w-5 h-5 text-amber-400" />
               <div>
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono"><InfoButton />
                   Interactive Payment Webhook & Auto-Enforcement Simulator
                 </h2>
                 <p className="text-xs text-[#8890a6]">
@@ -723,7 +724,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
           {/* Webhook Logs & Integration Spec */}
           <div className="lg:col-span-5 space-y-4">
             <div className="bg-[#12141c] border border-[#222636] p-5 rounded-xl space-y-3">
-              <h3 className="text-xs font-bold text-white uppercase font-mono flex items-center gap-2">
+              <h3 className="text-xs font-bold text-white uppercase font-mono flex items-center gap-2"><InfoButton />
                 <Terminal className="w-4 h-4 text-blue-400" /> Webhook API Spec Endpoint
               </h3>
               <p className="text-xs text-[#8890a6]">
@@ -739,7 +740,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
             </div>
 
             <div className="bg-[#12141c] border border-[#222636] p-5 rounded-xl space-y-3">
-              <h3 className="text-xs font-bold text-white uppercase font-mono">Recent Payment Webhook Executions</h3>
+              <h3 className="text-xs font-bold text-white uppercase font-mono"><InfoButton />Recent Payment Webhook Executions</h3>
               <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                 {paymentLogs.map(log => (
                   <div key={log.id} className="bg-[#181c28] p-3 rounded-lg border border-[#283046] text-xs space-y-1">
@@ -763,7 +764,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#12141c] border border-[#222636] p-4 rounded-xl">
             <div>
               <span className="text-[10px] font-mono text-[#8890a6] uppercase font-bold block">Simulate Tenant Account View:</span>
-              <h3 className="text-base font-bold text-white">Tenant Licensing & Billing Self-Service Portal</h3>
+              <h3 className="text-base font-bold text-white"><InfoButton />Tenant Licensing & Billing Self-Service Portal</h3>
             </div>
             <select
               value={portalTenantId}
@@ -860,7 +861,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#12141c] border border-[#222636] rounded-xl max-w-xl w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#222636] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <Sliders className="w-5 h-5 text-emerald-400" />
                 {editingPlan?.id ? 'Edit Licensing Blueprint' : 'Create Commercial Plan Blueprint'}
               </h3>
@@ -986,7 +987,7 @@ export const LicensingMonetizationView: React.FC<LicensingMonetizationViewProps>
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#12141c] border border-[#222636] rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#222636] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                 <Building2 className="w-5 h-5 text-blue-400" />
                 Assign Application License to Tenant
               </h3>

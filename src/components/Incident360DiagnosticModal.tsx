@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   X,
@@ -138,7 +139,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
               </span>
             </div>
 
-            <h1 className="text-lg font-bold text-white tracking-tight">{incident.title}</h1>
+            <h1 className="text-lg font-bold text-white tracking-tight"><InfoButton />{incident.title}</h1>
 
             <p className="text-xs text-[#8890a6]">
               {incident.summary}
@@ -245,7 +246,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
 
               {/* Business Details & Escalations */}
               <div className="bg-[#141824] border border-[#222636] rounded-xl p-5 space-y-4">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
                   <UserCheck className="w-4 h-4 text-blue-400" />
                   Contractual Terms & Executive Dispatch
                 </h3>
@@ -307,7 +308,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
               </div>
 
               <div className="bg-[#141824] border border-[#222636] rounded-xl p-5 space-y-3">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
                   <ShieldAlert className="w-4 h-4 text-red-400" />
                   Statutory Threat Vector Payload Inspection
                 </h3>
@@ -374,7 +375,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
 
               {/* Upstream Health Matrix */}
               <div className="bg-[#141824] border border-[#222636] rounded-xl p-5 space-y-3">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
                   <Server className="w-4 h-4 text-blue-400" />
                   Upstream AI Provider Health Matrix
                 </h3>
@@ -406,7 +407,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
           {activeTab === 'Level_1' && (
             <div className="space-y-6">
               <div className="bg-[#141824] border border-[#222636] rounded-xl p-5 space-y-4">
-                <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
                   <Zap className="w-4 h-4" />
                   Level 1 Immediate 1-Click Remediation Actions
                 </h3>
@@ -460,7 +461,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
 
               {/* Triage Checklist */}
               <div className="bg-[#141824] border border-[#222636] rounded-xl p-5 space-y-3">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono"><InfoButton />
                   Level 1 Triage Runbook Checklist
                 </h3>
 
@@ -490,7 +491,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
           {activeTab === 'Level_2' && (
             <div className="space-y-6">
               <div className="bg-[#141824] border border-[#222636] rounded-xl p-5 space-y-3">
-                <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
                   <Terminal className="w-4 h-4" />
                   Root Cause Hypotheses & Probability Matrix
                 </h3>
@@ -511,7 +512,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
 
               {/* Stack Trace */}
               <div className="bg-[#141824] border border-[#222636] rounded-xl p-5 space-y-2">
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono"><InfoButton />
                   Call Stack Trace Snippet
                 </h3>
 
@@ -530,7 +531,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
               {/* Interactive RAG Assistant */}
               <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-blue-300 uppercase tracking-wider font-mono flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-blue-300 uppercase tracking-wider font-mono flex items-center gap-2"><InfoButton />
                     <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
                     Gemini 3.7 Flash RAG Diagnostic Assistant
                   </h3>

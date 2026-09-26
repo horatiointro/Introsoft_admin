@@ -426,6 +426,14 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3005;
 
   app.use(express.json());
+  // Vite serves the app under /admin-test/, so its BASE_URL-based API calls
+  // include that prefix. Normalize those requests before matching API routes.
+  app.use((req, _res, next) => {
+    if (req.url === '/admin-test/api/v1' || req.url.startsWith('/admin-test/api/v1/')) {
+      req.url = req.url.slice('/admin-test'.length);
+    }
+    next();
+  });
 
   // ----------------------------------------------------
   // ALTIL IAM & ENTERPRISE AUTHENTICATION APIS
@@ -2806,16 +2814,20 @@ Provide a structured, highly actionable diagnostic breakdown formatted cleanly i
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.use('/admin-test', express.static(distPath));
+    app.get(['/admin-test', '/admin-test/*'], (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`[Database Engine] MariaDB 10.11.18 Initialization...`);
+  const database = await testAndInitMariaDb();
+  if (process.env.NODE_ENV === 'production' && !database.connected) {
+    throw new Error(`Production startup blocked: ${database.message}`);
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`ALTIL AI Control Centre Server running on http://localhost:${PORT}`);
-    console.log(`[Database Engine] MariaDB 10.11.18 Initialization...`);
-    await testAndInitMariaDb();
   });
 }
 

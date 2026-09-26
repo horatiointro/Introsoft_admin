@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
@@ -264,7 +265,7 @@ export const TrafficComplianceSimulatorView: React.FC = () => {
                 PCI-DSS v4.0 + Sovereign Routing
               </span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3"><InfoButton />
               <ShieldAlert className="w-7 h-7 text-amber-400" />
               Interactive Enterprise Compliance & Threat Traffic Simulator
             </h1>
@@ -815,7 +816,7 @@ export const TrafficComplianceSimulatorView: React.FC = () => {
           <div className="bg-[#141414] border border-[#242424] rounded-xl p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
                   <Lock className="w-5 h-5 text-purple-400" />
                   ALTIL Cryptographic Tokenization Vault
                 </h3>
@@ -920,7 +921,7 @@ export const TrafficComplianceSimulatorView: React.FC = () => {
       {activeSubTab === 'violations_ledger' && (
         <div className="space-y-4">
           <div className="bg-[#141414] border border-[#242424] rounded-xl p-5">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
               <ShieldAlert className="w-5 h-5 text-amber-400" />
               Active Statutory Law-Breakers & Regulatory Enforcements
             </h3>

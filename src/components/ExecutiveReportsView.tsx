@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   FileSpreadsheet,
@@ -102,7 +103,7 @@ export const ExecutiveReportsView: React.FC<ExecutiveReportsViewProps> = ({
             </span>
             <span className="text-xs text-emerald-400 font-mono">Automated PDF / CSV / Board Decks</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Executive Reports & Audit Deliverables</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Executive Reports & Audit Deliverables</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Download monthly SLA audit summaries, FinOps board packs, CISO threat intelligence briefings, and statutory POPIA/GDPR compliance packs.
           </p>
@@ -136,7 +137,7 @@ export const ExecutiveReportsView: React.FC<ExecutiveReportsViewProps> = ({
                   {scopeFilter.tenantId === 'all' ? 'CONSOLIDATED ENTERPRISE' : `TENANT: ${selectedTenant?.name || scopeFilter.tenantId}`}
                 </span>
               </div>
-              <h2 className="text-sm font-bold text-white mt-0.5">
+              <h2 className="text-sm font-bold text-white mt-0.5"><InfoButton />
                 Executive Reporting Scope Context: {scopeFilter.scopeName || 'Total Company View'}
               </h2>
             </div>
@@ -333,7 +334,7 @@ export const ExecutiveReportsView: React.FC<ExecutiveReportsViewProps> = ({
                   <span className="text-[10px] text-[#666666] font-mono">{rep.period}</span>
                 </div>
                 
-                <h3 className="text-sm font-bold text-white leading-snug">{scopedTitle}</h3>
+                <h3 className="text-sm font-bold text-white leading-snug"><InfoButton />{scopedTitle}</h3>
                 <p className="text-xs text-[#8890a6] flex items-center gap-1.5">
                   <Clock className="w-3 h-3 text-[#666666]" />
                   Generated: {rep.generatedAt}

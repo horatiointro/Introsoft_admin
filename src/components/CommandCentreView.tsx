@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Activity,
@@ -74,7 +75,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
                 Live Real-Time Telemetry (Click Any Tile to Inspect BOC/SOC Derivation)
               </span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Executive Control & Security Cockpit</h1>
+            <h1 className="text-2xl font-bold text-white tracking-tight"><InfoButton />Executive Control & Security Cockpit</h1>
             <p className="text-xs text-[#8890a6] mt-1">
               Unified CTO / CIO / CISO oversight across multi-tenant SLAs, AI throughput, financial burn, and statutory POPIA/GDPR guardrails. Click any tile below to inspect mathematical derivations, BOC/SOC root causes, and raw transaction streams.
             </p>
@@ -102,7 +103,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
       {/* Real-Time Tiles Section 1: Service & Platform Availability */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#77809a] flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[#77809a] flex items-center gap-2"><InfoButton />
             <Activity className="w-4 h-4 text-emerald-400" />
             1. Platform & Service Health
           </h2>
@@ -115,7 +116,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Platform Availability</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Platform Availability</span><InfoButton title="Platform Availability" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-emerald-400 font-mono mt-1">99.98%</div>
@@ -127,7 +128,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Active Tenants</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Active Tenants</span><InfoButton title="Active Tenants" className="ml-1" />
               <ProvenanceBadge type="LIVE" source="MariaDB" size="xs" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">{activeTenantsCount} / {customers.length}</div>
@@ -139,7 +140,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Connected Apps</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Connected Apps</span><InfoButton title="Connected Apps" className="ml-1" />
               <ProvenanceBadge type="LIVE" source="App Registry" size="xs" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">12 Apps</div>
@@ -151,7 +152,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Requests / Min</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Requests / Min</span><InfoButton title="Requests / Min" className="ml-1" />
               <ProvenanceBadge type="DERIVED" source="Prometheus Rollup" size="xs" />
             </div>
             <div className="text-lg font-bold text-blue-400 font-mono mt-1">2,840 RPM</div>
@@ -163,7 +164,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Requests Today</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Requests Today</span><InfoButton title="Requests Today" className="ml-1" />
               <ProvenanceBadge type="CALCULATED" source="Audit Log Ingest" size="xs" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">48,420</div>
@@ -175,7 +176,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Concurrent Reqs</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Concurrent Reqs</span><InfoButton title="Concurrent Reqs" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-indigo-400 font-mono mt-1">142</div>
@@ -187,7 +188,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Queue Depth</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Queue Depth</span><InfoButton title="Queue Depth" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-emerald-400 font-mono mt-1">2 msgs</div>
@@ -199,7 +200,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
       {/* Real-Time Tiles Section 2: AI Operations & Latency Performance */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#77809a] flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[#77809a] flex items-center gap-2"><InfoButton />
             <Cpu className="w-4 h-4 text-blue-400" />
             2. AI Operations & Telemetry Performance
           </h2>
@@ -212,7 +213,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Provider Health</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Provider Health</span><InfoButton title="Provider Health" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-emerald-400 font-mono mt-1">{onlineProvidersCount} / {providers.length}</div>
@@ -224,7 +225,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Model Availability</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Model Availability</span><InfoButton title="Model Availability" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">28 Models</div>
@@ -236,7 +237,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Average Latency</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Average Latency</span><InfoButton title="Average Latency" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">245 ms</div>
@@ -248,7 +249,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">P95 Latency</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">P95 Latency</span><InfoButton title="P95 Latency" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-emerald-400 font-mono mt-1">412 ms</div>
@@ -260,7 +261,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">P99 Latency</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">P99 Latency</span><InfoButton title="P99 Latency" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-amber-400 font-mono mt-1">1.20 s</div>
@@ -272,7 +273,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Throughput</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Throughput</span><InfoButton title="Throughput" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-purple-400 font-mono mt-1">450 tok/s</div>
@@ -284,7 +285,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Fallback Rate</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Fallback Rate</span><InfoButton title="Fallback Rate" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-emerald-400 font-mono mt-1">0.8%</div>
@@ -296,7 +297,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
       {/* Real-Time Tiles Section 3: Financial FinOps */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#77809a] flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-[#77809a] flex items-center gap-2"><InfoButton />
             <DollarSign className="w-4 h-4 text-amber-400" />
             3. Financial FinOps & Cost Controls
           </h2>
@@ -309,7 +310,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Today's AI Spend</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Today's AI Spend</span><InfoButton title="Today's AI Spend" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">$48.20</div>
@@ -321,7 +322,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Month-to-Date Spend</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Month-to-Date Spend</span><InfoButton title="Month-to-Date Spend" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-white font-mono mt-1">${totalSpend.toFixed(2)}</div>
@@ -333,7 +334,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Forecast Monthly</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Forecast Monthly</span><InfoButton title="Forecast Monthly" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-indigo-400 font-mono mt-1">${(totalSpend * 1.15).toFixed(2)}</div>
@@ -345,7 +346,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Cost / Request</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Cost / Request</span><InfoButton title="Cost / Request" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-emerald-400 font-mono mt-1">$0.00012</div>
@@ -357,7 +358,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Cost / 1K Tokens</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Cost / 1K Tokens</span><InfoButton title="Cost / 1K Tokens" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-emerald-400 font-mono mt-1">$0.00018</div>
@@ -369,7 +370,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Free Tier Savings</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Free Tier Savings</span><InfoButton title="Free Tier Savings" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-purple-400 font-mono mt-1">$420.15</div>
@@ -381,7 +382,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
             className="bg-[#12141c] border border-[#222636] hover:border-blue-500/60 p-3.5 rounded-xl cursor-pointer transition-all hover:scale-[1.03] hover:shadow-lg group relative overflow-hidden"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Budget Used</span>
+              <span className="text-[10px] text-[#77809a] uppercase font-semibold">Budget Used</span><InfoButton title="Budget Used" className="ml-1" />
               <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400 transition-colors" />
             </div>
             <div className="text-lg font-bold text-blue-400 font-mono mt-1">{((totalSpend / totalBudget) * 100).toFixed(1)}%</div>
@@ -397,7 +398,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
           <div className="flex items-center justify-between pb-2 border-b border-[#222636]">
             <div className="flex items-center gap-2">
               <Lock className="w-4 h-4 text-red-400" />
-              <h3 className="text-sm font-bold text-white">Security Operations Centre (SOC)</h3>
+              <h3 className="text-sm font-bold text-white"><InfoButton />Security Operations Centre (SOC)</h3>
             </div>
             <button
               onClick={() => onNavigate('sec_ops')}
@@ -413,7 +414,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
               className="bg-[#181c28] p-3 rounded-lg border border-[#283046] hover:border-red-500/50 cursor-pointer transition-all hover:scale-[1.02] group"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Threats Deflected</span>
+                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Threats Deflected</span><InfoButton title="Threats Deflected" className="ml-1" />
                 <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-red-400" />
               </div>
               <span className="text-base font-bold text-emerald-400 font-mono">142</span>
@@ -424,7 +425,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
               className="bg-[#181c28] p-3 rounded-lg border border-[#283046] hover:border-blue-500/50 cursor-pointer transition-all hover:scale-[1.02] group"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">PII Scrubbed</span>
+                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">PII Scrubbed</span><InfoButton title="PII Incidents Scrubbed" className="ml-1" />
                 <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-blue-400" />
               </div>
               <span className="text-base font-bold text-blue-400 font-mono">1,240</span>
@@ -435,7 +436,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
               className="bg-[#181c28] p-3 rounded-lg border border-[#283046] hover:border-purple-500/50 cursor-pointer transition-all hover:scale-[1.02] group"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Injections Blocked</span>
+                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">Injections Blocked</span><InfoButton title="Prompt Injections" className="ml-1" />
                 <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-purple-400" />
               </div>
               <span className="text-base font-bold text-purple-400 font-mono">38</span>
@@ -459,7 +460,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
           <div className="flex items-center justify-between pb-2 border-b border-[#222636]">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <h3 className="text-sm font-bold text-white">POPIA & GDPR Statutory Compliance</h3>
+              <h3 className="text-sm font-bold text-white"><InfoButton />POPIA & GDPR Statutory Compliance</h3>
             </div>
             <button
               onClick={() => onNavigate('compliance')}
@@ -475,7 +476,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
               className="bg-[#181c28] p-3 rounded-lg border border-[#283046] hover:border-emerald-500/50 cursor-pointer transition-all hover:scale-[1.02] group"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">POPIA Score</span>
+                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">POPIA Score</span><InfoButton title="POPIA Score" className="ml-1" />
                 <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-emerald-400" />
               </div>
               <span className="text-base font-bold text-emerald-400 font-mono">98% Compliant</span>
@@ -486,7 +487,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
               className="bg-[#181c28] p-3 rounded-lg border border-[#283046] hover:border-emerald-500/50 cursor-pointer transition-all hover:scale-[1.02] group"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">GDPR Score</span>
+                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">GDPR Score</span><InfoButton title="GDPR Score" className="ml-1" />
                 <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-emerald-400" />
               </div>
               <span className="text-base font-bold text-emerald-400 font-mono">96% Compliant</span>
@@ -497,7 +498,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
               className="bg-[#181c28] p-3 rounded-lg border border-[#283046] hover:border-amber-500/50 cursor-pointer transition-all hover:scale-[1.02] group"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">DSARs Open</span>
+                <span className="text-[10px] text-[#77809a] uppercase font-semibold block">DSARs Open</span><InfoButton title="DSARs Outstanding" className="ml-1" />
                 <Maximize2 className="w-3 h-3 text-[#555e78] group-hover:text-amber-400" />
               </div>
               <span className="text-base font-bold text-amber-400 font-mono">2 Open</span>
@@ -520,7 +521,7 @@ export const CommandCentreView: React.FC<CommandCentreViewProps> = ({
       {/* Active Incidents & Operational Ticker */}
       <div className="bg-[#12141c] border border-[#222636] rounded-xl p-4">
         <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#222636]">
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+          <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2"><InfoButton />
             <AlertTriangle className="w-4 h-4 text-amber-400" />
             Active Platform Incidents & SLA Impact Log
           </h3>

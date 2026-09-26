@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState, useEffect } from 'react';
 import {
   Server,
@@ -213,7 +214,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#222222]">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2"><InfoButton />
               <BarChart3 className="w-5 h-5 text-blue-400" />
               <span>Provider Telemetry & Real-Time Performance</span>
             </h1>
@@ -330,7 +331,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
 
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-bold text-white leading-tight">
+                <h2 className="text-base font-bold text-white leading-tight"><InfoButton />
                   {currentProvider.name}
                 </h2>
                 <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-[#1f1f1f] text-[#aaaaaa] border border-[#333333]">
@@ -516,7 +517,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
         <div className="lg:col-span-2 bg-[#141414] border border-[#222222] rounded p-4 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#222222] pb-3">
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                 <Activity className="w-4 h-4 text-blue-400" />
                 <span>Provider Performance Telemetry Timeline (Last 12 Hours)</span>
               </h3>
@@ -658,7 +659,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
         {/* Right 1 Col: Model Performance Breakdown Matrix */}
         <div className="bg-[#141414] border border-[#222222] rounded p-4 space-y-3">
           <div className="flex items-center justify-between border-b border-[#222222] pb-2.5">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
               <Boxes className="w-4 h-4 text-green-400" />
               <span>Models Under This Provider</span>
             </h3>
@@ -726,7 +727,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
         <div className="flex items-center justify-between border-b border-[#222222] pb-3">
           <div className="flex items-center space-x-2">
             <Radio className="w-4 h-4 text-green-400 animate-pulse" />
-            <h3 className="text-sm font-bold text-white">
+            <h3 className="text-sm font-bold text-white"><InfoButton />
               Live Ingress/Egress Telemetry Feed ({currentProvider.name})
             </h3>
           </div>

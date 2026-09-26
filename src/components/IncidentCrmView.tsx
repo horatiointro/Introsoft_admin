@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   AlertTriangle,
@@ -194,7 +195,7 @@ export const IncidentCrmView: React.FC<IncidentCrmViewProps> = ({
             </span>
             <span className="text-xs text-amber-400 font-mono">SMS • Email • In-App Alerting Engine</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Incident Lifecycle CRM & Multi-Channel Alert Centre</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Incident Lifecycle CRM & Multi-Channel Alert Centre</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Log, assign, track, and alert across BOC, SOC, NOC, and L1-L3 support tiers with full drill-down diagnostics and RAG assistance.
           </p>
@@ -331,7 +332,7 @@ export const IncidentCrmView: React.FC<IncidentCrmViewProps> = ({
                           </span>
                         </div>
 
-                        <h3 className="text-xs font-bold text-white line-clamp-2 leading-snug">
+                        <h3 className="text-xs font-bold text-white line-clamp-2 leading-snug"><InfoButton />
                           {inc.title}
                         </h3>
 
@@ -452,7 +453,7 @@ export const IncidentCrmView: React.FC<IncidentCrmViewProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Dispatcher Form */}
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-            <h2 className="text-sm font-bold text-white uppercase font-mono flex items-center gap-2">
+            <h2 className="text-sm font-bold text-white uppercase font-mono flex items-center gap-2"><InfoButton />
               <Bell className="w-4 h-4 text-purple-400" />
               Live Multi-Channel Alert Dispatch Simulator
             </h2>
@@ -508,7 +509,7 @@ export const IncidentCrmView: React.FC<IncidentCrmViewProps> = ({
 
           {/* Active Dispatch Logs */}
           <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 space-y-4">
-            <h2 className="text-sm font-bold text-white uppercase font-mono flex items-center gap-2">
+            <h2 className="text-sm font-bold text-white uppercase font-mono flex items-center gap-2"><InfoButton />
               <Zap className="w-4 h-4 text-amber-400" />
               Live Alert Delivery Ledger ({alerts.length})
             </h2>
@@ -549,7 +550,7 @@ export const IncidentCrmView: React.FC<IncidentCrmViewProps> = ({
                 </span>
               </div>
 
-              <h3 className="text-sm font-bold text-white">{art.title}</h3>
+              <h3 className="text-sm font-bold text-white"><InfoButton />{art.title}</h3>
 
               <div className="bg-[#0a0c12] border border-[#222636] p-3 rounded-lg text-xs text-[#c0c6d8] whitespace-pre-wrap">
                 {art.content}
@@ -572,7 +573,7 @@ export const IncidentCrmView: React.FC<IncidentCrmViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#12141c] border border-[#222636] rounded-2xl w-full max-w-xl p-6 space-y-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-[#222636] pb-3">
-              <h2 className="text-base font-bold text-white font-mono flex items-center gap-2">
+              <h2 className="text-base font-bold text-white font-mono flex items-center gap-2"><InfoButton />
                 <AlertTriangle className="w-5 h-5 text-red-500" />
                 Declare Major Enterprise Incident (P1 / P2)
               </h2>

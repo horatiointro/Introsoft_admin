@@ -12,6 +12,7 @@
     "db:init": "node scripts/setup_db.js",
     "db:migrate": "node scripts/migrate.js",
     "db:status": "node scripts/migrate.js --status",
+    "db:admin-password": "node scripts/set_admin_password.js",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit"
   },

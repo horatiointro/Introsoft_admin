@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   DollarSign,
@@ -87,7 +88,7 @@ export const FinOpsView: React.FC<FinOpsViewProps> = ({
             </span>
             <span className="text-xs text-blue-400 font-mono">ZAR / USD Dual Currency Engine (1 USD = R{zarRate} ZAR)</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">AI FinOps & Enterprise Cost Management</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />AI FinOps & Enterprise Cost Management</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Real-time tracking of AI provider token burn, tenant cost allocation, budget ceiling actions, and free-tier savings.
           </p>
@@ -131,7 +132,7 @@ export const FinOpsView: React.FC<FinOpsViewProps> = ({
                   {scopeFilter.tenantId === 'all' ? 'CONSOLIDATED FINANCIAL FLEET' : `SCOPED TENANT: ${selectedTenant?.name || scopeFilter.tenantId}`}
                 </span>
               </div>
-              <h2 className="text-sm font-bold text-white mt-0.5">
+              <h2 className="text-sm font-bold text-white mt-0.5"><InfoButton />
                 FinOps Active Scope: {scopeFilter.scopeName || 'Total Company View'}
               </h2>
             </div>
@@ -266,7 +267,7 @@ export const FinOpsView: React.FC<FinOpsViewProps> = ({
       {/* Tenant Cost Allocation Ledger */}
       <div className="bg-[#12141c] border border-[#222636] rounded-xl overflow-hidden">
         <div className="p-4 border-b border-[#222636] flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white">
+          <h3 className="text-sm font-bold text-white"><InfoButton />
             {scopeFilter.tenantId === 'all'
               ? 'Tenant Cost Allocation & Budget Ceiling Ledger (All Tenants)'
               : `Scoped Tenant Cost Ledger: ${selectedTenant?.name}`}

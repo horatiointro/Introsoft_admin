@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import { ShieldAlert, Lock, AlertCircle, Eye, EyeOff, ShieldCheck, Cpu, Maximize2 } from 'lucide-react';
 import { Customer, AIProvider, AuditLog } from '../types';
@@ -37,7 +38,7 @@ export const SecOpsView: React.FC<SecOpsViewProps> = ({
             </span>
             <span className="text-xs text-emerald-400 font-mono">Real-time Injection & PII Guard</span>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Security Operations Centre (SOC) & Threat Shield</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight"><InfoButton />Security Operations Centre (SOC) & Threat Shield</h1>
           <p className="text-xs text-[#8890a6] mt-0.5">
             Monitor API threat vectors, prompt injection telemetry, POPIA/GDPR real-time PII redaction accuracy, and IP whitelisting rules. Click any tile to inspect derivations and root cause logs.
           </p>
@@ -106,7 +107,7 @@ export const SecOpsView: React.FC<SecOpsViewProps> = ({
       <div className="bg-[#12141c] border border-[#222636] rounded-xl overflow-hidden">
         <div className="p-4 border-b border-[#222636] flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-bold text-white">Security Threat Log & PII Inspection Ledger</h3>
+            <h3 className="text-sm font-bold text-white"><InfoButton />Security Threat Log & PII Inspection Ledger</h3>
             <p className="text-xs text-[#8890a6] mt-0.5">Real-time prompt inspection events before model submission.</p>
           </div>
         </div>

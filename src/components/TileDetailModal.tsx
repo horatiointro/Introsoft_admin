@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   X,
@@ -161,7 +162,7 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
               </span>
             </div>
 
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2"><InfoButton />
               {data.title}
               <span className="text-2xl font-mono text-emerald-400 font-extrabold ml-2">
                 {data.value}
@@ -242,7 +243,7 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
               {/* Formula & Derivation Logic Card */}
               <div className="bg-[#151928] border border-[#232a42] p-4 rounded-xl space-y-3">
                 <div className="flex items-center justify-between border-b border-[#232a42] pb-2">
-                  <h3 className="text-xs font-bold font-mono text-blue-400 uppercase tracking-wider flex items-center gap-2">
+                  <h3 className="text-xs font-bold font-mono text-blue-400 uppercase tracking-wider flex items-center gap-2"><InfoButton />
                     <Info className="w-4 h-4 text-blue-400" />
                     How This Summary Metric Is Mathematically Derived
                   </h3>
@@ -275,7 +276,7 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
               <div className="bg-[#151928] border border-[#232a42] p-5 rounded-xl space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                       <TrendingUp className="w-4 h-4 text-emerald-400" />
                       Historical Trend & Performance Envelope
                     </h3>
@@ -306,7 +307,7 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
               {/* Breakdown by Dimension (e.g., Tenant, Model, Gateway) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-[#151928] border border-[#232a42] p-5 rounded-xl space-y-4">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                     <Layers className="w-4 h-4 text-purple-400" />
                     Dimensional Composition Breakdown
                   </h3>
@@ -334,7 +335,7 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
                 {/* Quick Next Drill Action Button */}
                 <div className="bg-[#151928] border border-[#232a42] p-5 rounded-xl flex flex-col justify-between space-y-4">
                   <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2"><InfoButton />
                       <ShieldAlert className="w-4 h-4 text-amber-400" />
                       Ready for Deep BOC & SOC Telemetry?
                     </h3>
@@ -373,7 +374,7 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
                     <div className="flex items-center gap-2">
                       <Activity className="w-5 h-5 text-emerald-400" />
                       <div>
-                        <h3 className="text-sm font-bold text-white">Business Operations Centre (BOC) Impact</h3>
+                        <h3 className="text-sm font-bold text-white"><InfoButton />Business Operations Centre (BOC) Impact</h3>
                         <p className="text-[11px] text-[#8890a6]">Commercial, SLA, and financial risk evaluation.</p>
                       </div>
                     </div>
@@ -412,7 +413,7 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
                     <div className="flex items-center gap-2">
                       <Lock className="w-5 h-5 text-red-400" />
                       <div>
-                        <h3 className="text-sm font-bold text-white">Security Operations Centre (SOC) Telemetry</h3>
+                        <h3 className="text-sm font-bold text-white"><InfoButton />Security Operations Centre (SOC) Telemetry</h3>
                         <p className="text-[11px] text-[#8890a6]">Guardrail enforcement & threat intelligence.</p>
                       </div>
                     </div>
@@ -468,7 +469,7 @@ export const TileDetailModal: React.FC<TileDetailModalProps> = ({
                 <div className="flex items-center gap-2">
                   <Terminal className="w-5 h-5 text-purple-400" />
                   <div>
-                    <h3 className="text-sm font-bold text-white">Raw Gateway Transaction Audit Stream</h3>
+                    <h3 className="text-sm font-bold text-white"><InfoButton />Raw Gateway Transaction Audit Stream</h3>
                     <p className="text-xs text-[#8890a6]">Individual real-time events contributing to this summary metric.</p>
                   </div>
                 </div>

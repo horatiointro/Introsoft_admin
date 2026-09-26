@@ -1,3 +1,4 @@
+import { InfoButton } from './InfoButton';
 import React, { useState } from 'react';
 import {
   Boxes,
@@ -146,7 +147,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#222222]">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-white">
+            <h1 className="text-xl font-bold tracking-tight text-white"><InfoButton />
               Model Registry & Catalog
             </h1>
             <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
@@ -330,7 +331,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-[#111111] border border-[#222222] rounded max-w-lg w-full p-6 shadow-2xl space-y-4 text-[#e5e5e5] max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
-              <h3 className="text-sm font-bold text-white">
+              <h3 className="text-sm font-bold text-white"><InfoButton />
                 {editingModel ? `Configure Model: ${editingModel.displayName}` : 'Register New AI Model'}
               </h3>
               <button
