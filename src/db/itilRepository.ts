@@ -13,7 +13,7 @@ export const ItilOperationsRepository = {
   async getIncidents(tenantId?: string): Promise<Incident[]> {
     if (isDatabaseConnected()) {
       try {
-        let sql = `SELECT * FROM itil_incidents`;
+        let sql = `SELECT * FROM operations_incidents`;
         const params: any[] = [];
         if (tenantId && tenantId !== 'all') {
           sql += ` WHERE tenant_id = ? OR tenant_id IS NULL`;
@@ -21,31 +21,29 @@ export const ItilOperationsRepository = {
         }
         sql += ` ORDER BY created_at DESC`;
         const rows = await executeQuery<any>(sql, params);
-        if (rows && rows.length > 0) {
-          return rows.map(r => ({
+        return (rows || []).map(r => ({
             id: r.id,
             title: r.title,
             severity: r.severity || 'P2_HIGH',
             status: r.status || 'investigating',
-            commander: r.commander || r.assigned_to || 'NOC Commander',
-            assignedTeam: (r.assigned_team as any) || 'NOC',
-            assignedEngineer: r.assigned_engineer || r.assigned_to || undefined,
-            affectedTenantIds: r.tenant_id ? [r.tenant_id] : ['cust-1'],
-            affectedTenantNames: ['Introsoft Enterprise'],
-            affectedAppIds: ['app-capitec-banking'],
-            affectedAppNames: ['Capitec AI Assistant'],
+            commander: r.owner_email || r.assignee_email || 'ALTIL Operations',
+            assignedTeam: 'NOC',
+            assignedEngineer: r.assignee_email || undefined,
+            affectedTenantIds: r.tenant_id ? [r.tenant_id] : [],
+            affectedTenantNames: r.tenant_name ? [r.tenant_name] : [],
+            affectedAppIds: r.application_id ? [r.application_id] : [],
+            affectedAppNames: r.application_name ? [r.application_name] : [],
             affectedServiceIds: [r.affected_service || 'srv-01'],
             startTime: r.created_at ? new Date(r.created_at).toISOString().replace('T', ' ').slice(0, 19) : new Date().toISOString(),
-            slaImpacted: Boolean(r.sla_breach),
+            slaImpacted: Boolean(r.sla_breached),
             summary: r.description || r.title || '',
-            category: (r.category as any) || 'API_Gateway',
+            category: 'API_Gateway',
             alertChannels: ['email', 'in_app'],
             smsAlertSent: false,
             emailAlertSent: true,
             inAppAlertSent: true,
-            timeline: r.timeline ? (typeof r.timeline === 'string' ? JSON.parse(r.timeline) : r.timeline) : []
+            timeline: []
           }));
-        }
       } catch (err) {
         console.warn('[ItilOperationsRepository] DB query failed, falling back to in-memory store:', err);
       }
@@ -92,39 +90,41 @@ export const ItilOperationsRepository = {
 
     if (isDatabaseConnected()) {
       try {
+        const tenantCandidate = completeIncident.affectedTenantIds[0];
+        const validTenant = tenantCandidate ? await executeQuery<any>('SELECT id FROM tenants WHERE id=? LIMIT 1', [tenantCandidate]) : [];
         const sql = `
-          INSERT INTO itil_incidents (
-            id, title, description, severity, status, category, impact, urgency,
-            affected_service, assigned_to, sla_breach, sla_time_remaining_min,
-            mitigation_action, root_cause, timeline
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO operations_incidents (
+            id, incident_number, tenant_id, tenant_name, application_id, application_name,
+            title, description, severity, status, affected_service, owner_email, assignee_email,
+            sla_breached, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             title = VALUES(title),
             description = VALUES(description),
             severity = VALUES(severity),
             status = VALUES(status),
-            category = VALUES(category),
             affected_service = VALUES(affected_service),
-            assigned_to = VALUES(assigned_to),
-            timeline = VALUES(timeline),
+            assignee_email = VALUES(assignee_email),
+            sla_breached = VALUES(sla_breached),
             updated_at = NOW()
         `;
         await executeQuery(sql, [
           completeIncident.id,
+          completeIncident.id,
+          validTenant.length ? tenantCandidate : null,
+          completeIncident.affectedTenantNames[0] || null,
+          completeIncident.affectedAppIds[0] || null,
+          completeIncident.affectedAppNames[0] || null,
           completeIncident.title,
           completeIncident.summary,
           completeIncident.severity,
           completeIncident.status,
-          completeIncident.category,
-          'MEDIUM',
-          'MEDIUM',
           completeIncident.affectedServiceIds[0] || 'srv-01',
           completeIncident.commander,
+          completeIncident.assignedEngineer || completeIncident.commander,
           completeIncident.slaImpacted ? 1 : 0,
-          120,
-          '',
-          '',
-          JSON.stringify(completeIncident.timeline)
+          completeIncident.startTime,
+          completeIncident.startTime
         ]);
       } catch (err) {
         console.warn('[ItilOperationsRepository] Failed to persist incident in MariaDB:', err);
@@ -146,7 +146,7 @@ export const ItilOperationsRepository = {
     if (isDatabaseConnected()) {
       try {
         await executeQuery(
-          `UPDATE itil_incidents SET status = ?, mitigation_action = COALESCE(?, mitigation_action), updated_at = NOW() WHERE id = ?`,
+          `UPDATE operations_incidents SET status = ?, resolution_summary = COALESCE(?, resolution_summary), updated_at = NOW() WHERE id = ?`,
           [status, mitigationAction || null, incidentId]
         );
       } catch (err) {

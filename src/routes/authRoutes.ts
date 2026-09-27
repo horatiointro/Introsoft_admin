@@ -29,7 +29,10 @@ function setSessionCookie(res: Response, token: string) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge
+    maxAge,
+    // The console calls many API groups outside /auth; a root-scoped cookie
+    // lets the browser attach this session to every same-origin API request.
+    path: '/'
   });
 }
 
@@ -167,7 +170,7 @@ authRouter.post('/logout', async (req: AuthenticatedRequest, res) => {
   if (token) {
     await IamRepository.revokeSession(token);
   }
-  res.clearCookie('altil_session');
+  res.clearCookie('altil_session', { path: '/' });
   res.json({ status: 'logged_out', message: 'Session successfully revoked and purged.' });
 });
 

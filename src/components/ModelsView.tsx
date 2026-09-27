@@ -1,5 +1,5 @@
 import { InfoButton } from './InfoButton';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Boxes,
   Plus,
@@ -16,9 +16,14 @@ import {
   Filter,
   X,
   Layers,
-  DollarSign
+  DollarSign,
+  Activity,
+  RefreshCw,
+  ShieldCheck
 } from 'lucide-react';
 import { AIModel, AIProvider } from '../types';
+
+const MODEL_API_BASE = `${import.meta.env.BASE_URL}api/v1`;
 
 interface ModelsViewProps {
   models: AIModel[];
@@ -26,6 +31,7 @@ interface ModelsViewProps {
   onAddModel: (model: Partial<AIModel>) => void;
   onUpdateModel: (id: string, model: Partial<AIModel>) => void;
   onDeleteModel: (id: string) => void;
+  onRefreshModels?: () => Promise<void>;
 }
 
 export const ModelsView: React.FC<ModelsViewProps> = ({
@@ -33,7 +39,8 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
   providers,
   onAddModel,
   onUpdateModel,
-  onDeleteModel
+  onDeleteModel,
+  onRefreshModels
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProviderFilter, setSelectedProviderFilter] = useState('all');
@@ -41,6 +48,36 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
   // Modal / Drawer state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<AIModel | null>(null);
+  const [fleetStatus, setFleetStatus] = useState<any>(null);
+  const [fleetHistory, setFleetHistory] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadFleet = async () => {
+    try {
+      const response = await fetch(`${MODEL_API_BASE}/models/fleet`);
+      if (!response.ok) return;
+      const data = await response.json();
+      setFleetStatus(data.status);
+      setFleetHistory(data.history || []);
+    } catch { /* Keep the last known status visible during transient network errors. */ }
+  };
+
+  useEffect(() => {
+    void loadFleet();
+    const timer = window.setInterval(() => { void loadFleet(); }, 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const refreshCatalog = async () => {
+    setRefreshing(true);
+    try {
+      const response = await fetch(`${MODEL_API_BASE}/models/refresh`, { method: 'POST' });
+      const data = await response.json();
+      setFleetStatus(data);
+      await onRefreshModels?.();
+      await loadFleet();
+    } finally { setRefreshing(false); }
+  };
 
   const [formData, setFormData] = useState({
     modelIdentifier: '',
@@ -159,6 +196,10 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
           </p>
         </div>
 
+        <div className="flex items-center gap-2">
+        <button onClick={() => void refreshCatalog()} disabled={refreshing} className="flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-700/80 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold">
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> {refreshing ? 'Checking free pool…' : 'Refresh & live-test'}
+        </button>
         <button
           id="btn-register-model"
           onClick={handleOpenCreate}
@@ -167,7 +208,17 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
           <Plus className="w-3.5 h-3.5" />
           <span>Register New Model</span>
         </button>
+        </div>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="rounded border border-[#222] bg-[#141414] p-3"><div className="text-[10px] uppercase text-[#888]">Live verified & ready</div><div className="mt-1 text-xl font-semibold text-emerald-300">{models.filter(m => m.enabled && m.status === 'online' && m.verificationStatus !== 'failed' && m.freeQuotaState !== 'exhausted').length}</div><div className="text-[10px] text-[#777]">available for guarded routing</div></div>
+        <div className="rounded border border-[#222] bg-[#141414] p-3"><div className="text-[10px] uppercase text-[#888]">Free models quarantined</div><div className="mt-1 text-xl font-semibold text-amber-300">{models.filter(m => m.freeQuotaState === 'exhausted' || m.verificationStatus === 'failed').length}</div><div className="text-[10px] text-[#777]">kept out of request routing</div></div>
+        <div className="rounded border border-[#222] bg-[#141414] p-3"><div className="text-[10px] uppercase text-[#888]">Last catalog check</div><div className="mt-1 text-sm font-medium text-white">{fleetStatus?.lastCompletedAt ? new Date(fleetStatus.lastCompletedAt).toLocaleString() : 'Waiting for first run'}</div><div className="text-[10px] text-[#777]">Source: {fleetStatus?.source || 'OpenRouter'}</div></div>
+        <div className="rounded border border-[#222] bg-[#141414] p-3"><div className="text-[10px] uppercase text-[#888]">Today’s validation</div><div className="mt-1 text-sm font-medium text-white">{fleetStatus?.activated ?? 0} ready · {fleetStatus?.rejected ?? 0} held back</div><div className="text-[10px] text-[#777]">{fleetStatus?.error || 'Each newly listed free model is probed before activation.'}</div></div>
+      </div>
+
+      <div className="rounded border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-[11px] text-blue-100 flex items-center gap-2"><ShieldCheck className="w-4 h-4 shrink-0 text-blue-300" />Every production request still passes ALTIL policy checks and prompt sanitization before model selection. Failed probes and exhausted free models are quarantined from routing.</div>
 
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded bg-[#141414] border border-[#222222] text-xs">
@@ -209,6 +260,8 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
                 <th className="py-3 px-4">MODEL / IDENTIFIER</th>
                 <th className="py-3 px-4">PROVIDER</th>
                 <th className="py-3 px-4">STATUS</th>
+                <th className="py-3 px-4">VALIDATION / QUOTA</th>
+                <th className="py-3 px-4">USAGE</th>
                 <th className="py-3 px-4">CONTEXT</th>
                 <th className="py-3 px-4">CAPABILITIES</th>
                 <th className="py-3 px-4">COST / 1K</th>
@@ -245,10 +298,20 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
                     </td>
 
                     <td className="py-3 px-4">
-                      <span className="text-green-500 font-mono text-[11px] flex items-center gap-1">
-                        <span>●</span>
-                        <span>{model.status.toUpperCase()}</span>
+                      <span className={`${model.status === 'online' && model.enabled ? 'text-green-400' : 'text-amber-400'} font-mono text-[11px] flex items-center gap-1`}>
+                        <span>●</span><span>{model.enabled ? model.status.toUpperCase() : model.freeQuotaState === 'exhausted' ? 'QUARANTINED' : 'DISABLED'}</span>
                       </span>
+                    </td>
+
+                    <td className="py-3 px-4 text-[10px] text-[#999]">
+                      <div>{model.verificationStatus === 'verified' ? '✓ Live probe passed' : model.verificationStatus === 'failed' ? '⚠ Probe failed' : model.catalogSource ? 'Probe pending' : 'Legacy entry'}</div>
+                      <div className="text-[#666]">{model.freeQuotaState === 'exhausted' ? 'Free quota exhausted' : model.freeQuotaState === 'available' ? 'Free route available' : 'Quota not reported'}</div>
+                      {model.lastVerifiedAt && <div className="text-[#666]">Checked {new Date(model.lastVerifiedAt).toLocaleDateString()}</div>}
+                    </td>
+
+                    <td className="py-3 px-4 text-[10px] text-[#aaa]">
+                      <div>{model.usageCount || 0} calls</div><div>{(model.tokensUsed || 0).toLocaleString()} tokens</div>
+                      <div className="text-[#666]">{model.lastUsedAt ? `Last ${new Date(model.lastUsedAt).toLocaleString()}` : 'Never used'}</div>
                     </td>
 
                     <td className="py-3 px-4 text-[#888888]">
@@ -276,7 +339,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
 
                     <td className="py-3 px-4 text-[11px] text-[#888888]">
                       {model.costPer1kInput === 0 ? (
-                        <span className="text-green-400 font-semibold">Free (Local)</span>
+                        <span className="text-green-400 font-semibold">Free (catalog)</span>
                       ) : (
                         <div>
                           <span>${model.costPer1kInput.toFixed(4)} in</span>
@@ -325,6 +388,13 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
           </table>
         </div>
       </div>
+
+      <section className="rounded border border-[#222] bg-[#111] overflow-hidden">
+        <div className="flex items-center justify-between border-b border-[#222] px-4 py-3"><div className="flex items-center gap-2 text-sm font-semibold text-white"><Activity className="w-4 h-4 text-cyan-300" />Model fleet timeline</div><span className="text-[10px] text-[#777]">Discovery · live probes · quarantine · quota events</span></div>
+        <div className="max-h-64 overflow-y-auto divide-y divide-[#1c1c1c]">
+          {fleetHistory.length ? fleetHistory.slice(0, 40).map((event: any) => <div key={event.id} className="px-4 py-2 flex items-start gap-3 text-[10px]"><span className="text-cyan-300 whitespace-nowrap">{new Date(event.at).toLocaleString()}</span><div><div className="text-white font-semibold">{String(event.action).replaceAll('_', ' ')}</div><div className="text-[#888]">{event.modelIdentifier ? `${event.modelIdentifier} · ` : ''}{event.detail}</div></div><span className="ml-auto text-[#666]">{event.source}</span></div>) : <div className="px-4 py-5 text-xs text-[#777]">No catalog activity yet. Add provider credentials, then run a refresh to start the verification timeline.</div>}
+        </div>
+      </section>
 
       {/* Create / Edit Model Modal */}
       {isModalOpen && (

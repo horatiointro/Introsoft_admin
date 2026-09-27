@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-09-27T12:16:36.818Z",
+  "type": "error_event",
+  "message": "Uncaught TypeError: Cannot read properties of undefined (reading 'toLocaleString')",
+  "filename": "http://localhost:3005/admin-test/src/components/UsageLogsView.tsx",
+  "lineno": 970,
+  "colno": 118,
+  "error": {
+    "name": "TypeError",
+    "message": "Cannot read properties of undefined (reading 'toLocaleString')",
+    "stack": "TypeError: Cannot read properties of undefined (reading 'toLocaleString')\n    at http://localhost:3005/admin-test/src/components/UsageLogsView.tsx:970:118\n    at Array.map (<anonymous>)\n    at UsageLogsView (http://localhost:3005/admin-test/src/components/UsageLogsView.tsx:934:108)\n    at Object.react_stack_bottom_frame (http://localhost:3005/admin-test/node_modules/.vite/deps/react-dom_client.js?v=76af3cb4:18507:20)\n    at renderWithHooks (http://localhost:3005/admin-test/node_modules/.vite/deps/react-dom_client.js?v=76af3cb4:5652:24)\n    at updateFunctionComponent (http://localhost:3005/admin-test/node_modules/.vite/deps/react-dom_client.js?v=76af3cb4:7473:21)\n    at beginWork (http://localhost:3005/admin-test/node_modules/.vite/deps/react-dom_client.js?v=76af3cb4:8523:20)\n    at runWithFiberInDEV (http://localhost:3005/admin-test/node_modules/.vite/deps/react-dom_client.js?v=76af3cb4:995:72)\n    at performUnitOfWork (http://localhost:3005/admin-test/node_modules/.vite/deps/react-dom_client.js?v=76af3cb4:12559:98)\n    at workLoopSync (http://localhost:3005/admin-test/node_modules/.vite/deps/react-dom_client.js?v=76af3cb4:12422:43)"
+  }
+}
+---

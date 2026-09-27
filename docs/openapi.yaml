@@ -1,0 +1,705 @@
+openapi: 3.1.0
+info:
+  title: ALTIL Tenant, Governed AI and Communications API
+  version: 1.1.0
+  summary: Introsoft ALTIL multi-tenant AI SaaS platform
+  description: >-
+    Tenant onboarding, organization hierarchy, scoped API keys, license and quota
+    enforcement, invoicing, governed AI inference and encrypted multi-channel communication.
+    AI calls fail closed when tenant, application, key, billing or policy checks cannot pass.
+servers:
+  - url: https://api.introsoft.com
+    description: Production API gateway
+  - url: http://localhost:3005
+    description: Local development
+security:
+  - ALTILKey: []
+  - BearerSession: []
+tags:
+  - name: Public SaaS
+  - name: Tenants and IAM
+  - name: Packages and licensing
+  - name: Billing
+  - name: Governed AI
+  - name: Communications
+  - name: Mobile devices
+paths:
+  /api/v1/currency/config:
+    get:
+      tags: [Billing]
+      summary: Read USD accounting base and configured display currencies
+      responses:
+        '200':
+          description: Currency catalog, FX attribution, freshness and update timestamps
+  /api/v1/tenant-portal/{id}/display-currency:
+    patch:
+      tags: [Tenants and IAM]
+      summary: Set a tenant's display currency without changing source invoices
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayCurrency]
+              properties:
+                displayCurrency: {type: string, pattern: '^[A-Z]{3}$'}
+      responses:
+        '200': {description: Display preference saved; source records unchanged}
+        '409': {description: FX rate missing or stale}
+  /api/v1/admin/currency/config:
+    put:
+      tags: [Billing]
+      summary: Configure default portal currency, locale and FX freshness window
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [defaultDisplayCurrency, defaultLocale, rateStaleAfterHours]
+              properties:
+                defaultDisplayCurrency: {type: string, pattern: '^[A-Z]{3}$'}
+                defaultLocale: {type: string, maxLength: 32}
+                rateStaleAfterHours: {type: integer, minimum: 1, maximum: 720}
+      responses:
+        '200': {description: USD accounting base retained; display defaults saved}
+        '409': {description: Default currency has no fresh FX rate}
+  /api/v1/admin/currency/rates/{currency}:
+    put:
+      tags: [Billing]
+      summary: Create or update an attributed units-per-USD FX rate
+      parameters:
+        - {name: currency, in: path, required: true, schema: {type: string, pattern: '^[A-Z]{3}$'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [unitsPerUsd, source]
+              properties:
+                unitsPerUsd: {type: number, exclusiveMinimum: 0}
+                source: {type: string, maxLength: 120}
+      responses:
+        '200': {description: Rate saved and appended to immutable rate history}
+    delete:
+      tags: [Billing]
+      summary: Remove a display FX rate (USD cannot be removed)
+      parameters:
+        - {name: currency, in: path, required: true, schema: {type: string, pattern: '^[A-Z]{3}$'}}
+      responses:
+        '200': {description: Rate removed from current book; history retained}
+  /api/v1/admin/currency/rates/{currency}/history:
+    get:
+      tags: [Billing]
+      summary: Read attributed historical FX rate changes
+      parameters:
+        - {name: currency, in: path, required: true, schema: {type: string, pattern: '^[A-Z]{3}$'}}
+      responses:
+        '200': {description: Rate history with source, timestamp and editor}
+  /api/v1/public/plans:
+    get:
+      tags: [Public SaaS]
+      summary: List published self-service packages
+      security: []
+      responses:
+        '200': {description: Published package catalogue}
+  /api/v1/public/registrations:
+    post:
+      tags: [Public SaaS]
+      summary: Register a new individual or company tenant
+      description: Creates a 14-day trial workspace, tenant owner, first application and scoped API key. The full key is returned once.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, accountType, planId, applicationName, acceptedTerms]
+              properties:
+                name: {type: string, minLength: 2, maxLength: 160}
+                email: {type: string, format: email}
+                password: {type: string, minLength: 12, maxLength: 128, writeOnly: true}
+                accountType: {type: string, enum: [individual, company]}
+                planId: {type: string}
+                applicationName: {type: string}
+                country: {type: string}
+                acceptedTerms: {type: boolean, const: true}
+      responses:
+        '201': {description: Tenant, owner, application, trial and one-time key provisioned}
+        '400': {description: Invalid signup data or unpublished package}
+        '409': {description: Owner email already exists}
+        '429': {description: Signup rate limit}
+        '503': {description: Durable database or encryption prerequisites unavailable}
+  /api/v1/admin/registrations:
+    get:
+      tags: [Tenants and IAM]
+      summary: List self-service registrations
+      responses:
+        '200': {description: Registration feed (SUPER_ADMIN, FINOPS_MANAGER or SALES_MANAGER)}
+        '403': {description: Insufficient role}
+  /api/v1/admin/registrations/{id}:
+    patch:
+      tags: [Tenants and IAM]
+      summary: Update registration follow-up state
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {type: string, enum: [contacted, closed, trial_active]}
+      responses:
+        '200': {description: Registration updated}
+  /api/v1/customers:
+    get:
+      tags: [Tenants and IAM]
+      summary: List tenant accounts in the caller's permitted scope
+      responses:
+        '200': {description: Tenant records}
+    post:
+      tags: [Tenants and IAM]
+      summary: Admin-provision a tenant, owner, hierarchy node, application and optional key
+      responses:
+        '201': {description: Tenant provisioned}
+  /api/v1/customers/{id}/users:
+    post:
+      tags: [Tenants and IAM]
+      summary: Add a tenant-scoped user
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '201': {description: User created}
+  /api/v1/licensing/plans:
+    get:
+      tags: [Packages and licensing]
+      summary: List package and licence templates
+      responses:
+        '200': {description: Plan catalogue}
+    post:
+      tags: [Packages and licensing]
+      summary: Create or publish a commercial package
+      responses:
+        '200': {description: Plan saved}
+  /api/v1/licensing/tenant-licenses:
+    get:
+      tags: [Packages and licensing]
+      summary: List tenant application licences in caller scope
+      responses:
+        '200': {description: Tenant licences}
+  /api/v1/licensing/tenant-licenses/update:
+    post:
+      tags: [Packages and licensing]
+      summary: Assign, update or reactivate an application licence
+      responses:
+        '200': {description: Licence saved}
+  /api/v1/billing/invoices:
+    get:
+      tags: [Billing]
+      summary: List invoices in caller scope
+      responses:
+        '200': {description: Invoice register}
+    post:
+      tags: [Billing]
+      summary: Create a draft invoice for a tenant and billing period
+      responses:
+        '201': {description: Draft invoice created}
+  /api/v1/billing/invoices/{id}/issue:
+    post:
+      tags: [Billing]
+      summary: Issue a draft invoice and advance the related billing cycle
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Invoice issued}
+        '409': {description: Invoice is not a draft}
+  /api/v1/billing/invoices/{id}/payment:
+    post:
+      tags: [Billing]
+      summary: Reconcile a manual payment against an issued invoice
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Payment recorded and journaled}
+  /api/v1/billing/ledger:
+    get:
+      tags: [Billing]
+      summary: List tenant accounting entries in caller scope
+      responses:
+        '200': {description: Append-only ledger entries}
+    post:
+      tags: [Billing]
+      summary: Record a credit, refund, write-off or adjustment
+      responses:
+        '201': {description: Accounting entry recorded}
+  /api/v1/billing/cycles/run:
+    post:
+      tags: [Billing]
+      summary: Prepare reviewable invoice drafts for due application licences
+      responses:
+        '200': {description: Due billing cycles prepared}
+  /v1/models:
+    get:
+      tags: [Governed AI]
+      summary: List live, available ALTIL model identifiers
+      responses:
+        '200': {description: Model catalog}
+  /v1/chat/completions:
+    post:
+      tags: [Governed AI]
+      summary: OpenAI-compatible governed chat completion
+      description: Requires tenant-scoped key; policy, application, rate, spend and licence quotas are checked before provider routing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messages]
+              properties:
+                model: {type: string, default: altil-auto}
+                messages: {type: array, items: {type: object}}
+                app_id: {type: string}
+                stream: {type: boolean}
+      responses:
+        '200': {description: Governed completion}
+        '401': {description: API key rejected}
+        '402': {description: Tenant, licence, request or spend quota suspended}
+        '403': {description: Tenant, key, application or policy boundary denied}
+        '422': {description: Request blocked by a guardrail}
+        '429': {description: Key rate limit reached}
+        '503': {description: Fail-closed guardrail or provider availability error}
+  /api/v1/communications/channels:
+    get:
+      tags: [Communications]
+      summary: List configured provider accounts (secrets redacted)
+      responses:
+        '200': {description: Channel metadata and test status}
+    post:
+      tags: [Communications]
+      summary: Add an SMTP or Firebase account; credentials are encrypted at rest
+      responses:
+        '201': {description: Channel created without echoing secrets}
+  /api/v1/communications/channels/{id}:
+    put:
+      tags: [Communications]
+      summary: Update a provider account
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Channel updated}
+    delete:
+      tags: [Communications]
+      summary: Remove a provider account
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Channel deleted}
+  /api/v1/communications/channels/{id}/test:
+    post:
+      tags: [Communications]
+      summary: Test SMTP connection or Firebase service account credentials
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Connection verified}
+        '422': {description: Provider test failed}
+  /api/v1/communications/messages:
+    get:
+      tags: [Communications]
+      summary: Read encrypted communication history (body decrypted for privileged reader)
+      responses:
+        '200': {description: Recent campaign and handset messages}
+    post:
+      tags: [Communications]
+      summary: Send a group announcement or individual notice across one or more channels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channelIds, subject, body]
+              properties:
+                channelIds: {type: array, items: {type: string}, minItems: 1}
+                tenantIds: {type: array, items: {type: string}}
+                deviceIds: {type: array, items: {type: string}}
+                recipientEmails: {type: array, items: {type: string, format: email}}
+                subject: {type: string, maxLength: 200}
+                body: {type: string, maxLength: 10000}
+      responses:
+        '201': {description: Dispatch report with provider acceptance counts}
+        '400': {description: Missing recipients or provider}
+        '502': {description: All selected provider deliveries failed}
+  /api/v1/mobile/devices/register:
+    post:
+      tags: [Mobile devices]
+      summary: Enroll an iOS, Android or web device using a tenant API key
+      security:
+        - ALTILKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId, pushToken, platform]
+              properties:
+                deviceId: {type: string, minLength: 6, maxLength: 100}
+                pushToken: {type: string, writeOnly: true}
+                platform: {type: string, enum: [ios, android, web]}
+                name: {type: string}
+                userId: {type: string}
+      responses:
+        '201': {description: Enrolled device and one-time device secret}
+        '401': {description: Tenant API key rejected}
+  /api/v1/mobile/devices:
+    get:
+      tags: [Mobile devices]
+      summary: List registered devices (communications administrator)
+      responses:
+        '200': {description: Device metadata; no tokens or secrets}
+  /api/v1/mobile/devices/{id}:
+    patch:
+      tags: [Mobile devices]
+      summary: Enable or disable a registered device
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Device state updated}
+    delete:
+      tags: [Mobile devices]
+      summary: Remove a registered device
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Device removed}
+  /api/v1/mobile/messages/{deviceId}/reply:
+    post:
+      tags: [Mobile devices]
+      summary: Send an authenticated handset-to-ALTIL message
+      parameters:
+        - {name: deviceId, in: path, required: true, schema: {type: string}}
+      security:
+        - DeviceSecret: []
+      responses:
+        '201': {description: Message received and stored}
+        '401': {description: Device secret rejected}
+  /api/v1/mobile/messages/{deviceId}:
+    get:
+      tags: [Mobile devices]
+      summary: Read messages addressed to an authenticated handset
+      parameters:
+        - {name: deviceId, in: path, required: true, schema: {type: string}}
+      security:
+        - DeviceSecret: []
+      responses:
+        '200': {description: Messages addressed to this device or its tenant}
+        '401': {description: Device secret rejected}
+  /api/v1/mobile/messages/{deviceId}/ack:
+    post:
+      tags: [Mobile devices]
+      summary: Record handset read receipts
+      parameters:
+        - {name: deviceId, in: path, required: true, schema: {type: string}}
+      security:
+        - DeviceSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messageIds]
+              properties:
+                messageIds: {type: array, maxItems: 100, items: {type: string}}
+      responses:
+        '201': {description: Receipt stored}
+        '401': {description: Device secret rejected}
+  /api/v1/billing/checkout:
+    post:
+      tags: [Billing]
+      summary: Create a hosted Stripe checkout for a tenant application licence
+      description: Requires tenant-admin access and STRIPE_SECRET_KEY. Recurring packages start with the configured trial window.
+      responses:
+        '200': {description: Stripe checkout session URL}
+        '503': {description: Checkout is not configured}
+  /api/v1/billing/stripe/webhook:
+    post:
+      tags: [Billing]
+      summary: Verify and reconcile Stripe subscription events
+      description: Requires a valid Stripe-Signature within the five-minute tolerance window.
+      security: []
+      responses:
+        '200': {description: Event accepted and reconciled idempotently}
+        '401': {description: Stripe signature failed}
+        '503': {description: Durable payment event storage failed; Stripe should retry}
+  /api/v1/billing/payments/checkout:
+    post:
+      tags: [Billing]
+      summary: Create a hosted one-time invoice payment with Stripe, PayFast or iKhokha
+      description: The invoice must belong to the authenticated tenant and have an open balance. Payment is never marked paid from a browser redirect; only a verified provider callback reconciles it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoiceId, provider]
+              properties:
+                tenantId: {type: string}
+                invoiceId: {type: string}
+                provider: {type: string, enum: [stripe, payfast, ikhokha]}
+                amount: {type: number, exclusiveMinimum: 0}
+      responses:
+        '201': {description: Pending payment intent and hosted checkout URL}
+        '400': {description: Invalid provider, amount or invoice state}
+        '403': {description: Tenant access denied}
+        '503': {description: Provider unavailable or not configured}
+  /api/v1/billing/payments:
+    get:
+      tags: [Billing]
+      summary: List tenant-scoped payment attempts and captured amounts
+      description: Provider tokens and hosted checkout secrets are never returned.
+      responses:
+        '200': {description: Payment history linked to invoices}
+  /api/v1/billing/refunds:
+    get:
+      tags: [Billing]
+      summary: List tenant refund requests and their lifecycle status
+      responses:
+        '200': {description: Tenant-scoped refund records}
+    post:
+      tags: [Billing]
+      summary: Request a partial or full refund against a captured invoice payment
+      description: A request reserves its amount against the captured balance and requires finance approval before any provider action.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentIntentId, amount, reason]
+              properties:
+                tenantId: {type: string}
+                paymentIntentId: {type: string}
+                amount: {type: number, exclusiveMinimum: 0}
+                reason: {type: string, minLength: 10, maxLength: 1000}
+      responses:
+        '201': {description: Refund request recorded for finance approval}
+        '400': {description: Invalid reason or amount exceeds remaining captured balance}
+        '403': {description: Payment belongs to another tenant}
+  /api/v1/billing/refunds/{id}/approve:
+    post:
+      tags: [Billing]
+      summary: Approve and submit a refund to the payment provider
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Refund submitted; final provider confirmation may still be required}
+        '409': {description: Payment is not eligible for another refund submission}
+  /api/v1/billing/refunds/{id}/confirm:
+    post:
+      tags: [Billing]
+      summary: Record provider completion and post the credit note and payout journals
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [providerConfirmation, evidence]
+              properties:
+                providerConfirmation: {type: string, minLength: 3}
+                evidence: {type: string, minLength: 10, maxLength: 1000}
+      responses:
+        '200': {description: Refund confirmation and accounting journals linked}
+        '422': {description: Evidence, refund state or accounting posting invalid}
+  /api/v1/billing/payment-methods/setup:
+    post:
+      tags: [Billing]
+      summary: Start provider-hosted card token setup after explicit mandate consent
+      description: Stripe or PayFast securely vaults the payment method. ALTIL stores only an encrypted provider token; iKhokha public API currently supports hosted one-time payments only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, consent, mandateText]
+              properties:
+                tenantId: {type: string}
+                provider: {type: string, enum: [stripe, payfast]}
+                consent: {type: boolean, const: true}
+                mandateText: {type: string, minLength: 80}
+      responses:
+        '201': {description: Hosted mandate setup URL}
+        '400': {description: Consent or provider validation failed}
+  /api/v1/billing/payment-methods:
+    get:
+      tags: [Billing]
+      summary: List tenant saved gateway tokens without secret material
+      responses:
+        '200': {description: Masked, tenant-scoped payment method records}
+  /api/v1/billing/payment-methods/{id}:
+    delete:
+      tags: [Billing]
+      summary: Revoke a saved token and pause dependent schedules
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Token revoked and schedules paused}
+  /api/v1/billing/schedules:
+    get:
+      tags: [Billing]
+      summary: List recurring or threshold-based collection schedules
+      responses:
+        '200': {description: Tenant-scoped schedule metadata}
+    post:
+      tags: [Billing]
+      summary: Create a separately consented monthly or usage-threshold debit schedule
+      description: Usage threshold automation currently requires USD metering and a Stripe mandate. PayFast token charges are ZAR-only. iKhokha supports hosted one-time checkout in the current integration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentMethodId, scheduleType, consent, consentText]
+              properties:
+                tenantId: {type: string}
+                paymentMethodId: {type: string}
+                scheduleType: {type: string, enum: [threshold, monthly]}
+                thresholdAmount: {type: number, exclusiveMinimum: 0}
+                currency: {type: string, pattern: '^[A-Z]{3}$', description: Configured transaction currency; posted source currency is preserved}
+                consent: {type: boolean, const: true}
+                consentText: {type: string, minLength: 100}
+      responses:
+        '201': {description: Schedule created with a consent record}
+        '400': {description: Mandate, provider, currency or threshold constraints failed}
+  /api/v1/billing/schedules/{id}:
+    patch:
+      tags: [Billing]
+      summary: Pause, resume or cancel automatic invoice collection
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Schedule state updated}
+  /api/v1/billing/payfast/webhook:
+    post:
+      tags: [Billing]
+      summary: Verify PayFast ITN and reconcile invoice capture
+      security: []
+      responses:
+        '200': {description: Verified notification reconciled or duplicate acknowledged}
+        '401': {description: Merchant/signature/provider validation failed}
+        '503': {description: Reconciliation unavailable; provider should retry}
+  /api/v1/billing/ikhokha/webhook:
+    post:
+      tags: [Billing]
+      summary: Verify signed iK Pay callback and reconcile invoice capture
+      security: []
+      responses:
+        '200': {description: Signed callback reconciled}
+        '401': {description: Signature invalid}
+        '503': {description: Reconciliation unavailable; provider should retry}
+  /api/v1/billing/accounting/summary:
+    get:
+      tags: [Billing]
+      summary: Tenant-scoped receivables, chart-of-account and monthly journal rollups
+      responses:
+        '200': {description: Currency-preserving finance dashboard data}
+        '503': {description: Accounting migration unavailable}
+  /api/v1/billing/accounting/journals:
+    get:
+      tags: [Billing]
+      summary: List tenant journals and debit/credit lines
+      responses:
+        '200': {description: Posted, immutable journal lines}
+    post:
+      tags: [Billing]
+      summary: Post a balanced admin journal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId, currency, description, lines]
+              properties:
+                tenantId: {type: string}
+                currency: {type: string, pattern: '^[A-Z]{3}$', description: Configured transaction currency; posted source currency is preserved}
+                description: {type: string}
+                lines: {type: array, minItems: 2, maxItems: 100, items: {type: object, required: [accountCode, accountName, debit, credit]}}
+      responses:
+        '201': {description: Balanced journal posted}
+        '422': {description: Journal is unbalanced or storage is unavailable}
+  /api/v1/billing/reconciliation/import:
+    post:
+      tags: [Billing]
+      summary: Import provider/bank settlement rows and auto-match payment intents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, statementReference, currency, transactions]
+              properties:
+                provider: {type: string, enum: [stripe, payfast, ikhokha, bank]}
+                statementReference: {type: string}
+                currency: {type: string, pattern: '^[A-Z]{3}$', description: Configured transaction currency; posted source currency is preserved}
+                transactions: {type: array, minItems: 1, maxItems: 5000, items: {type: object, required: [externalReference, grossAmount, netAmount], properties: {externalReference: {type: string}, grossAmount: {type: number}, feeAmount: {type: number}, netAmount: {type: number}}}}
+      responses:
+        '201': {description: Reconciliation batch created with matched and exception rows}
+        '400': {description: Invalid row, amount or currency}
+  /api/v1/billing/reconciliation:
+    get:
+      tags: [Billing]
+      summary: List settlement batches and unreconciled exceptions
+      responses:
+        '200': {description: Settlement batches and their rows}
+  /api/v1/billing/reconciliation/{batchId}/settle:
+    post:
+      tags: [Billing]
+      summary: Post fully matched gateway clearing to bank and processing fees
+      parameters:
+        - {name: batchId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Settlement journals posted}
+        '409': {description: Unmatched exceptions remain or batch already settled}
+  /api/v1/billing/reconciliation/items/{itemId}/match:
+    post:
+      tags: [Billing]
+      summary: Manually link an unmatched statement row to a captured payment
+      parameters:
+        - {name: itemId, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, paymentIntentId]
+              properties:
+                provider: {type: string, enum: [stripe, payfast, ikhokha, bank]}
+                paymentIntentId: {type: string}
+      responses:
+        '200': {description: Settlement row matched with currency and amount checks}
+        '422': {description: Capture, currency or gross total does not match}
+components:
+  securitySchemes:
+    ALTILKey: {type: apiKey, in: header, name: x-api-key}
+    BearerSession: {type: http, scheme: bearer, bearerFormat: ALTIL session}
+    DeviceSecret: {type: apiKey, in: header, name: x-device-secret}
+
+

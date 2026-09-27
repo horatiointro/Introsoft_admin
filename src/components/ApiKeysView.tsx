@@ -20,7 +20,7 @@ import { ApiKey, Application } from '../types';
 interface ApiKeysViewProps {
   apiKeys: ApiKey[];
   applications: Application[];
-  onAddApiKey: (keyData: Partial<ApiKey>) => void;
+  onAddApiKey: (keyData: Partial<ApiKey>) => Promise<ApiKey> | void;
   onRevokeApiKey: (id: string) => void;
   onDeleteApiKey: (id: string) => void;
 }
@@ -46,28 +46,25 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
   });
 
   const handleCopy = (keyString: string, id: string) => {
+    if (!keyString) return;
     navigator.clipboard.writeText(keyString);
     setCopiedKeyId(id);
     setTimeout(() => setCopiedKeyId(null), 2500);
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const rawKey = `ALTIL-${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-
-    const expiresDate = new Date();
-    expiresDate.setDate(expiresDate.getDate() + Number(formData.expiresInDays));
-
     const ipList = formData.ipWhitelistRaw
       .split(',')
       .map(s => s.trim())
       .filter(Boolean);
 
-    onAddApiKey({
+    const expiresDate = new Date();
+    expiresDate.setDate(expiresDate.getDate() + Number(formData.expiresInDays));
+    try {
+    const created = await onAddApiKey({
       appId: formData.appId,
       name: formData.name,
-      key: rawKey,
-      prefix: `${rawKey.slice(0, 10)}...${rawKey.slice(-4)}`,
       status: 'active',
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
       expiresAt: formData.expiresInDays > 0 ? expiresDate.toISOString().replace('T', ' ').slice(0, 19) : null,
@@ -75,8 +72,8 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
       ipWhitelist: ipList,
       scopes: formData.scopes
     });
-
-    setNewlyCreatedKey(rawKey);
+    if (created?.key) setNewlyCreatedKey(created.key);
+    } catch { /* The parent reports API errors and the dialog stays open for correction or retry. */ }
   };
 
   const availableScopes = [
@@ -172,8 +169,9 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
                         <span>{k.prefix}</span>
                         <button
                           onClick={() => handleCopy(k.key, k.id)}
-                          className="p-1 rounded hover:bg-[#1a1a1a] text-[#666666] hover:text-white transition-colors"
-                          title="Copy Full Token"
+                          disabled={!k.key}
+                          className="p-1 rounded text-[#666666] transition-colors enabled:hover:bg-[#1a1a1a] enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                          title={k.key ? 'Copy full token' : 'The full secret was shown once when this key was created'}
                         >
                           {copiedKeyId === k.id ? (
                             <Check className="w-3.5 h-3.5 text-green-400" />

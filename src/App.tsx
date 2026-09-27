@@ -89,6 +89,14 @@ import { EnterpriseOperationsView } from './components/EnterpriseOperationsView'
 import { AiGovernanceModelLabView } from './components/AiGovernanceModelLabView';
 import { EnterpriseGovernanceRiskView } from './components/EnterpriseGovernanceRiskView';
 import { LicensingMonetizationView } from './components/LicensingMonetizationView';
+import { BillingAdminView } from './components/BillingAdminView';
+import { FinanceCommerceView } from './components/FinanceCommerceView';
+import { SelfRegistrationPage } from './components/SelfRegistrationPage';
+import { SaasGrowthView } from './components/SaasGrowthView';
+import { CommunicationsHubView } from './components/CommunicationsHubView';
+import { TenantPortalView } from './components/TenantPortalView';
+import { AccountingControlView } from './components/AccountingControlView';
+import { LegalPolicyPage } from './components/LegalPolicyPage';
 import { DataProtectionDcrView } from './components/DataProtectionDcrView';
 import { UniversalActivityTicker } from './components/UniversalActivityTicker';
 import { INITIAL_LICENSING_PLANS, INITIAL_TENANT_LICENSES, INITIAL_PAYMENT_WEBHOOK_LOGS } from './data/licensingData';
@@ -262,6 +270,18 @@ export default function App() {
   const [tenantLicenses, setTenantLicenses] = useState<TenantAppLicense[]>(INITIAL_TENANT_LICENSES);
   const [paymentLogs, setPaymentLogs] = useState<PaymentWebhookLog[]>(INITIAL_PAYMENT_WEBHOOK_LOGS);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const loadCommercialData = async () => {
+      try {
+        const [plansResponse, licensesResponse] = await Promise.all([fetch(`${API_BASE}/licensing/plans`), fetch(`${API_BASE}/licensing/tenant-licenses`)]);
+        if (plansResponse.ok) setLicensingPlans(await plansResponse.json());
+        if (licensesResponse.ok) setTenantLicenses(await licensesResponse.json());
+      } catch { /* Keep the seeded read-only preview available while the commercial API is offline. */ }
+    };
+    void loadCommercialData();
+  }, [isAuthenticated]);
+
   // Inspection modal state
   const [selectedLogToInspect, setSelectedLogToInspect] = useState<AuditLog | null>(null);
 
@@ -273,6 +293,29 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const saveCommercialRecord = async (path: string, record: LicensingPlanTemplate | TenantAppLicense) => {
+    const response = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'ALTIL could not save this commercial change.');
+    return result;
+  };
+
+  const handleSavePlan = async (plan: LicensingPlanTemplate, create = false) => {
+    try {
+      await saveCommercialRecord('/licensing/plans', plan);
+      setLicensingPlans(current => create ? [plan, ...current.filter(item => item.id !== plan.id)] : current.map(item => item.id === plan.id ? plan : item));
+      showToast('Commercial plan saved.');
+    } catch (error: any) { showToast(error?.message || 'Could not save commercial plan.', 'error'); }
+  };
+
+  const handleSaveTenantLicense = async (license: TenantAppLicense, create = false) => {
+    try {
+      await saveCommercialRecord('/licensing/tenant-licenses/update', license);
+      setTenantLicenses(current => create ? [license, ...current.filter(item => item.id !== license.id)] : current.map(item => item.id === license.id ? license : item));
+      showToast('Tenant subscription saved.');
+    } catch (error: any) { showToast(error?.message || 'Could not save tenant subscription.', 'error'); }
+  };
+
   const handleViewProviderTelemetry = (providerId: string) => {
     setSelectedTelemetryProviderId(providerId);
     setActiveTab('telemetry');
@@ -280,6 +323,7 @@ export default function App() {
 
   // Initial fetch from backend if available
   useEffect(() => {
+    if (!isAuthenticated) return;
     const fetchInitialData = async () => {
       try {
         const [resProv, resMod, resCust, resApp, resKeys, resRoutes, resPol, resLogs, resComp, resDsar] = await Promise.allSettled([
@@ -310,7 +354,7 @@ export default function App() {
       }
     };
     fetchInitialData();
-  }, []);
+  }, [isAuthenticated]);
 
   // --- Customer / Tenant Handlers ---
   const handleAddCustomer = async (customerData: any) => {
@@ -320,80 +364,46 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(customerData)
       });
-      const data = await res.json();
-      if (data.customer) {
-        setCustomers(prev => [data.customer, ...prev]);
-        if (data.application) setApplications(prev => [data.application, ...prev]);
-        if (data.apiKey) setApiKeys(prev => [data.apiKey, ...prev]);
-        showToast(`Customer "${data.customer.name}" onboarded with statutory governance.`);
-        return;
-      }
-    } catch (_) {}
-
-    // Fallback local state creation
-    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const newCust: Customer = {
-      id: `cust-${(customerData.name || 'company').toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now().toString(36).slice(-4)}`,
-      type: customerData.type || 'company',
-      name: customerData.name,
-      legalName: customerData.legalName || customerData.name,
-      registrationNumber: customerData.registrationNumber || '',
-      taxVatNumber: customerData.taxVatNumber || '',
-      industry: customerData.industry || 'Financial Services',
-      country: customerData.country || 'South Africa (ZA)',
-      status: 'active',
-      tier: customerData.tier || 'growth',
-      monthlyBudgetUsd: Number(customerData.monthlyBudgetUsd) || 2500,
-      currentSpendUsd: 0,
-      rateLimitRpm: Number(customerData.rateLimitRpm) || 240,
-      rateLimitTpm: 250000,
-      primaryContact: customerData.primaryContact,
-      statutoryOfficers: customerData.statutoryOfficers || {},
-      users: [
-        {
-          id: `usr-${Date.now()}-1`,
-          customerId: `cust-${Date.now()}`,
-          name: customerData.primaryContact?.name || 'Primary Admin',
-          email: customerData.primaryContact?.email || 'admin@customer.com',
-          role: 'owner',
-          designation: customerData.primaryContact?.role || 'Executive',
-          mfaEnabled: true,
-          status: 'active',
-          lastLogin: null,
-          createdAt: nowStr
-        }
-      ],
-      connectedAppIds: [],
-      assignedPolicyIds: ['pol-global-safety'],
-      createdAt: nowStr,
-      updatedAt: nowStr,
-      notes: customerData.notes || ''
-    };
-
-    setCustomers(prev => [newCust, ...prev]);
-    showToast(`Customer "${newCust.name}" activated.`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.customer) throw new Error(data.error || 'Customer setup was not saved.');
+      setCustomers(prev => [data.customer, ...prev]);
+      if (data.application) setApplications(prev => [data.application, ...prev]);
+      if (data.apiKey) setApiKeys(prev => [data.apiKey, ...prev]);
+      showToast(`Customer "${data.customer.name}" onboarded with statutory governance.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Customer setup was not saved.');
+      throw error;
+    }
   };
 
   const handleUpdateCustomer = async (id: string, updates: Partial<Customer>) => {
     try {
-      await fetch(`${API_BASE}/customers/${id}`, {
+      const res = await fetch(`${API_BASE}/customers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
-    } catch (_) {}
-
-    setCustomers(prev => prev.map(c => (c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19) } : c)));
-    showToast('Customer record and statutory registrations updated.');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Customer changes were not saved.');
+      setCustomers(prev => prev.map(c => c.id === id ? data : c));
+      showToast('Customer record updated.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Customer changes were not saved.');
+      throw error;
+    }
   };
 
   const handleDeleteCustomer = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/customers/${id}`, { method: 'DELETE' });
-    } catch (_) {}
-
-    setCustomers(prev => prev.filter(c => c.id !== id));
-    showToast('Customer deactivated.');
+      const res = await fetch(`${API_BASE}/customers/${id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.customer) throw new Error(data.error || 'Customer could not be archived.');
+      setCustomers(prev => prev.map(c => c.id === id ? data.customer : c));
+      showToast('Customer archived. Its history has been retained.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Customer could not be archived.');
+      throw error;
+    }
   };
 
   const handleAddCustomerUser = async (customerId: string, userData: Partial<CustomerUser>) => {
@@ -658,27 +668,12 @@ export default function App() {
       const res = await fetch(`${API_BASE}/providers/${providerId}/test`, {
         method: 'POST'
       });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (_) {}
-
-    // Fallback simulation if backend endpoint is unavailable
-    const prov = providers.find(p => p.id === providerId);
-    await new Promise(r => setTimeout(r, 600));
-    return {
-      providerId,
-      providerName: prov?.name || 'Target Provider',
-      timestamp: new Date().toISOString(),
-      success: true,
-      latencyMs: prov?.latencyMs || 120,
-      authValid: true,
-      reachable: true,
-      modelsDiscoveredCount: prov?.modelsCount || 3,
-      discoveredModels: ['qwen3.6:16k', 'llama-3.3-70b-versatile', 'gemini-2.5-flash'],
-      sampleGenerationSuccess: true,
-      sampleOutput: 'Handshake ACK: ALTIL Gateway ingress connection verified.'
-    };
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.errorMessage || result.error || `Live provider check failed (HTTP ${res.status}).`);
+      return result as ProviderTestResult;
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : 'Live provider check could not reach ALTIL.');
+    }
   };
 
   // --- Model Handlers ---
@@ -735,56 +730,20 @@ export default function App() {
 
   // --- Application Handlers ---
   const handleAddApplication = async (appData: Partial<Application>) => {
-    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const newApp: Application = {
-      id: `app-${Date.now()}`,
-      name: appData.name || 'New Application',
-      appIdentifier: appData.appIdentifier || `app-${Date.now().toString(36)}`,
-      description: appData.description || '',
-      environment: appData.environment || 'production',
-      status: 'active',
-      createdAt: nowStr,
-      updatedAt: nowStr,
-      rateLimitRpm: appData.rateLimitRpm || 120,
-      quotaMonthlyRequests: appData.quotaMonthlyRequests || 50000,
-      quotaUsedRequests: 0,
-      allowedCapabilities: appData.allowedCapabilities || ['general_ai', 'fast_chat'],
-      assignedPolicyIds: appData.assignedPolicyIds || ['pol-global-safety'],
-      contactEmail: appData.contactEmail || 'admin@introsoft.internal'
-    };
-
-    const newKeyStr = `ALTIL-${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-    const newKey: ApiKey = {
-      id: `k-${Date.now()}`,
-      appId: newApp.id,
-      name: 'Default Ingress Key',
-      key: newKeyStr,
-      prefix: `${newKeyStr.slice(0, 10)}...${newKeyStr.slice(-4)}`,
-      status: 'active',
-      createdAt: nowStr,
-      expiresAt: null,
-      lastUsedAt: null,
-      rateLimitRpm: newApp.rateLimitRpm,
-      ipWhitelist: [],
-      scopes: ['read:inference', 'read:models']
-    };
-
     try {
-      await fetch(`${API_BASE}/applications`, {
+      const response = await fetch(`${API_BASE}/applications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newApp)
+        body: JSON.stringify({ ...appData, customerId: scopeFilter.tenantId === 'all' ? customers[0]?.id : scopeFilter.tenantId })
       });
-      await fetch(`${API_BASE}/api-keys`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newKey)
-      });
-    } catch (_) {}
-
-    setApplications(prev => [newApp, ...prev]);
-    setApiKeys(prev => [newKey, ...prev]);
-    showToast(`Application "${newApp.name}" registered with new API key.`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not register the application and its key.');
+      const newApp = result.application as Application;
+      const newKey = result.apiKey as ApiKey;
+      setApplications(prev => [newApp, ...prev.filter(app => app.id !== newApp.id)]);
+      if (newKey) setApiKeys(prev => [newKey, ...prev.filter(key => key.id !== newKey.id)]);
+      showToast(`Application "${newApp.name}" registered with an ALTIL-issued key.`);
+    } catch (error: any) { showToast(error?.message || 'Could not register application.', 'error'); }
   };
 
   const handleUpdateApplication = async (id: string, updates: Partial<Application>) => {
@@ -823,38 +782,23 @@ export default function App() {
   };
 
   // --- API Key Handlers ---
-  const handleAddApiKey = async (keyData: Partial<ApiKey>) => {
-    const newKey: ApiKey = {
-      id: `k-${Date.now()}`,
-      appId: keyData.appId || applications[0]?.id || 'app-introsoft',
-      name: keyData.name || 'New API Key',
-      key: keyData.key || `ALTIL-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-      prefix: keyData.prefix || 'ALTIL-xxxx...xxxx',
-      status: 'active',
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      expiresAt: keyData.expiresAt || null,
-      lastUsedAt: null,
-      rateLimitRpm: keyData.rateLimitRpm || 120,
-      ipWhitelist: keyData.ipWhitelist || [],
-      scopes: keyData.scopes || ['read:inference', 'read:models']
-    };
-
-    try {
-      await fetch(`${API_BASE}/api-keys`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newKey)
-      });
-    } catch (_) {}
-
-    setApiKeys(prev => [newKey, ...prev]);
-    showToast('New API key created.');
+  const handleAddApiKey = async (keyData: Partial<ApiKey>): Promise<ApiKey> => {
+    const app = applications.find(item => item.id === keyData.appId);
+    const payload = { ...keyData, customerId: app?.customerId, appId: app?.id };
+    const response = await fetch(`${API_BASE}/api-keys`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'ALTIL could not issue this API key.');
+    const newKey = result as ApiKey;
+    setApiKeys(prev => [newKey, ...prev.filter(key => key.id !== newKey.id)]);
+    showToast('ALTIL issued a new key. Copy it now; the full secret is shown once.');
+    return newKey;
   };
 
   const handleRevokeApiKey = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/api-keys/${id}/revoke`, { method: 'POST' });
-    } catch (_) {}
+      const response = await fetch(`${API_BASE}/api-keys/${id}/revoke`, { method: 'PUT' });
+      if (!response.ok) throw new Error('ALTIL could not confirm this key revocation.');
+    } catch (error: any) { showToast(error?.message || 'Could not revoke key.', 'error'); return; }
 
     setApiKeys(prev =>
       prev.map(k => (k.id === id ? { ...k, status: 'revoked' } : k))
@@ -1187,6 +1131,9 @@ export default function App() {
     }
   }, []);
 
+  if (window.location.pathname.replace(/\/$/, '').endsWith('/register')) return <SelfRegistrationPage />;
+  if (window.location.pathname.replace(/\/$/, '').startsWith('/legal/')) return <LegalPolicyPage />;
+
   if (!isAuthenticated && !isSplashActive) {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
@@ -1311,12 +1258,14 @@ export default function App() {
             <EnterpriseGovernanceRiskView />
           )}
 
-          {(activeTab === 'tenants' || activeTab === 'customers') && (
+          {(activeTab === 'tenants' || activeTab === 'customers' || activeTab === 'customer_add' || activeTab === 'customer_manage' || activeTab === 'customer_logs') && (
             <CustomersView
               customers={customers}
               applications={applications}
               apiKeys={apiKeys}
               policies={policies}
+              auditLogs={auditLogs}
+              initialView={activeTab === 'customer_add' ? 'add' : activeTab === 'customer_logs' ? 'logs' : 'manage'}
               onAddCustomer={handleAddCustomer}
               onUpdateCustomer={handleUpdateCustomer}
               onDeleteCustomer={handleDeleteCustomer}
@@ -1429,6 +1378,10 @@ export default function App() {
                   onAddModel={handleAddModel}
                   onUpdateModel={handleUpdateModel}
                   onDeleteModel={handleDeleteModel}
+                  onRefreshModels={async () => {
+                    const response = await fetch(`${API_BASE}/models`);
+                    if (response.ok) setModels(await response.json());
+                  }}
                 />
               )}
 
@@ -1553,11 +1506,51 @@ export default function App() {
               licensingPlans={licensingPlans}
               tenantLicenses={tenantLicenses}
               paymentLogs={paymentLogs}
-              onAddPlanTemplate={(plan) => setLicensingPlans([plan, ...licensingPlans])}
-              onUpdatePlanTemplate={(plan) => setLicensingPlans(licensingPlans.map(p => p.id === plan.id ? plan : p))}
-              onAssignTenantLicense={(license) => setTenantLicenses([license, ...tenantLicenses])}
-              onUpdateTenantLicense={(license) => setTenantLicenses(tenantLicenses.map(l => l.id === license.id ? license : l))}
-              onProcessPaymentWebhook={(event) => setPaymentLogs([event, ...paymentLogs])}
+              onAddPlanTemplate={(plan) => { void handleSavePlan(plan, true); }}
+              onUpdatePlanTemplate={(plan) => { void handleSavePlan(plan); }}
+              onAssignTenantLicense={(license) => { void handleSaveTenantLicense(license, true); }}
+              onUpdateTenantLicense={(license) => { void handleSaveTenantLicense(license); }}
+              onProcessPaymentWebhook={(event) => {
+                void (async () => {
+                  try {
+                    const response = await fetch(`${API_BASE}/licensing/payment-webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId: event.tenantId, eventType: event.eventType, invoiceId: event.invoiceId, amount: event.amount, gatewayProvider: event.gatewayProvider }) });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || result.message || 'Payment event could not be recorded.');
+                    setPaymentLogs(current => [result.webhookLog || event, ...current]);
+                    if (result.tenantLicense) setTenantLicenses(current => current.map(license => license.id === result.tenantLicense.id ? result.tenantLicense : license));
+                  } catch (error: any) { showToast(error?.message || 'Payment event could not be recorded.', 'error'); }
+                })();
+              }}
+            />
+          )}
+
+          {(activeTab === 'billing_admin' || activeTab === 'billing_accounts' || activeTab === 'billing_invoices' || activeTab === 'billing_refunds' || activeTab === 'billing_settlement') && (
+            <BillingAdminView customers={customers} licenses={tenantLicenses} />
+          )}
+
+          {(activeTab === 'billing_orders' || activeTab === 'billing_products') && (
+            <FinanceCommerceView mode={activeTab === 'billing_orders' ? 'orders' : 'products'} customers={customers} />
+          )}
+
+          {activeTab === 'accounting' && (
+            <AccountingControlView customers={customers} />
+          )}
+
+          {activeTab === 'saas_admin' && (
+            <SaasGrowthView customers={customers} plans={licensingPlans} onNavigate={setActiveTab} />
+          )}
+
+          {activeTab === 'communications' && (
+            <CommunicationsHubView customers={customers} />
+          )}
+
+          {activeTab === 'tenant_portal' && (
+            <TenantPortalView
+              customerId={scopeFilter.tenantId}
+              customers={customers}
+              applications={applications}
+              apiKeys={apiKeys}
+              onNavigate={setActiveTab}
             />
           )}
 

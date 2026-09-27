@@ -37,6 +37,8 @@ export interface AIProvider {
   endpoint: string;
   apiKey?: string;
   keyPrefix?: string;
+  credentialsConfigured?: boolean;
+  lastConnectionTest?: { success: boolean; timestamp: string; latencyMs?: number; errorMessage?: string };
   organizationId?: string;
   customHeaders?: Record<string, string>;
   enabled: boolean;
@@ -78,6 +80,14 @@ export interface AIModel {
   averageLatencyMs: number;
   tokensPerSecond?: number;
   description: string;
+  catalogSource?: string;
+  lastVerifiedAt?: string;
+  lastCatalogUpdateAt?: string;
+  freeQuotaState?: 'available' | 'exhausted' | 'unknown';
+  verificationStatus?: 'verified' | 'failed' | 'pending';
+  usageCount?: number;
+  tokensUsed?: number;
+  lastUsedAt?: string;
 }
 
 export interface ProviderTelemetryData {
@@ -161,7 +171,11 @@ export interface CustomerBillingConfig {
   billingCycleEndDate: string;
   autoRenew: boolean;
   paymentMethod: 'invoice' | 'credit_card' | 'wire_eft' | 'prepaid';
-  currency: 'USD' | 'ZAR' | 'EUR' | 'GBP';
+  /** Contract/invoice currency. USD is ALTIL's accounting base for new billing. */
+  currency: 'USD' | 'ZAR' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'NZD' | 'JPY' | 'CNY' | 'INR' | 'SGD' | 'CHF' | 'AED' | 'BRL' | 'MXN' | 'NGN' | 'KES' | 'GHS' | 'HKD' | 'SEK' | 'NOK' | 'DKK' | 'PLN' | 'KRW' | 'THB' | 'TRY' | 'ILS' | 'SAR' | 'PHP' | 'IDR';
+  /** Tenant-selected display currency; does not change the USD ledger or invoice amount. */
+  displayCurrency?: string;
+  displayLocale?: string;
   creditBalanceUsd: number;
   creditLimitUsd: number;
   prepaidCredits: boolean;
@@ -171,6 +185,9 @@ export interface CustomerBillingConfig {
   overageAlertThresholdPercent: number; // e.g. 80%
   lastInvoiceAmount?: number;
   nextBillingDate?: string;
+  /** Day of month invoices are prepared and delivered. Defaults to the 24th; 1–31 are valid. */
+  invoiceDay?: number;
+  automaticInvoicing?: boolean;
 }
 
 export interface InvoiceLineItem {
@@ -288,6 +305,9 @@ export interface Application {
   id: string;
   customerId?: string;
   customerName?: string;
+  parentApplicationId?: string | null;
+  applicationType?: 'application' | 'sub_application' | 'function';
+  functionIdentifier?: string;
   appIdentifier: string;
   name: string;
   description: string;
@@ -311,6 +331,8 @@ export interface ApiKey {
   customerName?: string;
   appId: string;
   appName?: string;
+  subApplicationId?: string;
+  functionIdentifier?: string;
   name: string;
   key: string;
   prefix: string;
@@ -321,6 +343,10 @@ export interface ApiKey {
   rateLimitRpm: number;
   ipWhitelist?: string[];
   scopes: string[];
+  /** Per-key commercial controls; usage is attributed to this key even when the app has multiple keys. */
+  billingMode?: 'included' | 'metered' | 'prepaid';
+  monthlyRequestLimit?: number | null;
+  monthlySpendLimitUsd?: number | null;
 }
 
 export type FallbackTrigger = 'on_error' | 'on_timeout' | 'on_rate_limit';
@@ -1228,6 +1254,10 @@ export interface LicensingPlanTemplate {
   slaUptimeGuarantee?: number;
   isPublished: boolean;
   createdDate: string;
+  /** Optional, explicit request bands enable transparent volume pricing. Null upper bound means unlimited. */
+  volumeTiers?: { upToRequests: number | null; pricePerRequest: number; label: string }[];
+  groupDiscountPercent?: number;
+  licenseScope?: 'application' | 'tenant_group';
 }
 
 export interface TenantAppLicense {
@@ -1257,6 +1287,9 @@ export interface TenantAppLicense {
   activeEnforcement: EnforcementAction | null;
   billingContactEmail: string;
   customContractNotes?: string;
+  discountPercent?: number;
+  groupSize?: number;
+  assignedKeyIds?: string[];
 }
 
 export interface PaymentWebhookLog {

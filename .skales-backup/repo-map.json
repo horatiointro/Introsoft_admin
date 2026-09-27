@@ -1,0 +1,1149 @@
+{
+  "entries": [
+    {
+      "relPath": "altil-server-test.cjs",
+      "language": "js",
+      "symbols": [],
+      "imports": [
+        "dotenv/config",
+        "express",
+        "path",
+        "vite",
+        "@google/genai",
+        "mysql2/promise",
+        "fs",
+        "bcryptjs",
+        "crypto"
+      ]
+    },
+    {
+      "relPath": "scripts/migrate.js",
+      "language": "js",
+      "symbols": [],
+      "imports": [
+        "mysql2/promise",
+        "fs",
+        "path",
+        "crypto"
+      ]
+    },
+    {
+      "relPath": "scripts/run_production_gate_tests.ts",
+      "language": "ts",
+      "symbols": [],
+      "imports": [
+        "fs",
+        "path"
+      ]
+    },
+    {
+      "relPath": "scripts/setup_db.js",
+      "language": "js",
+      "symbols": [],
+      "imports": [
+        "mysql2/promise",
+        "fs",
+        "path"
+      ]
+    },
+    {
+      "relPath": "scripts/set_admin_password.js",
+      "language": "js",
+      "symbols": [],
+      "imports": [
+        "mysql2/promise",
+        "bcryptjs",
+        "fs"
+      ]
+    },
+    {
+      "relPath": "server.ts",
+      "language": "ts",
+      "symbols": [
+        "requestAltilInference"
+      ],
+      "imports": [
+        "express",
+        "path",
+        "vite",
+        "@google/genai",
+        "./src/data/initialState",
+        "./src/types",
+        "./src/utils/complianceEngine",
+        "./src/data/licensingData",
+        "./src/db/mariadb",
+        "./src/routes/authRoutes",
+        "./src/routes/itilRoutes",
+        "./src/routes/complianceRoutes",
+        "./src/routes/trustFabricRoutes",
+        "./src/routes/dcrRoutes",
+        "./src/db/iamRepository",
+        "./src/middleware/authMiddleware",
+        "./src/utils/privilegedOperations",
+        "./src/utils/policyEngine",
+        "./src/data/incidentData",
+        "fs"
+      ]
+    },
+    {
+      "relPath": "src/App.tsx",
+      "language": "tsx",
+      "symbols": [
+        "App"
+      ],
+      "imports": [
+        "react",
+        "./types",
+        "./data/initialState",
+        "./components/Header",
+        "./components/Sidebar",
+        "./components/ArchitectureModal",
+        "./components/DashboardView",
+        "./components/CustomersView",
+        "./components/ProvidersView",
+        "./components/ProviderTelemetryView",
+        "./components/ModelsView",
+        "./components/ApplicationsView",
+        "./components/ApiKeysView",
+        "./components/RoutingView",
+        "./components/PoliciesView",
+        "./components/PopiaGdprComplianceView",
+        "./components/TrustFabricView",
+        "./components/UsageLogsView",
+        "./components/PlaygroundView",
+        "./components/OrgHierarchyView",
+        "./components/AdminSettingsView",
+        "./components/CommandCentreView",
+        "./components/SlaKpiMonitoringView",
+        "./components/IncidentsView",
+        "./components/SecOpsView",
+        "./components/FinOpsView",
+        "./components/AutomationView",
+        "./components/IamAdminView",
+        "./components/ExecutiveReportsView",
+        "./components/AltilStackWiringView",
+        "./components/Tenant360View",
+        "./components/ServiceManagementView",
+        "./components/EnterpriseOperationsView",
+        "./components/AiGovernanceModelLabView",
+        "./components/EnterpriseGovernanceRiskView",
+        "./components/LicensingMonetizationView",
+        "./components/DataProtectionDcrView",
+        "./components/UniversalActivityTicker",
+        "./data/licensingData",
+        "./components/ScopeHeaderBar",
+        "./components/Incident360DiagnosticModal",
+        "./components/IncidentCrmView",
+        "./components/LoginScreen",
+        "./components/SplashScreen",
+        "./data/incidentData",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/AdminSettingsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "AdminSettingsView"
+      ],
+      "imports": [
+        "react",
+        "./AltilLogo",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/AiGovernanceModelLabView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "AiGovernanceModelLabView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "../data/initialState"
+      ]
+    },
+    {
+      "relPath": "src/components/AltilLogo.tsx",
+      "language": "tsx",
+      "symbols": [
+        "AltilLogo"
+      ],
+      "imports": [
+        "react",
+        "../assets/images/altil_shield_combined_logo_1788013911530.jpg"
+      ]
+    },
+    {
+      "relPath": "src/components/AltilStackWiringView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "AltilStackWiringViewProps",
+        "AltilStackWiringView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "recharts",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/ApiKeysView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ApiKeysView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/ApplicationsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ApplicationsView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/ArchitectureModal.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ArchitectureModal"
+      ],
+      "imports": [
+        "react",
+        "./AltilLogo",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/AutomationView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "AutomationView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/CommandCentreView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "CommandCentreView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "./TileDetailModal",
+        "../data/tileDetailData",
+        "./ProvenanceBadge"
+      ]
+    },
+    {
+      "relPath": "src/components/CustomersView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "CustomersView"
+      ],
+      "imports": [
+        "react",
+        "../types",
+        "./ProvenanceBadge",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/DashboardView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "DashboardView"
+      ],
+      "imports": [
+        "react",
+        "./AltilLogo",
+        "lucide-react",
+        "../types",
+        "./Sidebar"
+      ]
+    },
+    {
+      "relPath": "src/components/DataProtectionDcrView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "DataProtectionDcrView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "./ScopeHeaderBar"
+      ]
+    },
+    {
+      "relPath": "src/components/EnterpriseGovernanceRiskView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "EnterpriseGovernanceRiskView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "../data/initialState"
+      ]
+    },
+    {
+      "relPath": "src/components/EnterpriseOperationsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "EnterpriseOperationsView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "../data/initialState"
+      ]
+    },
+    {
+      "relPath": "src/components/ExecutiveReportsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ExecutiveReportsView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/FinOpsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "FinOpsView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "./TileDetailModal",
+        "../data/tileDetailData"
+      ]
+    },
+    {
+      "relPath": "src/components/Header.tsx",
+      "language": "tsx",
+      "symbols": [
+        "Header"
+      ],
+      "imports": [
+        "react",
+        "./AltilLogo",
+        "lucide-react",
+        "../types",
+        "./ProvenanceBadge"
+      ]
+    },
+    {
+      "relPath": "src/components/IamAdminView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "PERMISSION_CATALOG",
+        "IamAdminView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/Incident360DiagnosticModal.tsx",
+      "language": "tsx",
+      "symbols": [
+        "Incident360DiagnosticModal"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/IncidentCrmView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "IncidentCrmView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/IncidentsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "IncidentsView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "./ProvenanceBadge"
+      ]
+    },
+    {
+      "relPath": "src/components/LicensingMonetizationView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "LicensingMonetizationView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/LoginScreen.tsx",
+      "language": "tsx",
+      "symbols": [
+        "LoginScreen"
+      ],
+      "imports": [
+        "react",
+        "./AltilLogo",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/ModelsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ModelsView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/OrgHierarchyView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "OrgHierarchyView"
+      ],
+      "imports": [
+        "react",
+        "../types",
+        "./AltilLogo",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/PlaygroundView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "PlaygroundView"
+      ],
+      "imports": [
+        "react",
+        "./AltilLogo",
+        "lucide-react",
+        "../types",
+        "./TrafficComplianceSimulatorView",
+        "@introsoft/altil-sdk"
+      ]
+    },
+    {
+      "relPath": "src/components/PoliciesView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "PoliciesView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/PopiaGdprComplianceView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "PopiaGdprComplianceView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "recharts",
+        "../utils/complianceEngine",
+        "./ProvenanceBadge"
+      ]
+    },
+    {
+      "relPath": "src/components/ProvenanceBadge.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ProvenanceBadge"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/ProvidersView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ProvidersView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "./ProvenanceBadge"
+      ]
+    },
+    {
+      "relPath": "src/components/ProviderTelemetryView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ProviderTelemetryView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "recharts",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/RoutingView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "RoutingView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/ScopeHeaderBar.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ScopeHeaderBarProps",
+        "ScopeHeaderBar"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/components/SecOpsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "SecOpsView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "./TileDetailModal",
+        "../data/tileDetailData"
+      ]
+    },
+    {
+      "relPath": "src/components/ServiceManagementView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "ServiceManagementView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "../data/initialState",
+        "./TileDetailModal",
+        "../data/tileDetailData"
+      ]
+    },
+    {
+      "relPath": "src/components/Sidebar.tsx",
+      "language": "tsx",
+      "symbols": [
+        "NavTabId",
+        "Sidebar"
+      ],
+      "imports": [
+        "react",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/SlaKpiMonitoringView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "SlaKpiMonitoringView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "recharts",
+        "../types",
+        "./TileDetailModal",
+        "../data/tileDetailData"
+      ]
+    },
+    {
+      "relPath": "src/components/SplashScreen.tsx",
+      "language": "tsx",
+      "symbols": [
+        "SplashScreen"
+      ],
+      "imports": [
+        "react",
+        "./AltilLogo",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/Tenant360View.tsx",
+      "language": "tsx",
+      "symbols": [
+        "Tenant360View"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "recharts",
+        "../types",
+        "../data/initialState",
+        "./TileDetailModal",
+        "../data/tileDetailData"
+      ]
+    },
+    {
+      "relPath": "src/components/TileDetailModal.tsx",
+      "language": "tsx",
+      "symbols": [
+        "TileDetailData",
+        "TileDetailModal"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "./ProvenanceBadge",
+        "recharts"
+      ]
+    },
+    {
+      "relPath": "src/components/TrafficComplianceSimulatorView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "TrafficComplianceSimulatorView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "./ScopeHeaderBar",
+        "../utils/complianceSimulationEngine"
+      ]
+    },
+    {
+      "relPath": "src/components/TrustFabricView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "TrustFabricView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react"
+      ]
+    },
+    {
+      "relPath": "src/components/UniversalActivityTicker.tsx",
+      "language": "tsx",
+      "symbols": [
+        "UniversalActivityTicker"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "../types",
+        "../data/initialState"
+      ]
+    },
+    {
+      "relPath": "src/components/UsageLogsView.tsx",
+      "language": "tsx",
+      "symbols": [
+        "UsageLogsView"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "recharts",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/data/incidentData.ts",
+      "language": "ts",
+      "symbols": [
+        "INITIAL_RAG_KNOWLEDGE_BASE",
+        "INITIAL_INCIDENTS_LIST",
+        "INITIAL_ALERTS_LIST",
+        "INITIAL_PROBLEMS_LIST"
+      ],
+      "imports": [
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/data/initialState.ts",
+      "language": "ts",
+      "symbols": [
+        "INITIAL_PROVIDERS",
+        "INITIAL_MODELS",
+        "INITIAL_CUSTOMERS",
+        "INITIAL_APPLICATIONS",
+        "INITIAL_API_KEYS",
+        "INITIAL_ROUTING_RULES",
+        "INITIAL_POLICIES",
+        "INITIAL_GLOBAL_COMPLIANCE_CONFIG",
+        "INITIAL_DATA_SUBJECT_REQUESTS",
+        "INITIAL_AUDIT_LOGS",
+        "INITIAL_SYSTEM_HEALTH",
+        "initialProviders",
+        "initialModels",
+        "initialCustomers",
+        "initialApplications",
+        "initialApiKeys",
+        "initialRoutingRules",
+        "initialPolicies",
+        "initialGlobalComplianceConfig",
+        "initialDataSubjectRequests",
+        "initialAuditLogs",
+        "initialSystemHealth",
+        "initialUsageMetrics",
+        "USAGE_CHART_DATA",
+        "CAPABILITIES_CATALOG",
+        "initialSlaProfiles",
+        "initialKpiDefinitions",
+        "initialIncidents",
+        "initialProblems",
+        "initialWorkflows",
+        "initialIamRoles",
+        "initialIamUsers",
+        "initialComplianceControls",
+        "initialEvidence",
+        "initialExecutiveReports",
+        "initialEntitlements",
+        "initialServiceCatalogue",
+        "initialCmdbNodes",
+        "initialCmdbDependencies",
+        "initialRiskRegister",
+        "initialAiModelGovernance",
+        "initialModelEvalBenchmarks",
+        "initialVendor360",
+        "initialBcdrStatus",
+        "initialChangeRequests",
+        "initialServiceDeskTickets",
+        "initialSecurityPosture",
+        "initialActivityFeed"
+      ],
+      "imports": [
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/data/licensingData.ts",
+      "language": "ts",
+      "symbols": [
+        "INITIAL_LICENSING_PLANS",
+        "INITIAL_TENANT_LICENSES",
+        "INITIAL_PAYMENT_WEBHOOK_LOGS"
+      ],
+      "imports": [
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/data/tileDetailData.ts",
+      "language": "ts",
+      "symbols": [
+        "mockTileDetails",
+        "getTileDetailData"
+      ],
+      "imports": [
+        "../components/TileDetailModal"
+      ]
+    },
+    {
+      "relPath": "src/db/complianceRepository.ts",
+      "language": "ts",
+      "symbols": [
+        "ComplianceRepository"
+      ],
+      "imports": [
+        "./mariadb",
+        "../types",
+        "../data/initialState",
+        "../utils/complianceSimulationEngine"
+      ]
+    },
+    {
+      "relPath": "src/db/dcrRepository.ts",
+      "language": "ts",
+      "symbols": [
+        "DcrRepository"
+      ],
+      "imports": [
+        "./mariadb",
+        "../types",
+        "../utils/dcrKeyService"
+      ]
+    },
+    {
+      "relPath": "src/db/iamRepository.ts",
+      "language": "ts",
+      "symbols": [
+        "IamUserRecord",
+        "IamRoleRecord",
+        "IamPermissionRecord",
+        "IamSessionRecord",
+        "AuthResult",
+        "IamRepository"
+      ],
+      "imports": [
+        "bcryptjs",
+        "crypto",
+        "./mariadb"
+      ]
+    },
+    {
+      "relPath": "src/db/itilRepository.ts",
+      "language": "ts",
+      "symbols": [
+        "ItilOperationsRepository"
+      ],
+      "imports": [
+        "./mariadb",
+        "../types",
+        "../data/incidentData"
+      ]
+    },
+    {
+      "relPath": "src/db/mariadb.ts",
+      "language": "ts",
+      "symbols": [
+        "isDatabaseConnected",
+        "setDatabaseConnected",
+        "getMariaDbPool",
+        "executeQuery",
+        "testAndInitMariaDb",
+        "runSchemaMigrationScript",
+        "getMariaDbHealth",
+        "dbRepository"
+      ],
+      "imports": [
+        "mysql2/promise",
+        "fs",
+        "path",
+        "../types",
+        "../data/initialState",
+        "../data/licensingData"
+      ]
+    },
+    {
+      "relPath": "src/db/migrator.ts",
+      "language": "ts",
+      "symbols": [
+        "MigrationRecord",
+        "ensureMigrationTable",
+        "getAppliedMigrations",
+        "runPendingMigrations"
+      ],
+      "imports": [
+        "fs",
+        "path",
+        "crypto",
+        "mysql2/promise",
+        "./mariadb"
+      ]
+    },
+    {
+      "relPath": "src/main.tsx",
+      "language": "tsx",
+      "symbols": [],
+      "imports": [
+        "react",
+        "react-dom/client",
+        "./App.tsx"
+      ]
+    },
+    {
+      "relPath": "src/middleware/authMiddleware.ts",
+      "language": "ts",
+      "symbols": [
+        "AuthenticatedRequest",
+        "extractSessionToken",
+        "requireAuthentication",
+        "requireRole",
+        "requirePermission",
+        "AltilGatewayRequest",
+        "requireAltilGatewayAuthentication",
+        "requireTenantAccess"
+      ],
+      "imports": [
+        "express",
+        "../db/iamRepository"
+      ]
+    },
+    {
+      "relPath": "src/routes/authRoutes.ts",
+      "language": "ts",
+      "symbols": [
+        "authRouter"
+      ],
+      "imports": [
+        "express",
+        "../db/iamRepository",
+        "../middleware/authMiddleware",
+        "bcryptjs",
+        "crypto"
+      ]
+    },
+    {
+      "relPath": "src/routes/complianceRoutes.ts",
+      "language": "ts",
+      "symbols": [
+        "complianceRouter"
+      ],
+      "imports": [
+        "express",
+        "../db/complianceRepository",
+        "../middleware/authMiddleware",
+        "../utils/complianceEngine",
+        "../utils/complianceSimulationEngine"
+      ]
+    },
+    {
+      "relPath": "src/routes/dcrRoutes.ts",
+      "language": "ts",
+      "symbols": [
+        "dcrRouter"
+      ],
+      "imports": [
+        "express",
+        "../middleware/authMiddleware",
+        "../utils/dcrEngine",
+        "../db/dcrRepository",
+        "../utils/dcrKeyService"
+      ]
+    },
+    {
+      "relPath": "src/routes/itilRoutes.ts",
+      "language": "ts",
+      "symbols": [
+        "itilRouter"
+      ],
+      "imports": [
+        "express",
+        "../db/itilRepository",
+        "../middleware/authMiddleware",
+        "../data/initialState",
+        "../data/incidentData"
+      ]
+    },
+    {
+      "relPath": "src/routes/trustFabricRoutes.ts",
+      "language": "ts",
+      "symbols": [
+        "trustFabricRouter"
+      ],
+      "imports": [
+        "express",
+        "crypto",
+        "../types",
+        "../middleware/authMiddleware"
+      ]
+    },
+    {
+      "relPath": "src/types.ts",
+      "language": "ts",
+      "symbols": [
+        "ProviderType",
+        "DataProvenanceType",
+        "ProvenanceMetadata",
+        "ProvenanceValue",
+        "HealthStatus",
+        "AIProvider",
+        "AIModel",
+        "ProviderTelemetryData",
+        "ApplicationStatus",
+        "CustomerType",
+        "CustomerStatus",
+        "CustomerTier",
+        "UserRole",
+        "OrgRole",
+        "CustomerLifecycleEvent",
+        "ComplianceDossier",
+        "CustomerBillingConfig",
+        "InvoiceLineItem",
+        "InvoicePreview",
+        "CustomerUser",
+        "StatutoryOfficers",
+        "Customer",
+        "Application",
+        "KeyStatus",
+        "ApiKey",
+        "FallbackTrigger",
+        "LoadBalancingStrategy",
+        "RoutingRule",
+        "PopiaComplianceRules",
+        "GdprComplianceRules",
+        "AIPolicyRules",
+        "AIPolicy",
+        "RegulatoryViolation",
+        "ComplianceScanResult",
+        "DataSubjectRequest",
+        "GlobalComplianceConfig",
+        "AuditLogStatus",
+        "AuditLog",
+        "UsageMetric",
+        "SystemHealthItem",
+        "ProviderTestResult",
+        "OrchestrationStep",
+        "OrchestrationRequest",
+        "OrchestrationResponse",
+        "OrchestrationExecutionResult",
+        "ServiceTier",
+        "BusinessCriticality",
+        "TenantSlaProfile",
+        "TenantKpiProfile",
+        "TenantContractTerms"
+      ],
+      "imports": []
+    },
+    {
+      "relPath": "src/utils/complianceEngine.ts",
+      "language": "ts",
+      "symbols": [
+        "validateSouthAfricanID",
+        "validateIBAN",
+        "ScanOptions",
+        "scanAndSanitizePrompt"
+      ],
+      "imports": [
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/utils/complianceSimulationEngine.ts",
+      "language": "ts",
+      "symbols": [
+        "SimulatedLawViolation",
+        "VaultTokenRecord",
+        "SimulationTrafficPacket",
+        "CompanyTrafficScenario",
+        "IN_MEMORY_SIMULATED_TRAFFIC",
+        "IN_MEMORY_TOKEN_VAULT",
+        "COMPANY_TRAFFIC_SCENARIOS",
+        "executeComplianceSimulation"
+      ],
+      "imports": [
+        "./complianceEngine"
+      ]
+    },
+    {
+      "relPath": "src/utils/dcrEngine.ts",
+      "language": "ts",
+      "symbols": [
+        "DcrEngine"
+      ],
+      "imports": [
+        "../types",
+        "./dcrKeyService",
+        "../db/dcrRepository"
+      ]
+    },
+    {
+      "relPath": "src/utils/dcrKeyService.ts",
+      "language": "ts",
+      "symbols": [
+        "TransformationKeyService"
+      ],
+      "imports": [
+        "crypto",
+        "../types"
+      ]
+    },
+    {
+      "relPath": "src/utils/policyEngine.ts",
+      "language": "ts",
+      "symbols": [
+        "AI_Governance_Policy",
+        "PolicyDecisionEvidence",
+        "PolicyEngine"
+      ],
+      "imports": [
+        "crypto"
+      ]
+    },
+    {
+      "relPath": "src/utils/privilegedOperations.ts",
+      "language": "ts",
+      "symbols": [
+        "PrivilegedOperationType",
+        "PrivilegedOperation",
+        "PrivilegedOperationsRegistry"
+      ],
+      "imports": [
+        "crypto",
+        "express"
+      ]
+    },
+    {
+      "relPath": "vite.config.ts",
+      "language": "ts",
+      "symbols": [],
+      "imports": [
+        "@tailwindcss/vite",
+        "@vitejs/plugin-react",
+        "path",
+        "vite"
+      ]
+    }
+  ],
+  "totalFiles": 78,
+  "indexedFiles": 76,
+  "method": "regex",
+  "generatedAt": 1790445178444,
+  "merkleRoot": "3f9b37d0f20c70cd50de02486d5519d7f643fc77d3bf982f25f00885fcbd83dc"
+}

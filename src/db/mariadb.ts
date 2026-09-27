@@ -101,6 +101,19 @@ export async function executeQuery<T = any>(sql: string, params: any[] = []): Pr
   return rows as T[];
 }
 
+/** Run a small, parameterized set of accounting writes atomically. */
+export async function executeTransaction(statements: Array<{ sql: string; params?: any[] }>): Promise<void> {
+  const connection = await getMariaDbPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const statement of statements) await connection.execute(statement.sql, statement.params || []);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally { connection.release(); }
+}
+
 /**
  * Verify MariaDB database connectivity & run schema verification
  */
@@ -209,13 +222,14 @@ export async function getMariaDbHealth() {
   }
 
   try {
+    const versionRows = await executeQuery<{ version: string }>('SELECT VERSION() AS version');
     const tables = await executeQuery<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = ?",
       [dbConfig.database]
     );
     return {
       status: 'online',
-      databaseEngine: 'MariaDB 10.11.18 Community Server',
+      databaseEngine: `MariaDB ${versionRows[0]?.version || 'Community Server'}`,
       host: dbConfig.host,
       port: dbConfig.port,
       databaseName: dbConfig.database,
@@ -314,7 +328,8 @@ export const dbRepository = {
             autoEnforceOnUnpaid: true,
             features: ['24/7 SLA Guarantee', 'POPIA Redactor', 'Multi-Model Fallback'],
             isPublished: true,
-            createdDate: r.created_at ? String(r.created_at).split('T')[0] : '2026-01-01'
+            createdDate: r.created_at ? String(r.created_at).split('T')[0] : '2026-01-01',
+            ...(r.metadata_json ? JSON.parse(typeof r.metadata_json === 'string' ? r.metadata_json : r.metadata_json.toString()) : {})
           }));
         }
       } catch (e) {
@@ -327,9 +342,9 @@ export const dbRepository = {
   async saveLicensingPlan(plan: LicensingPlanTemplate): Promise<void> {
     if (isDbConnected) {
       await executeQuery(
-        `INSERT INTO licensing_plans (id, plan_code, name, description, pricing_model, base_price, currency, billing_cycle, included_transactions_quota, overage_rate_per_1k, grace_period_days, max_rpm_limit, sla_guarantee_percent, enforcement_rule)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), pricing_model=VALUES(pricing_model), base_price=VALUES(base_price), currency=VALUES(currency), billing_cycle=VALUES(billing_cycle), included_transactions_quota=VALUES(included_transactions_quota), overage_rate_per_1k=VALUES(overage_rate_per_1k), grace_period_days=VALUES(grace_period_days), max_rpm_limit=VALUES(max_rpm_limit), sla_guarantee_percent=VALUES(sla_guarantee_percent), enforcement_rule=VALUES(enforcement_rule)`,
+        `INSERT INTO licensing_plans (id, plan_code, name, description, pricing_model, base_price, currency, billing_cycle, included_transactions_quota, overage_rate_per_1k, grace_period_days, max_rpm_limit, sla_guarantee_percent, enforcement_rule, metadata_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), pricing_model=VALUES(pricing_model), base_price=VALUES(base_price), currency=VALUES(currency), billing_cycle=VALUES(billing_cycle), included_transactions_quota=VALUES(included_transactions_quota), overage_rate_per_1k=VALUES(overage_rate_per_1k), grace_period_days=VALUES(grace_period_days), max_rpm_limit=VALUES(max_rpm_limit), sla_guarantee_percent=VALUES(sla_guarantee_percent), enforcement_rule=VALUES(enforcement_rule), metadata_json=VALUES(metadata_json)`,
         [
           plan.id,
           plan.id.toUpperCase(),
@@ -344,7 +359,8 @@ export const dbRepository = {
           plan.gracePeriodDays || 14,
           2500,
           99.95,
-          plan.autoEnforcementAction || 'hard_block_402'
+          plan.autoEnforcementAction || 'hard_block_402',
+          JSON.stringify(plan)
         ]
       );
     }
@@ -381,7 +397,8 @@ export const dbRepository = {
             autoEnforceOnUnpaid: true,
             graceDaysRemaining: Number(r.grace_period_days_remaining || 14),
             activeEnforcement: r.active_enforcement || null,
-            billingContactEmail: 'billing@tenant.com'
+            billingContactEmail: 'billing@tenant.com',
+            ...(r.metadata_json ? JSON.parse(typeof r.metadata_json === 'string' ? r.metadata_json : r.metadata_json.toString()) : {})
           }));
         }
       } catch (e) {
@@ -394,9 +411,9 @@ export const dbRepository = {
   async saveTenantLicense(lic: TenantAppLicense): Promise<void> {
     if (isDbConnected) {
       await executeQuery(
-        `INSERT INTO tenant_licenses (id, tenant_id, tenant_name, application_id, application_name, plan_id, plan_name, license_key, license_status, payment_status, start_date, renewal_date, active_enforcement, current_accrued_bill_usd, grace_period_days_remaining, last_payment_date, last_payment_amount, currency)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE license_status=VALUES(license_status), payment_status=VALUES(payment_status), active_enforcement=VALUES(active_enforcement), current_accrued_bill_usd=VALUES(current_accrued_bill_usd), grace_period_days_remaining=VALUES(grace_period_days_remaining), last_payment_date=VALUES(last_payment_date), last_payment_amount=VALUES(last_payment_amount)`,
+        `INSERT INTO tenant_licenses (id, tenant_id, tenant_name, application_id, application_name, plan_id, plan_name, license_key, license_status, payment_status, start_date, renewal_date, active_enforcement, current_accrued_bill_usd, grace_period_days_remaining, last_payment_date, last_payment_amount, currency, metadata_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE license_status=VALUES(license_status), payment_status=VALUES(payment_status), active_enforcement=VALUES(active_enforcement), current_accrued_bill_usd=VALUES(current_accrued_bill_usd), grace_period_days_remaining=VALUES(grace_period_days_remaining), last_payment_date=VALUES(last_payment_date), last_payment_amount=VALUES(last_payment_amount), metadata_json=VALUES(metadata_json)`,
         [
           lic.id,
           lic.tenantId,
@@ -415,7 +432,8 @@ export const dbRepository = {
           lic.graceDaysRemaining || 14,
           lic.lastPaymentDate || '2026-08-01',
           lic.lastPaymentAmount || 4500,
-          lic.currency || 'USD'
+          lic.currency || 'USD',
+          JSON.stringify(lic)
         ]
       );
     }
@@ -453,7 +471,7 @@ export const dbRepository = {
   async insertPaymentLog(log: PaymentWebhookLog): Promise<void> {
     if (isDbConnected) {
       await executeQuery(
-        `INSERT INTO payment_webhook_logs (id, timestamp, tenant_id, tenant_name, application_id, invoice_id, event_type, amount, currency, gateway_provider, enforcement_triggered, status, raw_payload_summary)
+        `INSERT IGNORE INTO payment_webhook_logs (id, timestamp, tenant_id, tenant_name, application_id, invoice_id, event_type, amount, currency, gateway_provider, enforcement_triggered, status, raw_payload_summary)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           log.id,

@@ -180,7 +180,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
 
             <div className="p-4 rounded bg-[#141414] border border-[#222222]">
               <div className="text-[10px] text-[#888888] font-bold uppercase font-mono">Approximate Cost</div>
-              <div className="text-xl font-bold font-mono text-green-400 mt-1">£2.56</div>
+              <div className="text-xl font-bold font-mono text-green-400 mt-1">$2.56</div>
               <div className="text-[10px] text-[#666666] mt-1 font-mono">
                 62% zero-cost (Ollama GPU)
               </div>
@@ -358,7 +358,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
               </div>
 
               <div className="p-2.5 rounded bg-[#0a0a0a] border border-[#222222] text-[11px] text-[#888888]">
-                💡 <strong className="text-white">FinOps Advantage:</strong> Local Ollama routing absorbs 62% of traffic, saving ~£240/mo in cloud API spend.
+                💡 <strong className="text-white">FinOps Advantage:</strong> Local Ollama routing absorbs 62% of traffic, saving ~$240/mo in cloud API spend.
               </div>
             </div>
           </div>

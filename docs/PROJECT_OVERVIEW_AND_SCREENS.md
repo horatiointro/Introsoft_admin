@@ -16,16 +16,18 @@ MySQL are accessed through `mysql2`; schema changes are managed in
 
 ## How to navigate
 
-The left sidebar has 26 main destinations grouped into five areas. The header
-provides the global company-to-tenant-to-application scope selector, a menu
-search/directory, notifications and user actions. The activity ticker shows
-cross-platform activity. Some destinations contain their own tabs, listed
-below. A few older navigation IDs are aliases into these newer destinations;
-they are not separate screens.
+The left sidebar groups destinations into six collapsible work areas: Overview,
+Customers, Finance, AI platform, Operations, and Trust & governance. Use the
+navigation search for a known screen or business term. “Ask ALTIL” opens the AI
+screen assistant; if a search term has no exact menu match, the assistant can
+help find a relevant screen. The global company-to-tenant-to-application scope
+selector remains in the header. Some destinations contain their own tabs. Older
+navigation IDs are aliases, not separate screens. Menu items no longer use a
+“NEW” badge.
 
 ## Screens and capabilities
 
-### Executive
+### Overview
 
 | Screen | What it offers |
 |---|---|
@@ -43,7 +45,12 @@ they are not separate screens.
 | **Licensing & Subscriptions** | Review and manage plan templates, tenant/application licenses, billing and payment-webhook records, and licensing enforcement/self-service information. |
 | **Tenant SLA & KPI Monitoring** | Compare service-level profiles and business/AI KPI measurements in the current tenant scope, including metric drilldowns. |
 | **IAM Users & Access Control** | Search and manage IAM users and roles; provision, edit, reset, or offboard users; inspect sessions/tokens; and review MFA, password, and access safeguards. Available actions are subject to server-side role checks. |
-| **Admin & System Settings** | Configure platform-level currency and monetary standards, default tenant onboarding/credit values, and the administrative actions shown by the application. |
+| **Platform & Currency Settings** | Set the default display currency and locale, FX freshness window, and attributed USD exchange-rate book. The system usage accounting base is USD; existing posted invoice and journal amounts retain their source currency. |
+| **Billing & Invoices** | Draft and issue tenant invoices, review payments and collection status, and inspect account activity. |
+| **Accounting & Settlement** | Review the operational double-entry subledger, link invoices to captures and journals, import and match provider statements, and manage payment-linked refunds. Each book is filtered by currency; do not sum different currencies without an approved FX journal. |
+| **Customer Account Portal** | View a tenant-scoped account workspace. Customers can set their preferred display currency, inspect invoices, manage scoped keys, view usage and control consented collection schedules. |
+| **Customer Communications** | Set up encrypted email and Firebase delivery channels and manage customer notices. |
+| **Onboarding & Growth** | Review self-service registrations, trials, packages and account onboarding. |
 
 ### AI Infrastructure and Gateway
 
@@ -132,3 +139,23 @@ npm run dev
 Database setup and production guidance are in
 [`MARIADB_DEPLOYMENT.md`](./MARIADB_DEPLOYMENT.md). Do not commit `.env` or
 database credentials.
+
+## Currency and navigation details
+
+- USD is ALTIL's current usage metering and platform billing base. A tenant's
+  contractual/invoice currency remains explicit on its offer and invoice; a
+  display preference never changes an issued amount or posted journal.
+- Customers select a **Display currency** in the portal. A rate must be
+  configured and within the freshness window to convert a value. The display
+  shows the rate date; if a rate is missing or stale, ALTIL falls back to the
+  source currency instead of guessing.
+- An administrator manages the platform default currency, locale, FX freshness
+  and rate sources in **Trust & governance → Platform settings → Platform &
+  Currency Settings**. Rates mean units of the selected currency per 1 USD.
+- The accounting and settlement workspace preserves source currencies by book.
+  Foreign-currency valuation, tax mapping and financial close rules must be
+  approved by the finance owner/accountant before production close.
+- Ask ALTIL “Where can I change the display currency?” or “Where do I find
+  settlements?” to get a short answer and a direct screen shortcut. Answers use
+  the current screen guide and governed AI gateway; exact actions still require
+  the appropriate permission.

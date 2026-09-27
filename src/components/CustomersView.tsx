@@ -1,5 +1,5 @@
 import { InfoButton } from './InfoButton';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Customer,
   CustomerUser,
@@ -11,7 +11,8 @@ import {
   CustomerStatus,
   CustomerTier,
   UserRole,
-  InvoicePreview
+  InvoicePreview,
+  AuditLog
 } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import {
@@ -52,7 +53,8 @@ import {
   RefreshCw,
   X,
   CreditCard,
-  DollarSign
+  DollarSign,
+  ScrollText
 } from 'lucide-react';
 
 interface CustomersViewProps {
@@ -60,6 +62,8 @@ interface CustomersViewProps {
   applications: Application[];
   apiKeys: ApiKey[];
   policies: AIPolicy[];
+  auditLogs: AuditLog[];
+  initialView?: 'manage' | 'add' | 'logs';
   onAddCustomer: (customerData: any) => Promise<void>;
   onUpdateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   onDeleteCustomer: (id: string) => Promise<void>;
@@ -77,6 +81,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   applications,
   apiKeys,
   policies,
+  auditLogs,
+  initialView = 'manage',
   onAddCustomer,
   onUpdateCustomer,
   onDeleteCustomer,
@@ -92,9 +98,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [filterType, setFilterType] = useState<string>('all');
   const [filterTier, setFilterTier] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [logCustomerId, setLogCustomerId] = useState('all');
+  const [logSearch, setLogSearch] = useState('');
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [customerFormError, setCustomerFormError] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [managingUsersCustomer, setManagingUsersCustomer] = useState<Customer | null>(null);
   const [managingOfficersCustomer, setManagingOfficersCustomer] = useState<Customer | null>(null);
@@ -202,7 +211,20 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [selectedTierChange, setSelectedTierChange] = useState<CustomerTier>('growth');
 
   // Tab inside Customers Screen
-  const [activeSubTab, setActiveSubTab] = useState<'directory' | 'lifecycle' | 'key_tester' | 'statutory_matrix'>('directory');
+  const [activeSubTab, setActiveSubTab] = useState<'directory' | 'lifecycle' | 'key_tester' | 'statutory_matrix' | 'tenant_insights'>('directory');
+  const [tenantInsight, setTenantInsight] = useState<'customers' | 'officers' | 'users' | 'keys' | 'quota'>('customers');
+  useEffect(() => {
+    if (initialView === 'add') {
+      setActiveSubTab('directory');
+      setEditingCustomer(null);
+      setCustomerFormError('');
+      setIsAddModalOpen(true);
+      return;
+    }
+    setIsAddModalOpen(false);
+    setEditingCustomer(null);
+    if (initialView === 'manage') setActiveSubTab('directory');
+  }, [initialView]);
 
   // Dossier Export Handler
   const handleExportCustomerDossier = (customer: Customer) => {
@@ -330,12 +352,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   });
 
   // Calculate Metrics
-  const totalCustomers = customers.length;
-  const companyCount = customers.filter(c => c.type === 'company').length;
-  const individualCount = customers.filter(c => c.type === 'individual').length;
+  const totalCustomers = customers.filter(customer => customer.status === 'active').length;
   const totalOfficersNominated = customers.filter(c => c.statutoryOfficers?.informationOfficer || c.statutoryOfficers?.dataProtectionOfficer).length;
-  const totalUsersAcrossTenants = customers.reduce((sum, c) => sum + (c.users?.length || 0), 0);
-  const totalMonthlyBudget = customers.reduce((sum, c) => sum + (c.monthlyBudgetUsd || 0), 0);
+  const totalUsersAcrossTenants = customers.reduce((sum, c) => sum + (c.users?.filter(user => user.status === 'active').length || 0), 0);
+  const tenantIds = new Set(customers.map(customer => customer.id));
+  const tenantApiKeys = apiKeys.filter(key => tenantIds.has(key.customerId));
+  const openTenantInsight = (key: typeof tenantInsight) => { setTenantInsight(key); setActiveSubTab('tenant_insights'); };
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -391,13 +413,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       initialApplicationIdentifier: autoCreateApp && initialAppIdentifier.trim() ? initialAppIdentifier.trim() : undefined
     };
 
-    if (editingCustomer) {
-      await onUpdateCustomer(editingCustomer.id, payload);
-    } else {
-      await onAddCustomer(payload);
+    try {
+      if (editingCustomer) await onUpdateCustomer(editingCustomer.id, payload);
+      else await onAddCustomer(payload);
+    } catch (error) {
+      setCustomerFormError(error instanceof Error ? error.message : 'Customer changes could not be saved. Please retry.');
+      return;
     }
     setIsAddModalOpen(false);
     setEditingCustomer(null);
+    setCustomerFormError('');
     resetNewCustomerForm();
   };
 
@@ -625,6 +650,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     }
   };
 
+  if (initialView === 'logs') {
+    const linkedApps = applications.filter(app => logCustomerId === 'all' || app.customerId === logCustomerId || customers.find(customer => customer.id === logCustomerId)?.connectedAppIds.includes(app.id));
+    const appIds = new Set(linkedApps.map(app => app.id));
+    const visibleLogs = auditLogs.filter(log => appIds.has(log.appId)).filter(log => !logSearch || `${log.id} ${log.appName} ${log.modelIdentifier} ${log.providerName} ${log.status} ${log.capability}`.toLowerCase().includes(logSearch.toLowerCase())).sort((a,b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+    const accountEvents = customers.filter(customer => logCustomerId === 'all' || customer.id === logCustomerId).flatMap(customer => (customer.lifecycleEvents || []).map(event => ({ ...event, customerName: customer.name }))).sort((a,b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+    return <section className="space-y-5 text-slate-200">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5"><div><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-300">Customer operations</p><h1 className="mt-1 text-2xl font-semibold text-white">Customer activity log</h1><p className="mt-1 text-xs text-slate-400">A traceable view of requests made through each customer’s registered applications.</p></div><div className="flex gap-2"><select aria-label="Filter logs by customer" value={logCustomerId} onChange={e=>setLogCustomerId(e.target.value)} className="rounded-lg border border-white/10 bg-[#111720] px-3 py-2 text-xs text-white"><option value="all">All customers</option>{customers.map(customer=><option key={customer.id} value={customer.id}>{customer.name}</option>)}</select><input value={logSearch} onChange={e=>setLogSearch(e.target.value)} placeholder="Search events…" className="rounded-lg border border-white/10 bg-[#111720] px-3 py-2 text-xs text-white placeholder:text-slate-600"/></div></header>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[['Events',visibleLogs.length],['Successful',visibleLogs.filter(log=>log.status==='SUCCESS'||log.status==='FALLBACK_SUCCESS').length],['Issues',visibleLogs.filter(log=>log.status!=='SUCCESS'&&log.status!=='FALLBACK_SUCCESS').length],['Applications',linkedApps.length]].map(([label,value])=><div key={label} className="rounded-xl border border-white/[.08] bg-white/[.025] p-4"><span className="text-[10px] uppercase tracking-wider text-slate-500">{label}</span><b className="mt-1 block text-xl text-white">{value}</b></div>)}</div>
+      <div className="overflow-hidden rounded-xl border border-white/[.08] bg-[#0e141d]"><div className="border-b border-white/[.06] px-4 py-3"><h2 className="text-sm font-semibold text-white">Customer account changes</h2><p className="mt-1 text-[10px] text-slate-500">Onboarding, profile changes and archive events.</p></div><div className="divide-y divide-white/[.05]">{accountEvents.slice(0,100).map(event=><div key={event.id} className="flex flex-wrap items-start gap-x-4 gap-y-1 px-4 py-3 text-xs"><time className="w-40 shrink-0 text-slate-500">{new Date(event.timestamp).toLocaleString()}</time><span className="min-w-36 font-medium text-cyan-100">{event.customerName}</span><span className="rounded-full bg-white/[.05] px-2 py-0.5 text-[10px] text-slate-300">{event.action.replaceAll('.',' ').replaceAll('_',' ')}</span><span className="min-w-0 flex-1 text-slate-400">{event.details}</span><span className="text-slate-600">{event.actor}</span></div>)}{!accountEvents.length&&<p className="p-5 text-xs text-slate-500">No account change events have been recorded yet.</p>}</div></div>
+      <div className="overflow-hidden rounded-xl border border-white/[.08] bg-[#0e141d]"><div className="flex items-center justify-between border-b border-white/[.06] px-4 py-3"><h2 className="text-sm font-semibold text-white">Request history</h2><span className="text-[10px] text-slate-500">Content previews are omitted from this operational log.</span></div><div className="overflow-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="bg-white/[.025] text-slate-500"><tr>{['Time','Customer / application','Model route','Outcome','Duration','Tokens','Key'].map(label=><th key={label} className="px-4 py-3 font-medium">{label}</th>)}</tr></thead><tbody>{visibleLogs.map(log=>{const app=linkedApps.find(item=>item.id===log.appId); const customer=customers.find(item=>item.id===app?.customerId); const succeeded=log.status==='SUCCESS'; return <tr key={log.id} className="border-t border-white/[.05]"><td className="whitespace-nowrap px-4 py-3 text-slate-400">{new Date(log.timestamp).toLocaleString()}</td><td className="px-4 py-3"><b className="block text-slate-200">{customer?.name||'Customer'}</b><span className="text-slate-500">{log.appName}</span></td><td className="px-4 py-3"><span className="font-mono text-cyan-100">{log.modelIdentifier}</span><small className="block text-slate-500">{log.providerName}</small></td><td className={`px-4 py-3 font-medium ${succeeded?'text-emerald-300':'text-amber-300'}`}>{log.status.replaceAll('_',' ')}</td><td className="px-4 py-3">{(Number(log.durationSeconds||0)*1000).toFixed(0)} ms</td><td className="px-4 py-3">{Number(log.tokensConsumed||0).toLocaleString()}</td><td className="px-4 py-3 font-mono text-slate-500">{log.apiKeyPrefix||'—'}</td></tr>})}</tbody></table>{!visibleLogs.length&&<div className="p-12 text-center"><ScrollText className="mx-auto mb-3 text-slate-600" size={22}/><p className="text-sm text-slate-300">No matching customer activity yet</p><p className="mt-1 text-xs text-slate-500">Request events will appear here as customer applications use ALTIL.</p></div>}</div></div>
+    </section>;
+  }
+
   return (
     <div id="customers-view-container" className="space-y-6">
       {/* Top Header & Overview */}
@@ -636,7 +674,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </div>
             <div>
               <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2"><InfoButton />
-                Tenant Directory & Enterprise Onboarding Engine
+                {initialView === 'add' ? 'Add New Customer' : 'Manage Customers'}
                 <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
                   Multi-Tenant Platform
                 </span>
@@ -715,7 +753,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
       {/* KPI Cards Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <div className="bg-[#111111] border border-[#222222] rounded p-3.5 flex flex-col justify-between">
+        <button type="button" onClick={() => openTenantInsight('customers')} aria-label="Open active customer details" className="text-left bg-[#111111] border border-[#222222] hover:border-blue-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded p-3.5 flex flex-col justify-between transition-colors">
           <div className="flex items-center justify-between text-xs text-[#888888]">
             <span>Active Customers</span>
             <Building2 className="w-4 h-4 text-blue-400" />
@@ -723,59 +761,78 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           <div className="mt-2 flex items-baseline justify-between">
             <span className="text-2xl font-bold text-white font-mono">{totalCustomers}</span>
             <span className="text-[11px] text-[#666666]">
-              {companyCount} Corp / {individualCount} Solo
+              {customers.filter(c => c.status === 'active' && c.type === 'company').length} Corp / {customers.filter(c => c.status === 'active' && c.type === 'individual').length} Solo
             </span>
           </div>
-        </div>
+          <span className="mt-2 flex items-center justify-between text-[10px] text-blue-300">Explore active accounts <ArrowRight className="h-3 w-3"/></span>
+        </button>
 
-        <div className="bg-[#111111] border border-[#222222] rounded p-3.5 flex flex-col justify-between">
+        <button type="button" onClick={() => openTenantInsight('officers')} aria-label="Open statutory officer details" className="text-left bg-[#111111] border border-[#222222] hover:border-emerald-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 rounded p-3.5 flex flex-col justify-between transition-colors">
           <div className="flex items-center justify-between text-xs text-[#888888]">
             <span>Statutory Officers</span>
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <span className="text-2xl font-bold text-emerald-400 font-mono">{totalOfficersNominated}</span>
-            <span className="text-[11px] text-emerald-500/80">POPIA & GDPR Registered</span>
+            <span className="text-[11px] text-emerald-500/80">Officers on file · verify status</span>
           </div>
-        </div>
+          <span className="mt-2 flex items-center justify-between text-[10px] text-emerald-300">Review registrations <ArrowRight className="h-3 w-3"/></span>
+        </button>
 
-        <div className="bg-[#111111] border border-[#222222] rounded p-3.5 flex flex-col justify-between">
+        <button type="button" onClick={() => openTenantInsight('users')} aria-label="Open tenant user and role details" className="text-left bg-[#111111] border border-[#222222] hover:border-purple-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 rounded p-3.5 flex flex-col justify-between transition-colors">
           <div className="flex items-center justify-between text-xs text-[#888888]">
             <span>Tenant Users (RBAC)</span>
             <Users className="w-4 h-4 text-purple-400" />
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <span className="text-2xl font-bold text-purple-400 font-mono">{totalUsersAcrossTenants}</span>
-            <span className="text-[11px] text-[#666666]">MFA Enforced</span>
+            <span className="text-[11px] text-[#666666]">Demo RBAC · MFA shown</span>
           </div>
-        </div>
+          <span className="mt-2 flex items-center justify-between text-[10px] text-purple-300">Inspect tenant access <ArrowRight className="h-3 w-3"/></span>
+        </button>
 
-        <div className="bg-[#111111] border border-[#222222] rounded p-3.5 flex flex-col justify-between">
+        <button type="button" onClick={() => openTenantInsight('keys')} aria-label="Open tenant API key details" className="text-left bg-[#111111] border border-[#222222] hover:border-amber-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded p-3.5 flex flex-col justify-between transition-colors">
           <div className="flex items-center justify-between text-xs text-[#888888]">
             <span>Active API Keys</span>
             <KeyRound className="w-4 h-4 text-amber-400" />
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <span className="text-2xl font-bold text-amber-400 font-mono">
-              {apiKeys.filter(k => k.status === 'active').length}
+              {tenantApiKeys.filter(k => k.status === 'active').length}
             </span>
             <span className="text-[11px] text-amber-500/80">Zero-Trust Scoped</span>
           </div>
-        </div>
+          <span className="mt-2 flex items-center justify-between text-[10px] text-amber-300">Inspect key status <ArrowRight className="h-3 w-3"/></span>
+        </button>
 
-        <div className="bg-[#111111] border border-[#222222] rounded p-3.5 flex flex-col justify-between">
+        <button type="button" onClick={() => openTenantInsight('quota')} aria-label="Open monthly AI quota details" className="text-left bg-[#111111] border border-[#222222] hover:border-cyan-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded p-3.5 flex flex-col justify-between transition-colors">
           <div className="flex items-center justify-between text-xs text-[#888888]">
             <span>Monthly AI Quota Cap</span>
             <Sparkles className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="mt-2 flex items-baseline justify-between">
             <span className="text-2xl font-bold text-cyan-400 font-mono">
-              ${totalMonthlyBudget.toLocaleString()}
+              ${customers.filter(c => c.status === 'active').reduce((sum, c) => sum + (c.monthlyBudgetUsd || 0), 0).toLocaleString()}
             </span>
             <span className="text-[11px] text-[#666666]">Aggregated Cap</span>
           </div>
-        </div>
+          <span className="mt-2 flex items-center justify-between text-[10px] text-cyan-300">Explore quota allocation <ArrowRight className="h-3 w-3"/></span>
+        </button>
       </div>
+
+      {activeSubTab === 'tenant_insights' && (
+        <section className="overflow-hidden rounded-xl border border-[#252b36] bg-[#10141b]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#252b36] p-4">
+            <div><p className="text-[10px] font-semibold uppercase tracking-[.18em] text-cyan-300">Tenant intelligence</p><h2 className="mt-1 text-base font-semibold text-white">{{ customers: 'Active customer portfolio', officers: 'Statutory officer register', users: 'Tenant users & RBAC', keys: 'Tenant API key register', quota: 'Monthly AI quota allocation' }[tenantInsight]}</h2></div>
+            <button type="button" onClick={() => setActiveSubTab('directory')} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">← Back to directory</button>
+          </div>
+          {tenantInsight === 'customers' && <div className="overflow-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-white/[.025] text-slate-500"><tr>{['Customer','Type','Primary contact','Users','Monthly cap','Status'].map(label=><th key={label} className="px-4 py-3 font-medium">{label}</th>)}</tr></thead><tbody>{customers.filter(c=>c.status==='active').map(c=><tr key={c.id} className="border-t border-white/5"><td className="px-4 py-3"><b className="text-white">{c.name}</b><small className="mt-1 block font-mono text-slate-500">{c.id}</small></td><td className="px-4 py-3 capitalize">{c.type}</td><td className="px-4 py-3">{c.primaryContact?.name}<small className="block text-slate-500">{c.primaryContact?.email}</small></td><td className="px-4 py-3">{c.users?.filter(user=>user.status==='active').length||0} active</td><td className="px-4 py-3">${Number(c.monthlyBudgetUsd||0).toLocaleString()} USD</td><td className="px-4 py-3 capitalize text-emerald-300">{c.status}</td></tr>)}</tbody></table></div>}
+          {tenantInsight === 'officers' && <div className="overflow-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-white/[.025] text-slate-500"><tr>{['Tenant','Information officer','Registration','Data protection officer','Readiness'].map(label=><th key={label} className="px-4 py-3 font-medium">{label}</th>)}</tr></thead><tbody>{customers.map(c=>{const io=c.statutoryOfficers?.informationOfficer;const dpo=c.statutoryOfficers?.dataProtectionOfficer;const isDemo=c.id.startsWith('demo-tenant-');return <tr key={c.id} className="border-t border-white/5"><td className="px-4 py-3 font-medium text-white">{c.name}</td><td className="px-4 py-3">{io?.name||'Not registered'}<small className="block text-slate-500">{io?.email||'—'}</small></td><td className="px-4 py-3 font-mono">{io?.registrationNumber||'—'}</td><td className="px-4 py-3">{dpo?.name||'Not registered'}<small className="block text-slate-500">{dpo?.email||'—'}</small></td><td className="px-4 py-3">{isDemo?<span className="text-amber-300">Demo only · unverified</span>:io||dpo?<span className="text-emerald-300">On file</span>:<span className="text-amber-300">Action needed</span>}</td></tr>})}</tbody></table><p className="p-3 text-[10px] text-slate-500">Demo officer names and registration references are fictional and do not represent statutory appointments.</p></div>}
+          {tenantInsight === 'users' && <div className="overflow-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-white/[.025] text-slate-500"><tr>{['User','Tenant','Role','MFA','Status','Last login'].map(label=><th key={label} className="px-4 py-3 font-medium">{label}</th>)}</tr></thead><tbody>{customers.flatMap(c=>(c.users||[]).map(user=>({tenant:c,user}))).map(({tenant:c,user})=><tr key={`${c.id}:${user.id}`} className="border-t border-white/5"><td className="px-4 py-3 font-medium text-white">{user.name}<small className="block text-slate-500">{user.email}</small></td><td className="px-4 py-3">{c.name}</td><td className="px-4 py-3">{user.role.replaceAll('_',' ')}</td><td className="px-4 py-3">{user.mfaEnabled?'Enforced':'Not enabled'}</td><td className="px-4 py-3 capitalize">{user.status}</td><td className="px-4 py-3 text-slate-400">{user.lastLogin?new Date(user.lastLogin).toLocaleString():'Never'}</td></tr>)}</tbody></table>{!customers.some(c=>c.users?.length)&&<p className="p-8 text-center text-sm text-slate-500">No tenant users are registered yet.</p>}</div>}
+          {tenantInsight === 'keys' && <div className="overflow-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-white/[.025] text-slate-500"><tr>{['Key prefix','Tenant','Application','Status','Created','Last used'].map(label=><th key={label} className="px-4 py-3 font-medium">{label}</th>)}</tr></thead><tbody>{tenantApiKeys.map(key=><tr key={key.id} className="border-t border-white/5"><td className="px-4 py-3 font-mono text-amber-200">{key.prefix||'Hidden'}</td><td className="px-4 py-3">{customers.find(c=>c.id===key.customerId)?.name||key.customerId}</td><td className="px-4 py-3">{applications.find(app=>app.id===key.appId)?.name||key.appId||'Unassigned'}</td><td className="px-4 py-3 capitalize">{key.status}</td><td className="px-4 py-3">{key.createdAt?new Date(key.createdAt).toLocaleDateString():'—'}</td><td className="px-4 py-3">{key.lastUsedAt?new Date(key.lastUsedAt).toLocaleString():'Never'}</td></tr>)}</tbody></table>{!tenantApiKeys.length&&<p className="p-8 text-center text-sm text-slate-500">No tenant API keys are on file.</p>}<p className="p-3 text-[10px] text-slate-500">Only key prefixes are shown. Demo credentials remain revoked and are not usable.</p></div>}
+          {tenantInsight === 'quota' && <div className="space-y-3 p-4">{customers.filter(c=>c.status==='active').map(c=>{const cap=Number(c.monthlyBudgetUsd||0);const used=Number(c.currentSpendUsd||0);const percent=cap?Math.min(100,used/cap*100):0;return <article key={c.id} className="rounded-xl border border-white/5 bg-white/[.025] p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-white">{c.name}</h3><p className="text-[11px] text-slate-500">{c.billingConfig?.currency||'USD'} display · USD billing basis</p></div><div className="text-right"><b className="text-sm text-cyan-200">${used.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</b><span className="text-slate-500"> / ${cap.toLocaleString()} cap</span></div></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div className={`h-full rounded-full ${percent>=90?'bg-amber-400':'bg-cyan-300'}`} style={{width:`${percent}%`}}/></div><p className="mt-2 text-[10px] text-slate-500">{percent.toFixed(1)}% used · {Number(c.rateLimitRpm||0).toLocaleString()} requests/minute limit · {c.billingConfig?.overageAllowed?'Overage allowed':'Overage blocked'}</p></article>})}</div>}
+        </section>
+      )}
 
       {/* SUBTAB 1: DIRECTORY & TENANTS */}
       {activeSubTab === 'directory' && (
@@ -992,6 +1049,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                         id={`btn-edit-customer-${customer.id}`}
                         onClick={() => {
                           setEditingCustomer(customer);
+                          setCustomerFormError('');
+                          setNewCustType(customer.type);
                           setNewCustName(customer.name);
                           setNewCustLegalName(customer.legalName);
                           setNewCustRegNumber(customer.registrationNumber);
@@ -1006,6 +1065,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                           setNewContactEmail(customer.primaryContact.email);
                           setNewContactPhone(customer.primaryContact.phone || '');
                           setNewContactRole(customer.primaryContact.role || '');
+                          const io = customer.statutoryOfficers?.informationOfficer;
+                          setHasInfoOfficer(Boolean(io));
+                          setIoName(io?.name || ''); setIoEmail(io?.email || ''); setIoPhone(io?.phone || '');
+                          setIoDesignation(io?.designation || 'Information Officer'); setIoRegNumber(io?.registrationNumber || '');
+                          setIoDeputyName(io?.deputyOfficerName || ''); setIoDeputyEmail(io?.deputyOfficerEmail || '');
+                          const dpo = customer.statutoryOfficers?.dataProtectionOfficer;
+                          setHasDpo(Boolean(dpo));
+                          setDpoName(dpo?.name || ''); setDpoEmail(dpo?.email || ''); setDpoPhone(dpo?.phone || '');
+                          setDpoType(dpo?.dpoType || 'internal'); setDpoAuthority(dpo?.leadSupervisoryAuthority || 'Information Regulator (South Africa)'); setDpoRegNumber(dpo?.registrationNumber || '');
                           setIsAddModalOpen(true);
                         }}
                         className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#2a2a2a] text-[#888888] hover:text-white rounded transition-colors"
@@ -1019,10 +1087,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                         onClick={() => {
                           if (
                             confirm(
-                              `Are you sure you want to deactivate and remove customer [${customer.name}]?`
+                              `Archive ${customer.name}? The customer will be retained for audit history.`
                             )
                           ) {
-                            onDeleteCustomer(customer.id);
+                            void onDeleteCustomer(customer.id).catch(() => undefined);
                           }
                         }}
                         className="p-1.5 bg-[#1a1a1a] hover:bg-red-950/40 border border-[#2a2a2a] text-[#888888] hover:text-red-400 rounded transition-colors"
@@ -1815,6 +1883,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </div>
 
             <form onSubmit={handleSubmitNewCustomer} className="space-y-5">
+              {customerFormError && <div role="alert" className="rounded-lg border border-rose-400/20 bg-rose-400/[.06] px-3 py-2 text-xs text-rose-200">{customerFormError}</div>}
               {/* Customer Type Selector */}
               <div>
                 <label className="block text-xs font-semibold text-[#aaaaaa] mb-2 uppercase tracking-wider">

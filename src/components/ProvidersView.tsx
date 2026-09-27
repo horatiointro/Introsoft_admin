@@ -1,5 +1,5 @@
 import { InfoButton } from './InfoButton';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Server,
   Plus,
@@ -22,6 +22,7 @@ import {
   Zap,
   Shield,
   BarChart3,
+  Activity,
   Search,
   Filter,
   Layers,
@@ -30,7 +31,6 @@ import {
   Copy
 } from 'lucide-react';
 import { AIProvider, ProviderTestResult, ProviderType } from '../types';
-import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface ProvidersViewProps {
   providers: AIProvider[];
@@ -40,6 +40,37 @@ interface ProvidersViewProps {
   onTestProvider: (id: string) => Promise<ProviderTestResult>;
   onViewTelemetry?: (providerId: string) => void;
 }
+
+type ProviderAccountRow = { id: string; providerId: string; providerName: string; label: string; keyPrefix: string; enabled: boolean; state: string; currentStatus: string; createdAt: string; lastTestedAt?: string; lastTestStatus?: string; lastTestMessage?: string; requests: number; tokens: number; testedModels: number; availableModels: string[] };
+const ProviderAccountsPanel: React.FC<{ providers: AIProvider[] }> = ({ providers }) => {
+  const [accounts, setAccounts] = useState<ProviderAccountRow[]>([]);
+  const [label, setLabel] = useState(''); const [apiKey, setApiKey] = useState(''); const [providerId, setProviderId] = useState(providers.find(p => p.type === 'openrouter')?.id || providers[0]?.id || '');
+  const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('');
+  const load = async () => { const response = await fetch('/api/v1/provider-accounts'); if (response.ok) setAccounts(await response.json()); };
+  useEffect(() => { void load(); }, []);
+  const request = async (url: string, method = 'POST', body?: unknown) => { setBusy(true); setNotice(''); try { const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Provider account action failed.'); setNotice(result.message || 'Account updated.'); await load(); return result; } catch (error) { setNotice(error instanceof Error ? error.message : 'Provider account action failed.'); } finally { setBusy(false); } };
+  const add = async (event: React.FormEvent) => { event.preventDefault(); const result = await request('/api/v1/provider-accounts', 'POST', { providerId, label, apiKey }); if (result?.id || result?.encryptedKey === undefined) { setApiKey(''); setLabel(''); if (result?.id) await request(`/api/v1/provider-accounts/${result.id}/test`); } };
+  return <section className="space-y-5">
+    <div className="grid gap-4 xl:grid-cols-[.8fr_1.2fr]">
+      <form onSubmit={add} className="rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[.07] to-indigo-400/[.04] p-5">
+        <div className="text-xs uppercase tracking-[.2em] text-cyan-200">Credential control</div><h2 className="mt-2 text-lg font-semibold text-white">Connect a provider account</h2><p className="mt-1 text-xs leading-5 text-slate-400">Keys are encrypted on this server. ALTIL tests account access and a real model response before routing through the account.</p>
+        <label className="mt-5 block text-xs text-slate-400">Provider<select value={providerId} onChange={e => setProviderId(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 text-sm text-white">{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        <label className="mt-3 block text-xs text-slate-400">Account label<input required value={label} onChange={e => setLabel(e.target.value)} placeholder="OpenRouter main account" className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 text-sm text-white"/></label>
+        <label className="mt-3 block text-xs text-slate-400">API key<input required type="password" autoComplete="new-password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Paste provider key" className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 font-mono text-sm text-white"/></label>
+        <button disabled={busy} className="mt-4 w-full rounded-xl bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy?'Saving and testing…':'Encrypt, save & test account'}</button>{notice&&<div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">{notice}</div>}
+      </form>
+      <div className="rounded-2xl border border-white/10 bg-[#0e141d] p-5"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold text-white">Model access roster</h2><p className="mt-1 text-xs text-slate-500">Accounts become routable only after credential and inference checks pass.</p></div><span className="rounded-full border border-cyan-200/10 bg-cyan-100/[.05] px-3 py-1 text-xs text-cyan-100">{accounts.filter(a=>a.enabled&&a.state==='active').length} ready</span></div>
+        <div className="mt-4 space-y-3">{accounts.map(account=><article key={account.id} className="rounded-xl border border-white/[.08] bg-white/[.025] p-4"><div className="flex flex-wrap items-center gap-3"><div className={`grid h-10 w-10 place-items-center rounded-xl ${account.currentStatus==='online'?'bg-emerald-300/10 text-emerald-200':'bg-amber-300/10 text-amber-200'}`}>{account.currentStatus==='online'?<CheckCircle2 size={18}/>:<Key size={18}/>}</div><div className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{account.label}</b><span className="text-[11px] text-slate-500">{account.providerName} · <code>{account.keyPrefix}</code></span></div><span className={`rounded-full px-2.5 py-1 text-[10px] uppercase ${account.currentStatus==='online'?'bg-emerald-300/10 text-emerald-200':account.currentStatus==='paused'?'bg-slate-300/10 text-slate-300':'bg-amber-300/10 text-amber-100'}`}>{account.currentStatus.replace('_',' ')}</span></div>
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Requests',account.requests],['Tokens',account.tokens],['Verified models',account.testedModels],['Available models',account.availableModels.length]].map(([k,v])=><div key={k} className="rounded-lg bg-black/20 p-2"><small className="block text-[9px] uppercase tracking-wider text-slate-500">{k}</small><b className="mt-1 block text-sm text-slate-200">{v}</b></div>)}</div>
+          <div className="mt-3"><div className="mb-2 text-[9px] uppercase tracking-wider text-slate-500">Tested model routes on this account</div><div className="flex flex-wrap gap-1.5">{account.availableModels.map(model=><span key={model} className="rounded-md border border-emerald-200/10 bg-emerald-100/[.035] px-2 py-1 font-mono text-[9px] text-emerald-100">{model}</span>)}{!account.availableModels.length&&<span className="text-[10px] text-slate-600">No tested model routes yet</span>}</div></div>
+          <div className="mt-3 text-[10px] text-slate-500">{account.lastTestedAt ? <>Last live check {new Date(account.lastTestedAt).toLocaleString()} · {account.lastTestStatus} · {account.lastTestMessage}</> : 'No live connection test has completed yet.'}</div>
+          <div className="mt-3 flex flex-wrap gap-2"><button disabled={busy} onClick={()=>void request(`/api/v1/provider-accounts/${account.id}/test`)} className="rounded-lg border border-cyan-200/15 px-3 py-2 text-[10px] text-cyan-100">Run live check</button><button disabled={busy||account.state!=='active'} onClick={()=>void request(`/api/v1/provider-accounts/${account.id}`,'PATCH',{enabled:false})} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] text-slate-300">Pause routing</button><button disabled={busy} onClick={()=>void request(`/api/v1/provider-accounts/${account.id}`,'DELETE')} className="ml-auto rounded-lg border border-rose-200/10 px-3 py-2 text-[10px] text-rose-200">Remove account</button></div>
+        </article>)}{!accounts.length&&<div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No managed accounts yet. Connect a key to start live validation.</div>}</div>
+      </div>
+    </div>
+    <div className="rounded-2xl border border-white/[.08] bg-[#0e141d] p-5"><div className="flex items-center gap-2"><Activity size={16} className="text-cyan-200"/><h3 className="font-semibold text-white">Models standing by</h3></div><p className="mt-1 text-xs text-slate-500">Verified and currently quota-available models discovered for each provider account.</p><div className="mt-4 flex flex-wrap gap-2">{[...new Set(accounts.flatMap(a=>a.availableModels))].map(id=><span key={id} className="rounded-lg border border-emerald-200/10 bg-emerald-100/[.04] px-3 py-2 font-mono text-[10px] text-emerald-100">{id}</span>)}{!accounts.some(a=>a.availableModels.length>0)&&<span className="text-xs text-slate-600">Models will appear here after an account passes its live check and the catalog sweep completes.</span>}</div></div>
+  </section>;
+};
 
 const PROVIDER_PRESETS = [
   {
@@ -146,6 +177,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
   const [editingProvider, setEditingProvider] = useState<AIProvider | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  const [accountsOpen, setAccountsOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -203,7 +235,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
       name: p.name,
       type: p.type,
       endpoint: p.endpoint,
-      apiKey: p.apiKey || '',
+      apiKey: '',
       organizationId: p.organizationId || '',
       enabled: p.enabled,
       priority: p.priority,
@@ -237,7 +269,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
     try {
       const res = await onTestProvider(providerId);
       setTestResult(res);
-    } catch {
+    } catch (error) {
       setTestResult({
         providerId,
         providerName: 'Target Provider',
@@ -249,7 +281,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
         modelsDiscoveredCount: 0,
         discoveredModels: [],
         sampleGenerationSuccess: false,
-        errorMessage: 'Network timeout or unreachable socket host.'
+        errorMessage: error instanceof Error ? error.message : 'Live provider check failed.'
       });
     } finally {
       setTestingId(null);
@@ -296,6 +328,10 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          <button onClick={() => setAccountsOpen(!accountsOpen)} className="flex items-center gap-1.5 rounded border border-cyan-300/20 bg-cyan-300/[.06] px-3 py-1.5 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/10">
+            <Key className="h-3.5 w-3.5"/><span>{accountsOpen ? 'Provider list' : 'Accounts & model keys'}</span>
+          </button>
+          {!accountsOpen && <>
           <button
             id="btn-add-provider-main"
             onClick={handleOpenCreate}
@@ -304,8 +340,11 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
             <Plus className="w-3.5 h-3.5" />
             <span>Add Backend Provider</span>
           </button>
+          </>}
         </div>
       </div>
+
+      {accountsOpen ? <ProviderAccountsPanel providers={providers}/> : <>
 
       {/* Filter and Search Bar */}
       <div className="bg-[#111111] border border-[#222222] rounded p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -359,7 +398,8 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
       {/* Provider Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredProviders.map(provider => {
-          const isOnline = provider.enabled && provider.status === 'online';
+          const isOnline = provider.enabled && provider.status === 'online' && provider.lastConnectionTest?.success === true && Date.now() - Date.parse(provider.lastConnectionTest.timestamp) < 24 * 60 * 60 * 1000;
+          const liveStatus = !provider.enabled ? 'DISABLED' : isOnline ? 'LIVE · ONLINE' : provider.lastConnectionTest?.success ? 'CHECK EXPIRED' : provider.lastConnectionTest ? 'OFFLINE' : 'NOT TESTED';
           return (
             <div
               key={provider.id}
@@ -416,22 +456,9 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
                       }`}
                     >
                       <span>●</span>
-                      <span>{provider.enabled ? provider.status.toUpperCase() : 'DISABLED'}</span>
+                      <span>{liveStatus}</span>
                     </span>
-                    <ProvenanceBadge
-                      type={
-                        !provider.enabled || provider.status === 'offline'
-                          ? 'DEMO'
-                          : provider.type === 'gemini'
-                          ? 'LIVE'
-                          : provider.type === 'ollama'
-                          ? 'FALLBACK'
-                          : provider.type === 'groq' || provider.type === 'openai'
-                          ? 'CALCULATED'
-                          : 'DERIVED'
-                      }
-                      size="xs"
-                    />
+                    {provider.lastConnectionTest?.timestamp && <span className="text-[9px] text-[#777]">Checked {new Date(provider.lastConnectionTest.timestamp).toLocaleString()}</span>}
                   </div>
                 </div>
 
@@ -446,22 +473,9 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
                     <div className="flex items-center gap-1.5 min-w-0 truncate">
                       <Key className="w-3 h-3 text-[#555555] shrink-0" />
                       <span className="truncate text-[#aaaaaa]">
-                        {provider.keyPrefix || (provider.apiKey ? 'sk-...configured' : 'No Auth (Local Socket)')}
+                        {provider.keyPrefix || (provider.credentialsConfigured ? '•••••••• configured' : 'No Auth (Local Socket)')}
                       </span>
                     </div>
-                    {provider.apiKey && (
-                      <button
-                        onClick={() => handleCopyKeyPrefix(provider.id, provider.apiKey)}
-                        className="text-[#666666] hover:text-white shrink-0 ml-1.5"
-                        title="Copy Key"
-                      >
-                        {copiedKeyId === provider.id ? (
-                          <Check className="w-3 h-3 text-green-400" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
-                      </button>
-                    )}
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 text-center text-[11px] pt-1 font-mono">
@@ -931,6 +945,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 };

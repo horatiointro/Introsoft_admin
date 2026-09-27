@@ -2,6 +2,19 @@ import { LicensingPlanTemplate, TenantAppLicense, PaymentWebhookLog } from '../t
 
 export const INITIAL_LICENSING_PLANS: LicensingPlanTemplate[] = [
   {
+    id: 'plan-metered-flex', name: 'Flex · Pay for completed calls', applicationId: 'all', applicationName: 'Any tenant application', pricingType: 'per_transaction', currency: 'USD', basePrice: 0, billingCycle: 'per_transaction', includedTransactions: 0, overagePricePerTransaction: 0.0015, gracePeriodDays: 3, autoEnforcementAction: 'soft_warning', autoEnforceOnUnpaid: true,
+    features: ['No commitment or monthly minimum', 'Per-key spend guardrails', 'Successful requests only are metered'], isPublished: true, createdDate: '2026-09-27', licenseScope: 'application',
+    volumeTiers: [{ upToRequests: 10000, pricePerRequest: 0.0015, label: 'First 10,000' }, { upToRequests: 100000, pricePerRequest: 0.0012, label: '10,001–100,000' }, { upToRequests: 1000000, pricePerRequest: 0.0009, label: '100,001–1,000,000' }, { upToRequests: null, pricePerRequest: 0.0007, label: 'Above 1,000,000' }]
+  },
+  {
+    id: 'plan-team-100k', name: 'Team · 100,000 requests', applicationId: 'all', applicationName: 'Any tenant application', pricingType: 'hybrid_base_metered', currency: 'USD', basePrice: 49, billingCycle: 'monthly', includedTransactions: 100000, overagePricePerTransaction: 0.0012, gracePeriodDays: 5, autoEnforcementAction: 'soft_warning', autoEnforceOnUnpaid: true,
+    features: ['100,000 included successful calls each month', 'Per-key and tenant budget caps', 'Overage pricing shown before routing'], isPublished: true, createdDate: '2026-09-27', licenseScope: 'application'
+  },
+  {
+    id: 'plan-scale-1m', name: 'Scale · 1,000,000 requests', applicationId: 'all', applicationName: 'Any tenant application', pricingType: 'hybrid_base_metered', currency: 'USD', basePrice: 349, billingCycle: 'monthly', includedTransactions: 1000000, overagePricePerTransaction: 0.0008, gracePeriodDays: 7, autoEnforcementAction: 'soft_warning', autoEnforceOnUnpaid: true,
+    features: ['1,000,000 included successful calls each month', 'Shared tenant pool across applications', 'Monthly usage and spend guardrails'], isPublished: true, createdDate: '2026-09-27', licenseScope: 'tenant_group', groupDiscountPercent: 0
+  },
+  {
     id: 'plan-clinical-annual',
     name: 'Clinical AI Suite - Enterprise Annual SLA',
     applicationId: 'app-clinical',
@@ -24,7 +37,7 @@ export const INITIAL_LICENSING_PLANS: LicensingPlanTemplate[] = [
     maxUsersAllowed: 500,
     slaUptimeGuarantee: 99.95,
     isPublished: true,
-    createdDate: '2026-01-10'
+    createdDate: '2026-01-10', licenseScope: 'application'
   },
   {
     id: 'plan-fraud-tx',

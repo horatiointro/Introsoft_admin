@@ -1,5 +1,6 @@
 import express from 'express';
 import { ItilOperationsRepository } from '../db/itilRepository';
+import { executeQuery, isDatabaseConnected } from '../db/mariadb';
 import {
   requireAuthentication,
   requireRole,
@@ -136,6 +137,14 @@ itilRouter.get('/rag/articles', requireAuthentication, async (req: Authenticated
  */
 itilRouter.get('/cmdb', requireAuthentication, async (req: AuthenticatedRequest, res) => {
   try {
+    if (isDatabaseConnected()) {
+      const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
+      const tenantId = isSuperAdmin ? String(req.query.tenantId || '') : String(req.user?.tenantId || '');
+      const rows = tenantId
+        ? await executeQuery<any>('SELECT c.*, t.type_code FROM cmdb_items c LEFT JOIN cmdb_item_types t ON t.id=c.item_type_id WHERE c.tenant_id=? OR c.tenant_id IS NULL ORDER BY c.created_at DESC', [tenantId])
+        : await executeQuery<any>('SELECT c.*, t.type_code FROM cmdb_items c LEFT JOIN cmdb_item_types t ON t.id=c.item_type_id ORDER BY c.created_at DESC');
+      return res.json(rows.map(row => ({ id:row.id, name:row.name, type:String(row.type_code || 'configuration_item').toLowerCase(), status:String(row.status || 'operational').toLowerCase(), tenantId:row.tenant_id, code:row.ci_code, environment:row.environment, criticality:row.criticality, attributes:row.attributes })));
+    }
     const { initialCmdbNodes } = await import('../data/initialState');
     res.json(initialCmdbNodes || []);
   } catch (err: any) {
@@ -149,6 +158,12 @@ itilRouter.get('/cmdb', requireAuthentication, async (req: AuthenticatedRequest,
  */
 itilRouter.get('/problems', requireAuthentication, async (req: AuthenticatedRequest, res) => {
   try {
+    if (isDatabaseConnected()) {
+      const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
+      const tenantId = isSuperAdmin ? String(req.query.tenantId || '') : String(req.user?.tenantId || '');
+      const rows = tenantId ? await executeQuery<any>('SELECT * FROM operations_problems WHERE tenant_id=? OR tenant_id IS NULL ORDER BY created_at DESC',[tenantId]) : await executeQuery<any>('SELECT * FROM operations_problems ORDER BY created_at DESC');
+      return res.json(rows.map(row => ({ id:row.id, tenantId:row.tenant_id, title:row.title, rootCause:row.description, rootCauseCategory:row.root_cause_category, affectedServices:[], relatedIncidentIds:[], correctiveAction:row.permanent_fix || '', preventiveAction:row.workaround || '', knownError:Boolean(row.known_error), status:String(row.status || 'OPEN').toLowerCase(), createdAt:row.created_at })));
+    }
     const { INITIAL_PROBLEMS_LIST } = await import('../data/incidentData');
     res.json(INITIAL_PROBLEMS_LIST || []);
   } catch (err: any) {
@@ -162,6 +177,12 @@ itilRouter.get('/problems', requireAuthentication, async (req: AuthenticatedRequ
  */
 itilRouter.get('/changes', requireAuthentication, async (req: AuthenticatedRequest, res) => {
   try {
+    if (isDatabaseConnected()) {
+      const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
+      const tenantId = isSuperAdmin ? String(req.query.tenantId || '') : String(req.user?.tenantId || '');
+      const rows = tenantId ? await executeQuery<any>('SELECT * FROM change_requests WHERE tenant_id=? OR tenant_id IS NULL ORDER BY created_at DESC',[tenantId]) : await executeQuery<any>('SELECT * FROM change_requests ORDER BY created_at DESC');
+      return res.json(rows.map(row => ({ id:row.id, tenantId:row.tenant_id, changeNumber:row.change_number, title:row.title, type:String(row.change_type || 'STANDARD').toLowerCase(), risk:String(row.risk_level || 'MEDIUM').toLowerCase(), impactScope:row.impact_scope, backoutPlan:row.backout_plan, status:String(row.approval_status || 'PENDING').toLowerCase(), approvedBy:row.approved_by, plannedDate:row.scheduled_start, createdAt:row.created_at })));
+    }
     const sampleChanges = [
       { id: 'RFC-2026-104', title: 'Deploy MariaDB Galera Cluster v10.11.18', risk: 'MEDIUM', status: 'APPROVED', plannedDate: '2026-09-01' },
       { id: 'RFC-2026-105', title: 'Upgrade Groq Inference Adapter to HTTP/2', risk: 'LOW', status: 'IMPLEMENTED', plannedDate: '2026-08-28' }
