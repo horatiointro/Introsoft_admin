@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity, AlertTriangle, AppWindow, BookOpen, Boxes, Building2, ChevronDown, ArrowLeftRight,
   CircleDollarSign, CreditCard, FileCheck, FileSpreadsheet, Gauge, GitFork,
-  KeyRound, LayoutDashboard, LineChart, Lock, MessageSquareMore, Network,
+  KeyRound, LayoutDashboard, LineChart, Lock, MessageSquareMore, Network, Code2,
   PlaySquare, Plus, Rocket, ScrollText, Search, Server, Settings, Shield, ShieldAlert,
   ShieldCheck, Sparkles, Users, WalletCards, Workflow
 } from 'lucide-react';
 
 export type NavTabId =
   | 'command_centre' | 'stack_wiring' | 'tenants' | 'org_hierarchy' | 'tenant_360'
-  | 'tenant_licensing' | 'billing_admin' | 'accounting' | 'saas_admin'
+  | 'tenant_licensing' | 'billing_admin' | 'billing_commercial' | 'accounting' | 'saas_admin'
   | 'billing_accounts' | 'billing_orders' | 'billing_products' | 'billing_invoices' | 'billing_refunds' | 'billing_settlement' | 'accounting_journals' | 'accounting_chart'
   | 'communications' | 'tenant_portal' | 'service_management' | 'sla_kpi_monitoring'
   | 'operations_cmdb' | 'incidents' | 'ai_ops' | 'ai_governance_lab' | 'api_mgmt'
@@ -17,7 +17,7 @@ export type NavTabId =
   | 'trust_fabric' | 'finops' | 'automation' | 'reporting' | 'iam_admin'
   | 'admin_settings' | 'playground' | 'logs' | 'customer_add' | 'customer_manage' | 'customer_logs'
   | 'dashboard' | 'customers' | 'providers' | 'telemetry' | 'models' | 'applications'
-  | 'keys' | 'routing' | 'usage' | 'system' | 'help_guide';
+  | 'keys' | 'routing' | 'usage' | 'system' | 'api_docs' | 'help_guide';
 
 interface SidebarProps {
   activeTab: NavTabId;
@@ -48,6 +48,7 @@ const sections = [
   ] },
   { title: 'Finance', icon: CircleDollarSign, items: [
     { id: 'billing_admin', label: 'Finance workspace', icon: CircleDollarSign, defaultTab: 'billing_accounts', terms: 'revenue payment gateway plans collection', children: [
+      { id: 'billing_commercial', label: 'Commercial lifecycle', icon: GitFork, terms: 'customer 360 contract quote acceptance order subscription entitlement usage charges invoice allocation reconciliation settlement accounting' },
       { id: 'billing_accounts', label: 'Accounts', icon: Users, terms: 'customer accounts credit balance invoice date' },
       { id: 'billing_orders', label: 'Orders', icon: FileSpreadsheet, terms: 'subscriptions products order history' },
       { id: 'billing_products', label: 'Products & pricing', icon: CreditCard, terms: 'catalog price plans licence seat request charges' },
@@ -66,7 +67,8 @@ const sections = [
     { id: 'ai_ops', label: 'Providers & models', icon: Server, badgeKey: 'providers', terms: 'gateway model catalog routing free tiers' },
     { id: 'api_mgmt', label: 'Applications & API keys', icon: AppWindow, badgeKey: 'applications', terms: 'keys credentials applications integrations' },
     { id: 'ai_governance_lab', label: 'Model evaluation', icon: Boxes, terms: 'benchmarks tests availability' },
-    { id: 'playground', label: 'API playground', icon: PlaySquare, terms: 'simulate request threat test' }
+    { id: 'playground', label: 'API playground', icon: PlaySquare, terms: 'simulate request threat test' },
+    { id: 'api_docs', label: 'API docs & Swagger', icon: Code2, terms: 'swagger openapi endpoints reference integration documentation' }
   ] },
   { title: 'Operations', icon: Workflow, items: [
     { id: 'service_management', label: 'Services & SLAs', icon: Workflow, terms: 'service targets metrics catalogue' },

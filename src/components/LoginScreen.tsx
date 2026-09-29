@@ -21,7 +21,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('horatio.huxham@gmail.com');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [mfaCode, setMfaCode] = useState('849201');
+  const [mfaCode, setMfaCode] = useState(import.meta.env.BASE_URL === '/admin-test/' ? '000000' : '849201');
   const [selectedTenant, setSelectedTenant] = useState('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [quickAccessAvailable, setQuickAccessAvailable] = useState(false);

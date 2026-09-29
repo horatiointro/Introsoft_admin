@@ -5,6 +5,8 @@ import { Activity, ArrowDownRight, ArrowUpRight, Building2, CircleDollarSign, Cl
 import type { ApiKey, Application, Customer } from '../types';
 
 import { CURRENCY_OPTIONS, formatForDisplay } from '../utils/currency';
+import { apiFetch } from '../utils/apiFetch';
+import { CustomerPortalCommercialNotice } from './StageFCommercialViews';
 
 
 
@@ -112,19 +114,21 @@ export const TenantPortalView: React.FC<Props> = ({ customerId, customers, appli
 
     try {
 
-      const response = await fetch(`${API_BASE}/tenant-portal/${encodeURIComponent(tenant.id)}`);
+      const response = await apiFetch(`${API_BASE}/tenant-portal/${encodeURIComponent(tenant.id)}`);
 
       if (!response.ok) throw new Error('Portal data is unavailable for this account.');
 
-      setData(await response.json());
+      const portalData = await response.json();
 
-      const invoiceResponse = await fetch(`${API_BASE}/billing/invoices`);
+      setData(portalData);
+
+      const invoiceResponse = await apiFetch(`${API_BASE}/billing/invoices`);
 
       if (invoiceResponse.ok) setIssuedInvoices((await invoiceResponse.json()).filter((item: PortalInvoice) => item.tenantId === tenant.id));
 
-      const [methodsResponse,schedulesResponse,paymentsResponse,refundsResponse,currencyResponse]=await Promise.all([fetch(`${API_BASE}/billing/payment-methods`),fetch(`${API_BASE}/billing/schedules`),fetch(`${API_BASE}/billing/payments`),fetch(`${API_BASE}/billing/refunds`),fetch(`${API_BASE}/currency/config`)]);
+      const [methodsResponse,schedulesResponse,paymentsResponse,refundsResponse,currencyResponse]=await Promise.all([apiFetch(`${API_BASE}/billing/payment-methods`),apiFetch(`${API_BASE}/billing/schedules`),apiFetch(`${API_BASE}/billing/payments`),apiFetch(`${API_BASE}/billing/refunds`),apiFetch(`${API_BASE}/currency/config`)]);
 
-      if(methodsResponse.ok)setSavedMethods(await methodsResponse.json());if(schedulesResponse.ok)setBillingSchedules(await schedulesResponse.json());if(paymentsResponse.ok)setPaymentIntents(await paymentsResponse.json());if(refundsResponse.ok)setRefundRequests(await refundsResponse.json());if(currencyResponse.ok){const config=await currencyResponse.json();setCurrencyConfig(config);setSelectedCurrency(data.tenant.billingConfig?.displayCurrency||config.defaultDisplayCurrency||'USD');}
+      if(methodsResponse.ok)setSavedMethods(await methodsResponse.json());if(schedulesResponse.ok)setBillingSchedules(await schedulesResponse.json());if(paymentsResponse.ok)setPaymentIntents(await paymentsResponse.json());if(refundsResponse.ok)setRefundRequests(await refundsResponse.json());if(currencyResponse.ok){const config=await currencyResponse.json();setCurrencyConfig(config);setSelectedCurrency(portalData.tenant.billingConfig?.displayCurrency||config.defaultDisplayCurrency||'USD');}
 
       setNotice('');
 
@@ -320,6 +324,8 @@ export const TenantPortalView: React.FC<Props> = ({ customerId, customers, appli
     </section>
 
 
+
+    <CustomerPortalCommercialNotice technicalTenantId={tenant.id} />
 
     <div className="grid gap-5 xl:grid-cols-[1.55fr_1fr]">
 

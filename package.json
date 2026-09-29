@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
+    "dev:local-test": "tsx server.local-test.ts",
+    "dev:local-test:frontend": "vite --config vite.local-test.config.ts",
+    "test:local-harness": "node --import tsx --test src/server/localTestHarness.test.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",

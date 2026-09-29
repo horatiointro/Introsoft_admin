@@ -66,6 +66,7 @@ import { PopiaGdprComplianceView } from './components/PopiaGdprComplianceView';
 import { TrustFabricView } from './components/TrustFabricView';
 import { UsageLogsView } from './components/UsageLogsView';
 import { PlaygroundView } from './components/PlaygroundView';
+import { ApiDocumentationView } from './components/ApiDocumentationView';
 import { OrgHierarchyView } from './components/OrgHierarchyView';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import { HelpGuideView } from './components/HelpGuideView';
@@ -96,6 +97,7 @@ import { SaasGrowthView } from './components/SaasGrowthView';
 import { CommunicationsHubView } from './components/CommunicationsHubView';
 import { TenantPortalView } from './components/TenantPortalView';
 import { AccountingControlView } from './components/AccountingControlView';
+import { StageFFinanceView } from './components/StageFCommercialViews';
 import { LegalPolicyPage } from './components/LegalPolicyPage';
 import { DataProtectionDcrView } from './components/DataProtectionDcrView';
 import { UniversalActivityTicker } from './components/UniversalActivityTicker';
@@ -117,6 +119,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { SplashScreen } from './components/SplashScreen';
 import { INITIAL_INCIDENTS_LIST, INITIAL_ALERTS_LIST, INITIAL_RAG_KNOWLEDGE_BASE } from './data/incidentData';
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { apiFetch } from './utils/apiFetch';
 
 const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
 
@@ -131,6 +134,7 @@ export default function App() {
   });
 
   const [activeTab, setActiveTab] = useState<NavTabId>('command_centre');
+  const [onboardingOrderCustomerId, setOnboardingOrderCustomerId] = useState<string | undefined>();
   const [architectureOpen, setArchitectureOpen] = useState(false);
   const [selectedTelemetryProviderId, setSelectedTelemetryProviderId] = useState<string>('p-openai');
 
@@ -274,7 +278,7 @@ export default function App() {
     if (!isAuthenticated) return;
     const loadCommercialData = async () => {
       try {
-        const [plansResponse, licensesResponse] = await Promise.all([fetch(`${API_BASE}/licensing/plans`), fetch(`${API_BASE}/licensing/tenant-licenses`)]);
+        const [plansResponse, licensesResponse] = await Promise.all([apiFetch(`${API_BASE}/licensing/plans`), apiFetch(`${API_BASE}/licensing/tenant-licenses`)]);
         if (plansResponse.ok) setLicensingPlans(await plansResponse.json());
         if (licensesResponse.ok) setTenantLicenses(await licensesResponse.json());
       } catch { /* Keep the seeded read-only preview available while the commercial API is offline. */ }
@@ -327,16 +331,16 @@ export default function App() {
     const fetchInitialData = async () => {
       try {
         const [resProv, resMod, resCust, resApp, resKeys, resRoutes, resPol, resLogs, resComp, resDsar] = await Promise.allSettled([
-          fetch(`${API_BASE}/providers`).then(r => r.json()),
-          fetch(`${API_BASE}/models`).then(r => r.json()),
-          fetch(`${API_BASE}/customers`).then(r => r.json()),
-          fetch(`${API_BASE}/applications`).then(r => r.json()),
-          fetch(`${API_BASE}/api-keys`).then(r => r.json()),
-          fetch(`${API_BASE}/routes`).then(r => r.json()),
-          fetch(`${API_BASE}/policies`).then(r => r.json()),
-          fetch(`${API_BASE}/logs`).then(r => r.json()),
-          fetch(`${API_BASE}/compliance/config`).then(r => r.json()),
-          fetch(`${API_BASE}/compliance/dsar`).then(r => r.json())
+          apiFetch(`${API_BASE}/providers`).then(r => r.json()),
+          apiFetch(`${API_BASE}/models`).then(r => r.json()),
+          apiFetch(`${API_BASE}/customers`).then(r => r.json()),
+          apiFetch(`${API_BASE}/applications`).then(r => r.json()),
+          apiFetch(`${API_BASE}/api-keys`).then(r => r.json()),
+          apiFetch(`${API_BASE}/routes`).then(r => r.json()),
+          apiFetch(`${API_BASE}/policies`).then(r => r.json()),
+          apiFetch(`${API_BASE}/logs`).then(r => r.json()),
+          apiFetch(`${API_BASE}/compliance/config`).then(r => r.json()),
+          apiFetch(`${API_BASE}/compliance/dsar`).then(r => r.json())
         ]);
 
         if (resProv.status === 'fulfilled' && Array.isArray(resProv.value)) setProviders(resProv.value);
@@ -359,7 +363,7 @@ export default function App() {
   // --- Customer / Tenant Handlers ---
   const handleAddCustomer = async (customerData: any) => {
     try {
-      const res = await fetch(`${API_BASE}/customers`, {
+      const res = await apiFetch(`${API_BASE}/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(customerData)
@@ -370,6 +374,7 @@ export default function App() {
       if (data.application) setApplications(prev => [data.application, ...prev]);
       if (data.apiKey) setApiKeys(prev => [data.apiKey, ...prev]);
       showToast(`Customer "${data.customer.name}" onboarded with statutory governance.`);
+      return data.customer as Customer;
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Customer setup was not saved.');
       throw error;
@@ -378,7 +383,7 @@ export default function App() {
 
   const handleUpdateCustomer = async (id: string, updates: Partial<Customer>) => {
     try {
-      const res = await fetch(`${API_BASE}/customers/${id}`, {
+      const res = await apiFetch(`${API_BASE}/customers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -1209,6 +1214,7 @@ export default function App() {
           )}
 
           {activeTab === 'help_guide' && <HelpGuideView onNavigate={setActiveTab} />}
+          {activeTab === 'api_docs' && <ApiDocumentationView />}
 
           {(activeTab === 'command_centre' || activeTab === 'dashboard') && (
             <CommandCentreView
@@ -1267,6 +1273,10 @@ export default function App() {
               auditLogs={auditLogs}
               initialView={activeTab === 'customer_add' ? 'add' : activeTab === 'customer_logs' ? 'logs' : 'manage'}
               onAddCustomer={handleAddCustomer}
+              onContinueToOrders={customer => {
+                setOnboardingOrderCustomerId(customer.id);
+                setActiveTab('billing_orders');
+              }}
               onUpdateCustomer={handleUpdateCustomer}
               onDeleteCustomer={handleDeleteCustomer}
               onAddUser={handleAddCustomerUser}
@@ -1528,8 +1538,10 @@ export default function App() {
             <BillingAdminView customers={customers} licenses={tenantLicenses} />
           )}
 
+          {activeTab === 'billing_commercial' && <StageFFinanceView />}
+
           {(activeTab === 'billing_orders' || activeTab === 'billing_products') && (
-            <FinanceCommerceView mode={activeTab === 'billing_orders' ? 'orders' : 'products'} customers={customers} />
+            <FinanceCommerceView mode={activeTab === 'billing_orders' ? 'orders' : 'products'} customers={customers} initialTenantId={onboardingOrderCustomerId} />
           )}
 
           {activeTab === 'accounting' && (

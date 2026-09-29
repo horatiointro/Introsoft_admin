@@ -15,6 +15,7 @@ import {
   AuditLog
 } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
+import { apiFetch } from '../utils/apiFetch';
 import {
   Building2,
   UserCheck,
@@ -64,7 +65,8 @@ interface CustomersViewProps {
   policies: AIPolicy[];
   auditLogs: AuditLog[];
   initialView?: 'manage' | 'add' | 'logs';
-  onAddCustomer: (customerData: any) => Promise<void>;
+  onAddCustomer: (customerData: any) => Promise<Customer>;
+  onContinueToOrders: (customer: Customer) => void;
   onUpdateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   onDeleteCustomer: (id: string) => Promise<void>;
   onAddUser: (customerId: string, userData: Partial<CustomerUser>) => Promise<void>;
@@ -84,6 +86,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   auditLogs,
   initialView = 'manage',
   onAddCustomer,
+  onContinueToOrders,
   onUpdateCustomer,
   onDeleteCustomer,
   onAddUser,
@@ -105,6 +108,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [customerFormError, setCustomerFormError] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [onboardedCustomer, setOnboardedCustomer] = useState<Customer | null>(null);
+  const [customerWizardStep, setCustomerWizardStep] = useState<'details' | 'review'>('details');
   const [managingUsersCustomer, setManagingUsersCustomer] = useState<Customer | null>(null);
   const [managingOfficersCustomer, setManagingOfficersCustomer] = useState<Customer | null>(null);
   const [generatingKeyForCustomer, setGeneratingKeyForCustomer] = useState<Customer | null>(null);
@@ -121,7 +126,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setBillingModalCustomer(customer);
     setLoadingInvoice(true);
     try {
-      const res = await fetch(`/api/v1/customers/${customer.id}/invoice-preview`);
+      const res = await apiFetch(`/api/v1/customers/${customer.id}/invoice-preview`);
       if (res.ok) {
         const data = await res.json();
         setInvoicePreviewData(data);
@@ -369,6 +374,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const handleSubmitNewCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName.trim()) return;
+    if (!editingCustomer && customerWizardStep === 'details') {
+      setCustomerFormError('');
+      setCustomerWizardStep('review');
+      return;
+    }
 
     const payload = {
       type: newCustType,
@@ -415,7 +425,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
     try {
       if (editingCustomer) await onUpdateCustomer(editingCustomer.id, payload);
-      else await onAddCustomer(payload);
+      else {
+        const createdCustomer = await onAddCustomer(payload);
+        if (!createdCustomer?.id) throw new Error('Customer setup was not confirmed by the server.');
+        setOnboardedCustomer(createdCustomer);
+        setCustomerFormError('');
+        return;
+      }
     } catch (error) {
       setCustomerFormError(error instanceof Error ? error.message : 'Customer changes could not be saved. Please retry.');
       return;
@@ -428,6 +444,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
   const resetNewCustomerForm = () => {
     setNewCustType('company');
+    setOnboardedCustomer(null);
+    setCustomerWizardStep('details');
     setNewCustName('');
     setNewCustLegalName('');
     setNewCustRegNumber('');
@@ -1864,10 +1882,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-white"><InfoButton />
-                    {editingCustomer ? `Edit Customer: ${editingCustomer.name}` : 'Activate New Customer / Organization'}
+                    {onboardedCustomer ? 'Customer registration complete' : customerWizardStep === 'review' ? 'Review customer details' : editingCustomer ? `Edit Customer: ${editingCustomer.name}` : 'Activate New Customer / Organization'}
                   </h2>
                   <p className="text-xs text-[#888888]">
-                    Register legal entity, nominate statutory officers, and configure API consumption parameters.
+                    {onboardedCustomer ? 'The customer was saved. Continue to the existing product and order workspace for the next lifecycle step.' : customerWizardStep === 'review' ? 'Review the details before creating the customer record. No customer is saved until you confirm.' : 'Register legal entity, nominate statutory officers, and configure API consumption parameters.'}
                   </p>
                 </div>
               </div>
@@ -1882,6 +1900,59 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </button>
             </div>
 
+            {onboardedCustomer ? (
+              <section className="space-y-5" aria-labelledby="customer-onboarding-next-step">
+                <ol className="grid gap-2 sm:grid-cols-3 text-xs">
+                  <li className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-200"><CheckCircle2 className="mr-1 inline h-4 w-4" />1. Customer registered</li>
+                  <li className="rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 font-semibold text-blue-100" aria-current="step">2. Product &amp; order</li>
+                  <li className="rounded-lg border border-white/10 bg-white/[.03] p-3 text-[#888888]">3. Invoice &amp; payment</li>
+                </ol>
+                <div className="rounded-xl border border-white/10 bg-white/[.03] p-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[.18em] text-emerald-300">Customer created</p>
+                  <h3 id="customer-onboarding-next-step" className="mt-2 text-lg font-semibold text-white">{onboardedCustomer.name}</h3>
+                  <p className="mt-1 break-all font-mono text-xs text-slate-400">Customer ID: {onboardedCustomer.id}</p>
+                  <p className="mt-3 text-sm text-slate-300">Next, choose a product and create an order in the existing Orders &amp; Subscriptions workspace. Registration does not create an order or activate a service.</p>
+                </div>
+                <div className="flex justify-end border-t border-white/10 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const customer = onboardedCustomer;
+                      setIsAddModalOpen(false);
+                      setOnboardedCustomer(null);
+                      onContinueToOrders(customer);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
+                  >
+                    Continue to product &amp; order <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </section>
+            ) : customerWizardStep === 'review' && !editingCustomer ? (
+              <form onSubmit={handleSubmitNewCustomer} className="space-y-5">
+                {customerFormError && <div role="alert" className="rounded-lg border border-rose-400/20 bg-rose-400/[.06] px-3 py-2 text-xs text-rose-200">{customerFormError}</div>}
+                <ol className="grid gap-2 sm:grid-cols-3 text-xs">
+                  <li className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-200"><CheckCircle2 className="mr-1 inline h-4 w-4" />1. Customer details</li>
+                  <li className="rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 font-semibold text-blue-100" aria-current="step">2. Review</li>
+                  <li className="rounded-lg border border-white/10 bg-white/[.03] p-3 text-[#888888]">3. Product &amp; order</li>
+                </ol>
+                <dl className="grid gap-3 rounded-xl border border-white/10 bg-white/[.03] p-5 text-sm sm:grid-cols-2">
+                  <div><dt className="text-xs text-slate-500">Customer name</dt><dd className="mt-1 text-white">{newCustName.trim()}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Legal entity</dt><dd className="mt-1 text-white">{newCustLegalName.trim() || newCustName.trim()}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Entity type / country</dt><dd className="mt-1 text-white">{newCustType} · {newCustCountry}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Industry / service tier</dt><dd className="mt-1 text-white">{newCustIndustry} · {newCustTier}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Primary contact</dt><dd className="mt-1 text-white">{newContactName.trim() || 'Not supplied'}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Contact email</dt><dd className="mt-1 break-all text-white">{newContactEmail.trim() || 'Not supplied'}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Registration / tax reference</dt><dd className="mt-1 text-white">{newCustRegNumber.trim() || 'Not supplied'} · {newCustVatNumber.trim() || 'Not supplied'}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Initial application</dt><dd className="mt-1 text-white">{autoCreateApp ? initialAppName.trim() || `${newCustName.trim()} AI Ingress` : 'Not requested'}</dd></div>
+                </dl>
+                <p className="text-xs text-slate-400">Customer registration does not create an order, invoice, payment, or active service. The next step is available only after the existing customer endpoint confirms creation.</p>
+                <div className="flex justify-between border-t border-white/10 pt-4">
+                  <button type="button" onClick={() => setCustomerWizardStep('details')} className="rounded-lg border border-white/10 px-4 py-2 text-xs text-slate-300 hover:bg-white/5">Back to details</button>
+                  <button type="submit" className="rounded-lg bg-blue-600 px-5 py-2 text-xs font-semibold text-white hover:bg-blue-500">Confirm &amp; create customer</button>
+                </div>
+              </form>
+            ) : (
             <form onSubmit={handleSubmitNewCustomer} className="space-y-5">
               {customerFormError && <div role="alert" className="rounded-lg border border-rose-400/20 bg-rose-400/[.06] px-3 py-2 text-xs text-rose-200">{customerFormError}</div>}
               {/* Customer Type Selector */}
@@ -2308,10 +2379,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   type="submit"
                   className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold shadow-lg shadow-blue-600/20 transition-all"
                 >
-                  {editingCustomer ? 'Update Customer Record' : 'Activate & Onboard Customer'}
+                  {editingCustomer ? 'Update Customer Record' : 'Review Customer & Continue'}
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}

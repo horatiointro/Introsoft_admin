@@ -57,6 +57,7 @@ import { Customer, EntitlementQuota } from '../types';
 import { initialEntitlements } from '../data/initialState';
 import { TileDetailModal, TileDetailData } from './TileDetailModal';
 import { getTileDetailData } from '../data/tileDetailData';
+import { Customer360CommercialPanel } from './StageFCommercialViews';
 
 interface Tenant360ViewProps {
   customers: Customer[];
@@ -948,34 +949,7 @@ export const Tenant360View: React.FC<Tenant360ViewProps> = ({
 
           {/* Sub-Tab 2: Commercial Terms */}
           {configSubTab === 'commercial' && (
-            <div className="bg-[#12141c] border border-[#222636] rounded-2xl p-5 space-y-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2"><InfoButton />
-                <DollarSign className="w-5 h-5 text-emerald-400" />
-                Commercial & Contractual Terms ({tenant.name})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
-                <div className="bg-[#161a26] p-4 rounded-xl border border-[#242c40] space-y-2">
-                  <span className="text-[#77809a] text-[10px] uppercase block font-bold">Contract Lifecycle</span>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Contract Start:</span><span className="text-white">{tenant.contractTerms?.contractStartDate || '2026-01-01'}</span></div>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Contract End:</span><span className="text-white">{tenant.contractTerms?.contractEndDate || '2027-12-31'}</span></div>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Renewal Date:</span><span className="text-amber-400 font-bold">{tenant.contractTerms?.renewalDate || '2027-11-30'}</span></div>
-                </div>
-
-                <div className="bg-[#161a26] p-4 rounded-xl border border-[#242c40] space-y-2">
-                  <span className="text-[#77809a] text-[10px] uppercase block font-bold">Billing & Currency</span>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Service Tier:</span><span className="text-blue-400 font-bold uppercase">{tenant.tier}</span></div>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Billing Currency:</span><span className="text-white font-bold">{tenant.contractTerms?.currency || 'USD'} / ZAR</span></div>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Payment Terms:</span><span className="text-white uppercase">{tenant.contractTerms?.billingTerms || 'NET_30'}</span></div>
-                </div>
-
-                <div className="bg-[#161a26] p-4 rounded-xl border border-[#242c40] space-y-2">
-                  <span className="text-[#77809a] text-[10px] uppercase block font-bold">Spend Ceilings & Overages</span>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Monthly Minimum:</span><span className="text-white">${tenant.contractTerms?.monthlyMinimumUsd || 5000}</span></div>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Spend Ceiling:</span><span className="text-emerald-400 font-bold">${tenant.contractTerms?.spendCeilingUsd || 25000}</span></div>
-                  <div className="flex justify-between"><span className="text-[#8890a6]">Limit Action:</span><span className="text-amber-400 font-bold uppercase">{tenant.contractTerms?.budgetActionOn100Percent || 'BLOCK'}</span></div>
-                </div>
-              </div>
-            </div>
+            <Customer360CommercialPanel technicalTenantId={tenant.id} />
           )}
 
           {/* Sub-Tab 3: Service & SLA */}
