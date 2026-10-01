@@ -1,88 +1,100 @@
 # ALTIL Server Read-Only Discovery — 2026-10-01
 
-## Scope and stop condition
+## Result and scope
 
-This report records the available PC reference evidence and the result of attempting to identify an approved, positively identifiable server access path. It does **not** claim a server inspection was completed.
+The owner authorized investigation of `mail.introsoft.co.za` as the primary candidate. A DNS lookup resolved it to the expected A record `196.223.58.118`. This establishes the current name-to-address resolution only; it does **not** establish the identity of the machine or prove that it is the ALTIL development/test server.
 
-The task requires an already-approved administrative connection and says to stop if the intended server cannot be positively identified. No ALTIL server endpoint or approved server session was provided. The local SSH configuration contains only the named alias `github.com`, which does not identify the ALTIL development/test server. No server connection or network probe was attempted. Therefore the intended server was not positively identified, and server inspection stopped here.
+The only local SSH identity is configured for `github.com`. No SSH-agent identity is loaded, and no server-specific authorized identity or approved session is available for `mail.introsoft.co.za`. Accordingly, SSH authentication was not attempted. The server must identify itself before it can be treated as the intended ALTIL server; that identity remains **UNKNOWN**. Per the stop condition, no server inspection was performed.
 
-No server or PC database was queried for this report. No server or PC application/configuration state was changed. No migration, login, service operation, Git network operation, or external-provider request occurred.
+This report records only local access metadata and DNS resolution. No server connection, port scan, database query, login, process inspection, or provider request occurred. No server or PC state was changed.
 
-## PC reference available at report time
+## 1. Local SSH and Git evidence
 
-| Item | PC observation |
+- User OpenSSH config: `%USERPROFILE%\.ssh\config` exists. Its only named host alias is `github.com`, mapped to `github.com`, with identity filename `id_ed25519_introsoft`.
+- System OpenSSH config: `C:\ProgramData\ssh\ssh_config` is absent.
+- The corresponding public-key file exists. Safe metadata: Ed25519, 256-bit, fingerprint `SHA256:I9L9glETGYyyQ0UXGNtWU94bM0qmgBT8xE4b+CDS5Kc`. Private-key contents were not read or printed. The key is scoped by the SSH config to GitHub; it is not configured for the candidate server.
+- SSH agent: no loaded identity (**AUTH NOT AVAILABLE** through the agent).
+- `known_hosts`: present, with seven unhashed entries. Entries exist for `mail.introsoft.co.za` and `196.223.58.118`; no entry exists for `admin.introsoft.co.za`. Known-host entries pin previously seen host keys but do not prove the intended server identity or grant authentication.
+- Git `origin`: `github.com:horatiointro/Introsoft_admin.git` for fetch and push. This is the source repository remote, not the application server. No credential was present in the reported URL.
+
+## 2. Repository and configuration references
+
+- Exact repository/config searches found no references to `mail.introsoft.co.za`, `admin.introsoft.co.za`, `196.223.58.118`, `/var/www/altil-control-centre-test`, or `altil-control-centre`.
+- `.env` and `.env.example` have no values referencing those candidates; the check reported matching variable names only and did not display values.
+- Generic `introsoft.co.za` occurrences are in test/application identity or email-related material, including `altil-server-test.cjs`, `docs/LOCAL_TEST_HARNESS.md`, `docs/SUPER_ADMIN_BOOTSTRAP.md`, E2E scripts, `src/components/LoginScreen.tsx`, `src/data/initialState.ts`, `src/security/superAdminBootstrap.ts`, `src/server/localTestHarness.ts` and its tests, and Vite configuration. They do not bind a hostname to the ALTIL development/test server.
+- Port `3005` is referenced as a listener/default or API port in `server.ts`, `src/config/environmentContract.mjs`, `docs/DEVELOPMENT_TEST_ENVIRONMENT_PARITY.md`, and API documentation. It is not a host identity.
+- Deployment/runbook references found in repository documentation are generic; no approved candidate SSH destination was identified there.
+
+## 3. Candidate assessment
+
+| Candidate | Evidence source | Existing SSH config? | Existing auth available? | Intended ALTIL dev/test server proven? |
+|---|---|---|---|---|
+| `mail.introsoft.co.za` | Owner-authorized candidate; DNS resolves to expected `196.223.58.118`; known-host entry exists | No | No server identity configured; agent empty | No; machine identity not checked |
+| `196.223.58.118` | Matches the candidate DNS A record; known-host entry exists | No | No server identity configured; agent empty | No; machine identity not checked |
+| `admin.introsoft.co.za` | Historical public application hostname clue; no exact local SSH/config/repository match; no known-host entry | No | No | No; public URL does not identify the SSH host |
+| `github.com` | User SSH config and Git `origin` remote | Yes | GitHub-only key file exists; agent empty | No; Git host, not the ALTIL application server |
+
+The candidates are **NOT IDENTIFIED** as the intended server. DNS and known-host data are insufficient to establish the host's role.
+
+## 4. Server evidence status
+
+No SSH session was established. All remote observations below are therefore **UNKNOWN / NOT CHECKED**:
+
+| Requested server fact | Status |
 |---|---|
-| Current branch | `feature/cline-customer-commercial-journey` |
-| Current PC commit | `859ee2fd41acfd771870e1ba3f6fdd3c8f8e4126` |
+| Hostname, FQDN, current user, OS, kernel, architecture, primary IPs, uptime | UNKNOWN |
+| ALTIL path, ownership, permissions, repository state, branch, commit, remote | UNKNOWN |
+| Node/npm, installed dependencies, PM2 identity/status/uptime/restarts/script/cwd/port | UNKNOWN |
+| Running application commit and correspondence to checkout | UNKNOWN |
+| Redacted server configuration and environment profile | UNKNOWN |
+| Database target, version, `@@read_only`, character set/collation, engines | UNKNOWN |
+| Migration list, timestamps, checksums, missing/unexpected versions | UNKNOWN |
+| Schema counts and fingerprint | UNKNOWN |
+| Aggregate IAM, tenant, commercial, billing, compliance, audit, and usage counts | UNKNOWN |
+| User/account state and password equality | UNKNOWN; password equality is NOT VERIFIED |
+| Encryption/provider secret configuration and equality | UNKNOWN; secret equality is NOT VERIFIED |
+| nginx, Cloudflare/real-IP, proxy target/headers, TLS certificate and expiry | UNKNOWN |
+
+No database rows or schema metadata were queried. No migration was run.
+
+## 5. PC reference at report time
+
+| Item | PC evidence |
+|---|---|
+| Branch / commit before this report | `feature/cline-customer-commercial-journey` / `c8608d50aad2002f8b4efe42f784a24a497e77b3` |
 | Working tree before this report | Clean |
 | Previous application commit | `e0ac48f` |
-| Freeze record commit | `4c09a3e9633b7fe637b55a1238a6aec246c40662` |
-| Repository schema target | Migrations `001–036` |
-| PC `altil_db` | MariaDB `9.5.0`; migrations `001–035`; preserved incident/reference database |
+| Repository schema target | `001–036` |
+| PC `altil_db` | MariaDB `9.5.0`, migrations `001–035`; preserved incident/reference database |
 | PC `altil_e2e_test` | Migrations `001–036`; isolated E2E database |
-| PC lockfile SHA-256 | `55968e8e7f63bdea1f585efa06f28c27f3b8cf7534d3bad37cf2c1c6220d07b0` |
-| PC runtime | Node `v24.16.0`; npm `11.13.0`; Windows 11 Pro; x64 |
+| `package-lock.json` SHA-256 | `55968e8e7f63bdea1f585efa06f28c27f3b8cf7534d3bad37cf2c1c6220d07b0` |
+| Node / npm | `v24.16.0` / `11.13.0` |
+| PC OS / architecture | Windows 11 Pro / x64 |
 
-The accepted PC parity report recorded invalid `development-test` configuration because `ALTIL_ENVIRONMENT`, `PAYFAST_SANDBOX`, and `IKHOKHA_MODE` were missing. That report also found no configured parity HMAC key, so it could not compare secret fingerprints. These are PC facts only; no server settings are inferred from them.
+The accepted PC parity report recorded an invalid PC `development-test` configuration because `ALTIL_ENVIRONMENT`, `PAYFAST_SANDBOX`, and `IKHOKHA_MODE` were missing. It also found no configured parity HMAC key. These PC facts do not establish server configuration.
 
-## Server evidence table
+## 6. Critical questions
 
-Statuses use only the requested values: `MATCH`, `DIFFERENT / INVESTIGATE`, `EXPECTED HOST DIFFERENCE`, `UNKNOWN`, `NOT CHECKED`.
+1. **Is the server the intended ALTIL development/test host?** Not established. DNS matches the supplied candidate IP, but no server identity was obtained.
+2. **Is the server running the same Git revision as the PC?** Unknown; not inspected.
+3. **Is it running the source checkout reported by Git?** Unknown; not inspected.
+4. **Does PM2 correspond to that checkout?** Unknown; PM2 was not inspected.
+5. **Is the server using the intended database?** Unknown; no server configuration or database was inspected.
+6. **Is its schema equivalent?** Unknown.
+7. **Are migrations equivalent?** Unknown.
+8. **Is database data equivalent?** Unknown.
+9. **Are user/account records equivalent?** Unknown.
+10. **Are password values proven equal?** No; `PASSWORD EQUALITY = NOT VERIFIED`.
+11. **Are encryption secrets compatible?** Unknown; `SECRET EQUALITY = NOT VERIFIED`.
+12. **Is the runtime compatible?** Unknown.
+13. **Is the server environment profile valid?** Unknown.
+14. **Does nginx forward to the intended ALTIL process?** Unknown.
+15. **Does Cloudflare/TLS forwarding appear correct?** Unknown.
+16. **Are there unexplained server-only modifications?** Unknown; no server checkout was inspected.
+17. **Can we claim the PC and server represent the same logical ALTIL environment?** No. The server remains unidentified and uninspected.
 
-| Item | Server observation | Status |
-|---|---|---|
-| Host identity | Not positively identified; no connection attempted | UNKNOWN |
-| Git repository/path | Not inspected | UNKNOWN |
-| Git commit | Not inspected | UNKNOWN |
-| Branch | Not inspected | UNKNOWN |
-| Working tree | Not inspected | UNKNOWN |
-| Remote URL | Not inspected | UNKNOWN |
-| Node | Not inspected | UNKNOWN |
-| npm | Not inspected | UNKNOWN |
-| OS | Not inspected | UNKNOWN |
-| Architecture | Not inspected | UNKNOWN |
-| Lockfile SHA | Not inspected | UNKNOWN |
-| Installed dependencies | Not inspected | UNKNOWN |
-| ALTIL environment | Not inspected | UNKNOWN |
-| Payment test mode | Not inspected | UNKNOWN |
-| Database target | Not inspected | UNKNOWN |
-| MariaDB version | Not inspected | UNKNOWN |
-| Database read-only flag | Not inspected | UNKNOWN |
-| Migration state/timestamps/checksums | Not inspected | UNKNOWN |
-| Schema fingerprint/counts | Not inspected | UNKNOWN |
-| IAM counts | Not inspected | UNKNOWN |
-| Tenant/application counts | Not inspected | UNKNOWN |
-| Commercial counts | Not inspected | UNKNOWN |
-| Billing counts | Not inspected | UNKNOWN |
-| Compliance counts | Not inspected | UNKNOWN |
-| Audit counts | Not inspected | UNKNOWN |
-| User-record parity | Not inspected | UNKNOWN |
-| Password equality | Not tested; no authentication attempted | UNKNOWN |
-| Encryption/key configuration | Not inspected; no fingerprints available | UNKNOWN |
-| Provider credentials | Not inspected | UNKNOWN |
-| PM2/process identity and status | Not inspected | UNKNOWN |
-| Running commit/source correspondence | Not inspected | UNKNOWN |
-| Application port | Not inspected | UNKNOWN |
-| nginx/proxy/Cloudflare | Not inspected | UNKNOWN |
-| TLS/certificate | Not inspected | UNKNOWN |
+## 7. Exact blocker and next evidence needed
 
-## Comparison with PC
+The required existing authorized administrative credential/session for the candidate is not available through the current local SSH configuration or agent. The only configured key is scoped to GitHub. Do not send a private key through chat. The operator must make an already-authorized server SSH identity/session available through the approved local administration mechanism and confirm that it is authorized for `mail.introsoft.co.za`. Once available, the next remote command must remain limited to the requested read-only host identity facts; further inspection should wait until the returned machine identity is checked.
 
-No server observations exist to compare with the PC. Consequently no parity row can be classified as `MATCH`, `DIFFERENT / INVESTIGATE`, or `EXPECTED HOST DIFFERENCE`. PC `altil_db` remains recorded at `001–035`; repository target remains `001–036`; the server migration state remains unknown. No claim is made about server database identity, contents, users, credentials, encryption compatibility, or running process.
-
-## Critical questions
-
-1. **Same Git revision?** Unknown; server Git state was not inspected.
-2. **Same logical database/schema?** Unknown; server database was not inspected.
-3. **Same database data?** Unknown; server data counts were not collected.
-4. **Equivalent user records?** Unknown; server IAM data was not inspected.
-5. **Password equality demonstrated safely?** No. Password equality is **NOT VERIFIED**; no hashes or credentials were read.
-6. **Encryption secrets demonstrably compatible?** No. Secret equality is **NOT VERIFIED**; no server key state or comparable HMAC fingerprints were available.
-7. **Does PM2 use the inspected checkout?** Unknown; no process or source path was inspected.
-8. **Does nginx forward to that application instance?** Unknown; nginx/proxy configuration was not inspected.
-9. **Is server configuration equivalent to the intended `development-test` profile?** Unknown; no server configuration was inspected. The PC's own profile was reported invalid.
-10. **Can we state that PC behavior will work identically on the server?** No. Required server evidence is absent, and the PC profile itself does not currently pass its documented configuration contract.
-
-## Evidence required to resume
-
-The server operator must provide or establish the approved administrative connection and positively identify the intended development/test host. Until then, Git, runtime, PM2, redacted configuration, database/migration/schema, aggregate data, credential-fingerprint, encryption, nginx, and TLS evidence remain uncollected. This report records the blocker only; it authorizes no remediation or state change.
+No parity is claimed. No migration, source, database, SSH configuration, key, known-host entry, service, proxy, TLS, Git remote, or external-provider state was changed. No push occurred.
