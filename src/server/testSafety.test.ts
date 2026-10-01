@@ -11,7 +11,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 function findTypeScriptTests(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const child = path.join(directory, entry.name);
-    return entry.isDirectory() ? findTypeScriptTests(child) : entry.isFile() && entry.name.endsWith('.test.ts') ? [path.relative(root, child).replaceAll('\\', '/')] : [];
+    return entry.isDirectory() ? findTypeScriptTests(child) : entry.isFile() && entry.name.endsWith('.test.ts') && !entry.name.endsWith('.e2e.test.ts') ? [path.relative(root, child).replaceAll('\\', '/')] : [];
   });
 }
 

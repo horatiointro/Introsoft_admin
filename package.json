@@ -15,6 +15,9 @@
     "test:phase-b-b1-e2e": "node scripts/verifyPhaseBB1CatalogueE2e.mjs",
     "test:phase-b1-account-portal-e2e": "node scripts/verifyPhaseBB1AccountPortalE2e.mjs",
     "test:local-harness": "node --import tsx --test src/server/localTestHarness.test.ts",
+    "test:dsar-persistence-e2e": "node scripts/runDsarPersistenceE2e.mjs",
+    "validate:route-inventory": "node scripts/refreshRouteInventory.mjs --check",
+    "validate:migrations": "node scripts/validateMigrationInventory.mjs",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
@@ -23,6 +26,8 @@
     "db:migrate": "node scripts/migrate.js",
     "db:status": "node scripts/migrate.js --status",
     "db:admin-password": "node scripts/set_admin_password.js",
+    "env:report": "node scripts/environmentReport.mjs",
+    "env:compare": "node scripts/compareEnvironmentReports.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit"
   },

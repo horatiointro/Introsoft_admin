@@ -1,5 +1,7 @@
 /** Explicit, reviewed test manifest. Generated bundles and server entrypoints are never discovered. */
 export const safeTestFiles = Object.freeze([
+  'src/config/environmentContract.test.ts',
+  'src/config/environmentReport.test.ts',
   'src/aiGateway/openRouterProvider.test.ts',
   'src/aiGateway/openAiChatRequest.test.ts',
   'src/capabilities/capabilityRegistry.test.ts',
@@ -15,9 +17,12 @@ export const safeTestFiles = Object.freeze([
   'src/commercial/stageD/usageRating.test.ts',
   'src/commercial/stageE/financialLifecycle.test.ts',
   'src/commercial/stageF/stageF.test.ts',
+  'src/billing/trialLifecycle.test.ts',
   'src/middleware/authMiddleware.test.ts',
   'src/db/iamRepositoryQuickAccess.test.ts',
   'src/db/complianceSchemaRepair.test.ts',
+  'src/db/complianceRepository.test.ts',
+  'src/db/complianceDsarSchemaMigration.test.ts',
   'src/db/licensingPlanDeserialization.test.ts',
   'src/db/iamRepositoryAuthenticationSecurity.test.ts',
   'src/security/anonymousDiagnostic.test.ts',

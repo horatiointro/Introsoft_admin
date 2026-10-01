@@ -136,6 +136,8 @@ import { createCommercialFoundationRouter } from './src/routes/commercialFoundat
 import { createCommercialCatalogueRouter } from './src/routes/commercialCatalogueRoutes';
 import { createPublicRegistrationRouter } from './src/routes/publicRegistrationRoutes';
 import { isServerEntrypoint } from './src/server/serverEntrypoint';
+import { ManualInvoicePaymentError, recordManualInvoicePayment } from './src/billing/manualInvoicePayment';
+import { expiredTrialLicense, providerPaymentTransition } from './src/billing/trialLifecycle';
 
 import { itilRouter } from './src/routes/itilRoutes';
 
@@ -181,6 +183,7 @@ import { PrivilegedOperationsRegistry } from './src/utils/privilegedOperations';
 import { PolicyEngine } from './src/utils/policyEngine';
 
 import { sendSmtpMail, testSmtpConnection } from './src/utils/smtpTransport';
+import { compareMigrationVersions, resolvePublicBaseUrl, runtimeSideEffectPolicy, validateRuntimeEnvironment } from './src/config/environmentContract.mjs';
 
 import { getFirebaseAccessToken, sendFirebaseMessage } from './src/utils/firebaseTransport';
 
@@ -262,7 +265,7 @@ async function verifyProviderAccount(account: ProviderAccount): Promise<{ tested
     let testedModel = ''; let lastProbeIssue = 'No candidate model produced text.';
     for (const candidate of candidates) {
       try {
-        const probeResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': process.env.APP_URL || 'https://altil.local', 'X-Title': 'ALTIL Account Validator' }, body: JSON.stringify({ model: candidate.id, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 12, temperature: 0 }), signal: AbortSignal.timeout(25000) });
+        const probeResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', ...(resolvePublicBaseUrl(process.env) ? { 'HTTP-Referer': resolvePublicBaseUrl(process.env)! } : {}), 'X-Title': 'ALTIL Account Validator' }, body: JSON.stringify({ model: candidate.id, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 12, temperature: 0 }), signal: AbortSignal.timeout(25000) });
         const result = await probeResponse.json().catch(() => ({})) as any;
         if (probeResponse.ok && typeof result?.choices?.[0]?.message?.content === 'string' && result.choices[0].message.content.trim()) { testedModel = candidate.id; break; }
         lastProbeIssue = String(result?.error?.message || `HTTP ${probeResponse.status} with no text completion`).slice(0, 180);
@@ -1798,7 +1801,7 @@ async function refreshFreeModelCatalog(accountId?: string) {
 
         const probe = await fetch('https://openrouter.ai/api/v1/chat/completions', {
 
-          method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': process.env.APP_URL || 'https://altil.local', 'X-Title': 'ALTIL Model Fleet Validator' },
+          method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...(resolvePublicBaseUrl(process.env) ? { 'HTTP-Referer': resolvePublicBaseUrl(process.env)! } : {}), 'X-Title': 'ALTIL Model Fleet Validator' },
 
           body: JSON.stringify({ model: item.id, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 2, temperature: 0 }),
 
@@ -1899,7 +1902,7 @@ async function createStripeCheckout(tenantId:string,licenseId:string,plan:Licens
 
   if(!Number.isFinite(plan.basePrice)||plan.basePrice<=0||plan.pricingType==='per_transaction'||plan.billingCycle==='per_transaction'||plan.billingCycle==='daily'||plan.billingCycle==='custom') throw new Error('Hosted checkout is available for fixed recurring licence packages.');
 
-  const origin=(process.env.ALTIL_PUBLIC_URL||process.env.APP_URL||'').replace(/\/$/,'');
+  const origin=resolvePublicBaseUrl(process.env) || '';
 
   if(!/^https?:\/\//i.test(origin)) throw new Error('Set ALTIL_PUBLIC_URL to the public Introsoft site address before enabling hosted checkout.');
 
@@ -1952,6 +1955,9 @@ async function restoreAiRegistryFromDatabase(): Promise<void> {
 
 async function startServer() {
   const localE2E = process.env.ALTIL_LOCAL_E2E === 'true';
+  const environmentValidation = validateRuntimeEnvironment(process.env);
+  if (!environmentValidation.valid) throw new Error(`ALTIL environment configuration is invalid:\n- ${environmentValidation.errors.join('\n- ')}`);
+  const sideEffectPolicy = runtimeSideEffectPolicy(process.env);
   if (localE2E) {
     const syntheticMfaCode = process.env.ALTIL_TEST_MFA_CODE;
     configureMfaCodeVerifier((userId, code) => userId === 'local-e2e-super-admin' && Boolean(syntheticMfaCode) && code === syntheticMfaCode);
@@ -3069,7 +3075,7 @@ const app = express();
 
     if(!isDatabaseConnected())return res.status(503).json({error:'Payment event storage is unavailable; Stripe should retry this webhook.'});const event=req.body;try{const seen=await executeQuery<any>('SELECT event_id FROM payment_provider_events WHERE event_id=? LIMIT 1',[event.id]);if(seen.length)return res.json({received:true,duplicate:true});const obj=event.data?.object||{};const metadata=obj.metadata||obj.parent?.subscription_details?.metadata||{};const tenantId=String(metadata.tenantId||'');const licenseId=String(metadata.licenseId||'');const license=tenantLicenses.find(item=>item.id===licenseId&&item.tenantId===tenantId);const tenant=customers.find(item=>item.id===tenantId);
 
-      if(event.type==='invoice.paid'&&license&&tenant){const amount=Number(obj.amount_paid||0)/100;license.paymentStatus='paid';license.licenseStatus='active';license.activeEnforcement=null;license.lastPaymentDate=new Date().toISOString().slice(0,10);license.lastPaymentAmount=amount;license.currentTransactionCount=0;const cycleMonths=tenant.billingConfig?.billingCycle==='annual'?12:tenant.billingConfig?.billingCycle==='quarterly'?3:1;const paidAt=new Date();let nextCycle=new Date(`${license.nextBillingDate}T00:00:00Z`);if(Number.isNaN(nextCycle.getTime()))nextCycle=paidAt;for(let cycle=0;cycle<120&&nextCycle<=paidAt;cycle++){const wasMonthEnd=nextCycle.getUTCDate()===new Date(Date.UTC(nextCycle.getUTCFullYear(),nextCycle.getUTCMonth()+1,0)).getUTCDate();nextCycle.setUTCDate(1);nextCycle.setUTCMonth(nextCycle.getUTCMonth()+cycleMonths);if(wasMonthEnd)nextCycle.setUTCDate(new Date(Date.UTC(nextCycle.getUTCFullYear(),nextCycle.getUTCMonth()+1,0)).getUTCDate());}license.nextBillingDate=nextCycle.toISOString().slice(0,10);await dbRepository.saveTenantLicense(license);tenant.status='active';tenant.trialEndsAt=null;tenant.suspendedAt=null;tenant.suspendedReason=null;tenant.billingConfig={...(tenant.billingConfig as any),paymentMethod:'credit_card',autoRenew:true};tenant.updatedAt=new Date().toISOString();await saveTenantMetadata(tenant);const log:PaymentWebhookLog={id:`stripe-${event.id}`,tenantId,tenantName:tenant.name,applicationId:license.applicationId,invoiceId:String(obj.id||''),gatewayProvider:'Stripe',eventType:event.type,amount,currency:String(obj.currency||license.currency).toUpperCase(),enforcementTriggered:'none',status:'processed',timestamp:new Date().toISOString(),rawPayloadSummary:'Verified Stripe invoice payment reconciled to tenant licence.'};await dbRepository.insertPaymentLog(log);paymentWebhookLogs.unshift(log);await loadInvoices();const stripeInvoiceId=`inv-stripe-${String(obj.id).replace(/[^a-zA-Z0-9_-]/g,'').slice(0,60)}`;let accountingInvoice=billingInvoices.find(item=>item.id===stripeInvoiceId);if(!accountingInvoice){const periodStart=obj.period_start?new Date(Number(obj.period_start)*1000).toISOString().slice(0,10):new Date().toISOString().slice(0,10);const periodEnd=obj.period_end?new Date(Number(obj.period_end)*1000).toISOString().slice(0,10):license.nextBillingDate;accountingInvoice={id:stripeInvoiceId,number:`ALT-STRIPE-${String(obj.id).slice(-24)}`,tenantId,tenantName:tenant.name,currency:String(obj.currency||license.currency).toUpperCase(),periodStart,periodEnd,dueAt:periodEnd,subtotal:amount,tax:0,total:amount,paid:0,status:'issued',issuedAt:new Date().toISOString(),lines:[{description:`${license.planName} Â· ${license.applicationName}`,quantity:1,unitPrice:amount,amount}],createdAt:new Date().toISOString()};await persistInvoice(accountingInvoice);billingInvoices.unshift(accountingInvoice);await postJournal({id:`journal-invoice-${accountingInvoice.id}`,tenantId,sourceType:'invoice_issued',sourceId:accountingInvoice.id,currency:accountingInvoice.currency,description:`Stripe invoice ${String(obj.number||obj.id)}`,actor:'Stripe verified invoice',lines:[{accountCode:'1200',accountName:'Accounts receivable',debit:amount,credit:0,memo:accountingInvoice.number},{accountCode:'4000',accountName:'AI service revenue',debit:0,credit:amount,memo:license.planName}]});}const paymentId=`pay-stripe-${String(obj.id).replace(/[^a-zA-Z0-9_-]/g,'').slice(0,60)}`;let stripePayment=paymentIntents.find(item=>item.id===paymentId);if(!stripePayment){const paidAt=new Date().toISOString();stripePayment={id:paymentId,tenantId,invoiceId:accountingInvoice.id,purpose:'invoice',provider:'stripe',status:'pending',amount,currency:accountingInvoice.currency,externalReference:String(obj.id),providerReference:String(obj.payment_intent||obj.id),capturedAmount:0,feeAmount:0,createdAt:paidAt,updatedAt:paidAt};await executeQuery('INSERT IGNORE INTO billing_payment_intents (id,tenant_id,invoice_id,provider,status,amount,currency,external_reference,provider_reference,captured_amount,fee_amount,created_at,updated_at,payload_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[stripePayment.id,tenantId,accountingInvoice.id,'stripe','pending',amount,accountingInvoice.currency,stripePayment.externalReference,stripePayment.providerReference,0,0,paidAt.slice(0,23).replace('T',' '),paidAt.slice(0,23).replace('T',' '),JSON.stringify(stripePayment)]);paymentIntents.unshift(stripePayment);}await capturePaymentIntent(stripePayment,stripePayment.providerReference||String(obj.id));}
+      if(event.type==='invoice.paid'&&license&&tenant){const amount=Number(obj.amount_paid||0)/100;const transition=providerPaymentTransition('success');license.paymentStatus=transition.paymentStatus;license.licenseStatus=transition.licenseStatus;license.activeEnforcement=null;license.lastPaymentDate=new Date().toISOString().slice(0,10);license.lastPaymentAmount=amount;license.currentTransactionCount=0;const cycleMonths=tenant.billingConfig?.billingCycle==='annual'?12:tenant.billingConfig?.billingCycle==='quarterly'?3:1;const paidAt=new Date();let nextCycle=new Date(`${license.nextBillingDate}T00:00:00Z`);if(Number.isNaN(nextCycle.getTime()))nextCycle=paidAt;for(let cycle=0;cycle<120&&nextCycle<=paidAt;cycle++){const wasMonthEnd=nextCycle.getUTCDate()===new Date(Date.UTC(nextCycle.getUTCFullYear(),nextCycle.getUTCMonth()+1,0)).getUTCDate();nextCycle.setUTCDate(1);nextCycle.setUTCMonth(nextCycle.getUTCMonth()+cycleMonths);if(wasMonthEnd)nextCycle.setUTCDate(new Date(Date.UTC(nextCycle.getUTCFullYear(),nextCycle.getUTCMonth()+1,0)).getUTCDate());}license.nextBillingDate=nextCycle.toISOString().slice(0,10);await dbRepository.saveTenantLicense(license);tenant.status='active';tenant.trialEndsAt=null;tenant.suspendedAt=null;tenant.suspendedReason=null;tenant.billingConfig={...(tenant.billingConfig as any),paymentMethod:'credit_card',autoRenew:true};tenant.updatedAt=new Date().toISOString();await saveTenantMetadata(tenant);const log:PaymentWebhookLog={id:`stripe-${event.id}`,tenantId,tenantName:tenant.name,applicationId:license.applicationId,invoiceId:String(obj.id||''),gatewayProvider:'Stripe',eventType:event.type,amount,currency:String(obj.currency||license.currency).toUpperCase(),enforcementTriggered:'none',status:'processed',timestamp:new Date().toISOString(),rawPayloadSummary:'Verified Stripe invoice payment reconciled to tenant licence.'};await dbRepository.insertPaymentLog(log);paymentWebhookLogs.unshift(log);await loadInvoices();const stripeInvoiceId=`inv-stripe-${String(obj.id).replace(/[^a-zA-Z0-9_-]/g,'').slice(0,60)}`;let accountingInvoice=billingInvoices.find(item=>item.id===stripeInvoiceId);if(!accountingInvoice){const periodStart=obj.period_start?new Date(Number(obj.period_start)*1000).toISOString().slice(0,10):new Date().toISOString().slice(0,10);const periodEnd=obj.period_end?new Date(Number(obj.period_end)*1000).toISOString().slice(0,10):license.nextBillingDate;accountingInvoice={id:stripeInvoiceId,number:`ALT-STRIPE-${String(obj.id).slice(-24)}`,tenantId,tenantName:tenant.name,currency:String(obj.currency||license.currency).toUpperCase(),periodStart,periodEnd,dueAt:periodEnd,subtotal:amount,tax:0,total:amount,paid:0,status:'issued',issuedAt:new Date().toISOString(),lines:[{description:`${license.planName} Â· ${license.applicationName}`,quantity:1,unitPrice:amount,amount}],createdAt:new Date().toISOString()};await persistInvoice(accountingInvoice);billingInvoices.unshift(accountingInvoice);await postJournal({id:`journal-invoice-${accountingInvoice.id}`,tenantId,sourceType:'invoice_issued',sourceId:accountingInvoice.id,currency:accountingInvoice.currency,description:`Stripe invoice ${String(obj.number||obj.id)}`,actor:'Stripe verified invoice',lines:[{accountCode:'1200',accountName:'Accounts receivable',debit:amount,credit:0,memo:accountingInvoice.number},{accountCode:'4000',accountName:'AI service revenue',debit:0,credit:amount,memo:license.planName}]});}const paymentId=`pay-stripe-${String(obj.id).replace(/[^a-zA-Z0-9_-]/g,'').slice(0,60)}`;let stripePayment=paymentIntents.find(item=>item.id===paymentId);if(!stripePayment){const paidAt=new Date().toISOString();stripePayment={id:paymentId,tenantId,invoiceId:accountingInvoice.id,purpose:'invoice',provider:'stripe',status:'pending',amount,currency:accountingInvoice.currency,externalReference:String(obj.id),providerReference:String(obj.payment_intent||obj.id),capturedAmount:0,feeAmount:0,createdAt:paidAt,updatedAt:paidAt};await executeQuery('INSERT IGNORE INTO billing_payment_intents (id,tenant_id,invoice_id,provider,status,amount,currency,external_reference,provider_reference,captured_amount,fee_amount,created_at,updated_at,payload_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[stripePayment.id,tenantId,accountingInvoice.id,'stripe','pending',amount,accountingInvoice.currency,stripePayment.externalReference,stripePayment.providerReference,0,0,paidAt.slice(0,23).replace('T',' '),paidAt.slice(0,23).replace('T',' '),JSON.stringify(stripePayment)]);paymentIntents.unshift(stripePayment);}await capturePaymentIntent(stripePayment,stripePayment.providerReference||String(obj.id));}
 
       else if(event.type==='checkout.session.completed'&&obj.mode==='setup'&&metadata.paymentMethodSetupId){await loadPaymentIntents();const setup=paymentIntents.find(item=>item.id===metadata.paymentMethodSetupId&&item.provider==='stripe'&&item.purpose==='payment_method_setup');if(!setup)throw new Error('Stripe setup session references an unknown payment-method mandate.');const secret=process.env.STRIPE_SECRET_KEY||'';const response=await fetch(`https://api.stripe.com/v1/setup_intents/${encodeURIComponent(String(obj.setup_intent||''))}?expand[]=payment_method`,{headers:{Authorization:`Bearer ${secret}`}});const setupData=await response.json() as any;if(!response.ok||setupData.status!=='succeeded'||!setupData.payment_method||!setupData.customer)throw new Error('Stripe card setup did not complete successfully.');const token=JSON.stringify({customer:String(setupData.customer),paymentMethod:String(setupData.payment_method.id||setupData.payment_method)});const mandate=(setup as any).mandateText||'Customer confirmed the ALTIL payment mandate during secure provider checkout.';await savePaymentMethod({id:`pm-${setup.id}`,tenantId:setup.tenantId,provider:'stripe',token,displayMetadata:{provider:'Stripe',cardBrand:setupData.payment_method.card?.brand,last4:setupData.payment_method.card?.last4},mandateText:mandate});setup.status='succeeded';setup.providerReference=String(setupData.id);setup.updatedAt=new Date().toISOString();await executeQuery('UPDATE billing_payment_intents SET status=?,provider_reference=?,updated_at=?,payload_json=? WHERE id=?',[setup.status,setup.providerReference,setup.updatedAt.slice(0,23).replace('T',' '),JSON.stringify(setup),setup.id]);}
 
@@ -3230,17 +3236,17 @@ const app = express();
 
     const tenantId=String(req.body?.tenantId||req.user?.tenantId||'');const privileged=req.user?.roles.some(role=>['SUPER_ADMIN','FINOPS_MANAGER'].includes(role));if(!tenantId||(!privileged&&tenantId!==req.user?.tenantId))return res.status(403).json({error:'You can only pay invoices belonging to your tenant.'});
 
-    try{await loadInvoices();const invoice=billingInvoices.find(item=>item.id===req.body?.invoiceId&&item.tenantId===tenantId);if(!invoice)return res.status(404).json({error:'Invoice not found for this tenant.'});if(!['issued','partial','overdue'].includes(invoice.status))return res.status(409).json({error:'Only an issued invoice with a remaining balance can be paid.'});const amount=Number(req.body?.amount??invoice.total-invoice.paid);if(!Number.isFinite(amount)||amount<=0||amount>invoice.total-invoice.paid+0.000001)return res.status(400).json({error:'Payment must be positive and cannot exceed the invoice balance.'});if(!isDatabaseConnected())return res.status(503).json({error:'Durable payment records are unavailable; no checkout was created.'});
+    try{const origin=resolvePublicBaseUrl(process.env);if(!origin)return res.status(503).json({error:'Configure ALTIL_PUBLIC_URL before creating hosted payment links.'});await loadInvoices();const invoice=billingInvoices.find(item=>item.id===req.body?.invoiceId&&item.tenantId===tenantId);if(!invoice)return res.status(404).json({error:'Invoice not found for this tenant.'});if(!['issued','partial','overdue'].includes(invoice.status))return res.status(409).json({error:'Only an issued invoice with a remaining balance can be paid.'});const amount=Number(req.body?.amount??invoice.total-invoice.paid);if(!Number.isFinite(amount)||amount<=0||amount>invoice.total-invoice.paid+0.000001)return res.status(400).json({error:'Payment must be positive and cannot exceed the invoice balance.'});if(!isDatabaseConnected())return res.status(503).json({error:'Durable payment records are unavailable; no checkout was created.'});
 
       const id=newPaymentIntentId();const now=new Date().toISOString();const intent:PaymentIntentRecord={id,tenantId,invoiceId:invoice.id,provider,status:'pending',amount,currency:invoice.currency,externalReference:id,capturedAmount:0,feeAmount:0,createdAt:now,updatedAt:now};paymentIntents.unshift(intent);await executeQuery('INSERT INTO billing_payment_intents (id,tenant_id,invoice_id,provider,status,amount,currency,external_reference,captured_amount,fee_amount,created_at,updated_at,payload_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[id,tenantId,invoice.id,provider,'pending',amount,invoice.currency,id,0,0,now.slice(0,23).replace('T',' '),now.slice(0,23).replace('T',' '),JSON.stringify(intent)]);
 
-      const tenant=customers.find(item=>item.id===tenantId);const origin=(process.env.ALTIL_PUBLIC_URL||process.env.APP_URL||'https://altil.introsoft.com').replace(/\/$/,'');const hosted=await createHostedPayment(provider,{id,tenantId,invoiceId:invoice.id,invoiceNumber:invoice.number,amount,currency:invoice.currency,email:tenant?.billingConfig?.billingEmail||tenant?.primaryContact?.email||'',description:`ALTIL invoice ${invoice.number}`,returnUrl:`${origin}/?billing=complete`,cancelUrl:`${origin}/?billing=cancelled`,notifyUrl:`${origin}/api/v1/billing/${provider}/webhook`});intent.checkoutUrl=hosted.checkoutUrl;intent.providerReference=hosted.providerReference;intent.updatedAt=new Date().toISOString();await executeQuery('UPDATE billing_payment_intents SET provider_reference=?,checkout_url=?,updated_at=?,payload_json=? WHERE id=?',[intent.providerReference,intent.checkoutUrl,intent.updatedAt.slice(0,23).replace('T',' '),JSON.stringify(intent),intent.id]);res.status(201).json({paymentId:id,provider,status:'pending',amount,currency:invoice.currency,checkoutUrl:hosted.checkoutUrl,invoiceId:invoice.id,invoiceNumber:invoice.number});
+      const tenant=customers.find(item=>item.id===tenantId);const hosted=await createHostedPayment(provider,{id,tenantId,invoiceId:invoice.id,invoiceNumber:invoice.number,amount,currency:invoice.currency,email:tenant?.billingConfig?.billingEmail||tenant?.primaryContact?.email||'',description:`ALTIL invoice ${invoice.number}`,returnUrl:`${origin}/?billing=complete`,cancelUrl:`${origin}/?billing=cancelled`,notifyUrl:`${origin}/api/v1/billing/${provider}/webhook`});intent.checkoutUrl=hosted.checkoutUrl;intent.providerReference=hosted.providerReference;intent.updatedAt=new Date().toISOString();await executeQuery('UPDATE billing_payment_intents SET provider_reference=?,checkout_url=?,updated_at=?,payload_json=? WHERE id=?',[intent.providerReference,intent.checkoutUrl,intent.updatedAt.slice(0,23).replace('T',' '),JSON.stringify(intent),intent.id]);res.status(201).json({paymentId:id,provider,status:'pending',amount,currency:invoice.currency,checkoutUrl:hosted.checkoutUrl,invoiceId:invoice.id,invoiceNumber:invoice.number});
 
     }catch(error){console.error('[Billing checkout] Provider handoff failed:',error);res.status(503).json({error:error instanceof Error?error.message:'A secure hosted checkout could not be created.'});}
 
   });
 
-  app.post('/api/v1/billing/payment-methods/setup',requireAuthentication,requireRole(['SUPER_ADMIN','TENANT_ADMIN','BILLING_ADMIN']),async(req:AuthenticatedRequest,res)=>{const provider=String(req.body?.provider||'') as PaymentProvider;const tenantId=String(req.body?.tenantId||req.user?.tenantId||'');const privileged=req.user?.roles.some(role=>['SUPER_ADMIN','FINOPS_MANAGER'].includes(role));if(!tenantId||(!privileged&&tenantId!==req.user?.tenantId))return res.status(403).json({error:'Payment method must belong to your own tenant.'});if(!['stripe','payfast','ikhokha'].includes(provider))return res.status(400).json({error:'Select a supported payment provider.'});const mandate=String(req.body?.mandateText||'').trim();if(req.body?.consent!==true||mandate.length<80)return res.status(400).json({error:'Explicit consent and the complete payment mandate text are required before token setup.'});if(!isDatabaseConnected()||!knowledgeCipherKey())return res.status(503).json({error:'Durable payment storage and ALTIL_KNOWLEDGE_ENCRYPTION_KEY must be configured.'});try{const tenant=customers.find(c=>c.id===tenantId);if(!tenant)return res.status(404).json({error:'Tenant not found.'});const id=newPaymentIntentId();const now=new Date().toISOString();const intent:PaymentIntentRecord={id,tenantId,purpose:'payment_method_setup',provider,status:'pending',amount:0,currency:provider==='payfast'?'ZAR':tenant.billingConfig?.currency||'USD',externalReference:id,capturedAmount:0,feeAmount:0,createdAt:now,updatedAt:now};await executeQuery('INSERT INTO billing_payment_intents (id,tenant_id,invoice_id,provider,status,amount,currency,external_reference,captured_amount,fee_amount,created_at,updated_at,payload_json) VALUES (?,?,NULL,?,?,?,?,?,?,?,?,?,?)',[id,tenantId,provider,'pending',0,intent.currency,id,0,0,now.slice(0,23).replace('T',' '),now.slice(0,23).replace('T',' '),JSON.stringify({...intent,mandateText:mandate})]);paymentIntents.unshift(intent);const origin=(process.env.ALTIL_PUBLIC_URL||process.env.APP_URL||'https://altil.introsoft.com').replace(/\/$/,'');const hosted=await createPaymentMethodSetup(provider,tenantId,tenant.billingConfig?.billingEmail||tenant.primaryContact.email,id,`${origin}/?payment_method=return`,`${origin}/api/v1/billing/${provider}/webhook`);intent.checkoutUrl=hosted.checkoutUrl;intent.providerReference=hosted.providerReference;intent.updatedAt=new Date().toISOString();await executeQuery('UPDATE billing_payment_intents SET provider_reference=?,checkout_url=?,updated_at=?,payload_json=? WHERE id=?',[intent.providerReference,intent.checkoutUrl,intent.updatedAt.slice(0,23).replace('T',' '),JSON.stringify({...intent,mandateText:mandate}),id]);res.status(201).json({setupId:id,provider,checkoutUrl:hosted.checkoutUrl,message:'Payment provider securely collects and stores the card details; ALTIL keeps only its protected provider token.'});}catch(error){res.status(503).json({error:error instanceof Error?error.message:'Payment method setup could not be created.'});}});
+  app.post('/api/v1/billing/payment-methods/setup',requireAuthentication,requireRole(['SUPER_ADMIN','TENANT_ADMIN','BILLING_ADMIN']),async(req:AuthenticatedRequest,res)=>{const provider=String(req.body?.provider||'') as PaymentProvider;const tenantId=String(req.body?.tenantId||req.user?.tenantId||'');const privileged=req.user?.roles.some(role=>['SUPER_ADMIN','FINOPS_MANAGER'].includes(role));if(!tenantId||(!privileged&&tenantId!==req.user?.tenantId))return res.status(403).json({error:'Payment method must belong to your own tenant.'});if(!['stripe','payfast','ikhokha'].includes(provider))return res.status(400).json({error:'Select a supported payment provider.'});const mandate=String(req.body?.mandateText||'').trim();if(req.body?.consent!==true||mandate.length<80)return res.status(400).json({error:'Explicit consent and the complete payment mandate text are required before token setup.'});if(!isDatabaseConnected()||!knowledgeCipherKey())return res.status(503).json({error:'Durable payment storage and ALTIL_KNOWLEDGE_ENCRYPTION_KEY must be configured.'});try{const origin=resolvePublicBaseUrl(process.env);if(!origin)return res.status(503).json({error:'Configure ALTIL_PUBLIC_URL before creating hosted payment links.'});const tenant=customers.find(c=>c.id===tenantId);if(!tenant)return res.status(404).json({error:'Tenant not found.'});const id=newPaymentIntentId();const now=new Date().toISOString();const intent:PaymentIntentRecord={id,tenantId,purpose:'payment_method_setup',provider,status:'pending',amount:0,currency:provider==='payfast'?'ZAR':tenant.billingConfig?.currency||'USD',externalReference:id,capturedAmount:0,feeAmount:0,createdAt:now,updatedAt:now};await executeQuery('INSERT INTO billing_payment_intents (id,tenant_id,invoice_id,provider,status,amount,currency,external_reference,captured_amount,fee_amount,created_at,updated_at,payload_json) VALUES (?,?,NULL,?,?,?,?,?,?,?,?,?,?)',[id,tenantId,provider,'pending',0,intent.currency,id,0,0,now.slice(0,23).replace('T',' '),now.slice(0,23).replace('T',' '),JSON.stringify({...intent,mandateText:mandate})]);paymentIntents.unshift(intent);const hosted=await createPaymentMethodSetup(provider,tenantId,tenant.billingConfig?.billingEmail||tenant.primaryContact.email,id,`${origin}/?payment_method=return`,`${origin}/api/v1/billing/${provider}/webhook`);intent.checkoutUrl=hosted.checkoutUrl;intent.providerReference=hosted.providerReference;intent.updatedAt=new Date().toISOString();await executeQuery('UPDATE billing_payment_intents SET provider_reference=?,checkout_url=?,updated_at=?,payload_json=? WHERE id=?',[intent.providerReference,intent.checkoutUrl,intent.updatedAt.slice(0,23).replace('T',' '),JSON.stringify({...intent,mandateText:mandate}),id]);res.status(201).json({setupId:id,provider,checkoutUrl:hosted.checkoutUrl,message:'Payment provider securely collects and stores the card details; ALTIL keeps only its protected provider token.'});}catch(error){res.status(503).json({error:error instanceof Error?error.message:'Payment method setup could not be created.'});}});
 
   app.get('/api/v1/billing/payment-methods',requireAuthentication,billingRead,async(req:AuthenticatedRequest,res)=>{try{await loadPaymentMethods();const visible=new Set(organizationsAuthorizedFor(req.user?.authorization,'billing.read'));const requested=String(req.query.tenantId||'').trim();if(requested&&!visible.has(requested))return res.status(404).json({error:'Payment methods not found.'});res.json(billingPaymentMethods.filter(method=>visible.has(method.tenantId)&&(!requested||method.tenantId===requested)).map(({providerTokenCiphertext,mandateText,...method})=>({...method,mandateAccepted:Boolean(mandateText)})));}catch(error){res.status(503).json({error:'Saved payment methods are unavailable; apply migration 019.'});}});
 
@@ -3446,10 +3452,31 @@ const app = express();
   });
 
   app.post('/api/v1/billing/invoices/:id/payment', requireAuthentication, billingWrite, async (req: AuthenticatedRequest, res) => {
-
-    try { await loadInvoices(); const invoice = billingInvoices.find(item => item.id === req.params.id); const amount = Number(req.body?.amount); if (!invoice || !authorizeInContext(req.user?.authorization, invoice.tenantId, 'billing.write')) return res.status(404).json({ error: 'Invoice not found.' }); if (!Number.isFinite(amount) || amount <= 0 || amount > invoice.total-invoice.paid+0.000001) return res.status(400).json({ error: 'Payment must be positive and cannot exceed the invoice balance.' }); if (!['issued','partial','overdue'].includes(invoice.status)) return res.status(409).json({ error: 'This invoice cannot accept a payment.' }); invoice.paid = Number((invoice.paid+amount).toFixed(6)); invoice.status = invoice.paid >= invoice.total ? 'paid' : 'partial'; await persistInvoice(invoice);const ref=String(req.body?.reference||invoice.number).slice(0,100);const now=new Date().toISOString();await persistLedger({ id:`ledger-${randomUUID()}`,tenantId:invoice.tenantId,tenantName:invoice.tenantName,kind:'payment',amount,currency:invoice.currency,reference:ref,memo:`Payment allocated to ${invoice.number}`,createdAt:now,actor:req.user?.email||'Finance operator' });await postJournal({id:`journal-manual-receipt-${randomUUID()}`,tenantId:invoice.tenantId,sourceType:'manual_payment',sourceId:`${invoice.id}:${ref}:${now}`,currency:invoice.currency,description:`Manual payment for ${invoice.number}`,actor:req.user?.email||'Finance operator',lines:[{accountCode:'1000',accountName:'Operating bank',debit:amount,credit:0,memo:ref},{accountCode:'1200',accountName:'Accounts receivable',debit:0,credit:amount,memo:`${invoice.number} allocation`}]}); res.json({ invoice, message: `${invoice.number} payment reconciled.` }); }
-
-    catch (error) { console.error('[Billing] Payment reconciliation failed:', error); res.status(503).json({ error: 'Payment could not be durably reconciled.' }); }
+    if (!isDatabaseConnected()) return res.status(503).json({ error: 'Durable manual payment recording is unavailable.' });
+    try {
+      const recorded = await recordManualInvoicePayment({
+        invoiceId: req.params.id, amount: req.body?.amount, currency: req.body?.currency,
+        evidenceReference: req.body?.evidenceReference ?? req.body?.reference,
+        idempotencyKey: req.get('Idempotency-Key'),
+        actorId: req.user?.id, actorEmail: req.user?.email || 'Finance operator',
+        canWriteTenant: tenantId => authorizeInContext(req.user?.authorization, tenantId, 'billing.write'),
+      });
+      const invoice = recorded.invoice as BillingInvoiceRecord;
+      const index = billingInvoices.findIndex(item => item.id === invoice.id);
+      if (index >= 0) billingInvoices[index] = invoice; else billingInvoices.unshift(invoice);
+      if (!recorded.replayed) billingLedger.unshift({
+        ...recorded.payment, tenantName: invoice.tenantName, kind: 'payment',
+        memo: `Manual receipt recorded for ${invoice.number}; provider confirmation pending.`,
+      } as BillingLedgerRecord);
+      return res.status(recorded.replayed ? 200 : 201).json({
+        invoice, payment: recorded.payment, replayed: recorded.replayed, providerConfirmed: false,
+        message: recorded.replayed ? 'The same manual receipt was already recorded.' : 'Manual receipt recorded; external provider settlement is not confirmed.',
+      });
+    } catch (error) {
+      if (error instanceof ManualInvoicePaymentError) return res.status(error.statusCode).json({ error: error.message });
+      console.error('[Billing] Manual payment transaction failed:', error instanceof Error ? error.message : 'unknown error');
+      return res.status(503).json({ error: 'Manual payment was not recorded; all invoice, ledger, journal and audit writes were rolled back.' });
+    }
 
   });
 
@@ -3630,17 +3657,19 @@ const app = express();
 
     if (eventType === 'invoice.paid' || eventType === 'payment.reconciled_eft') {
 
-      newStatus = 'active';
+      const transition = providerPaymentTransition('success');
+      newStatus = transition.licenseStatus;
 
-      newPayStatus = 'paid';
+      newPayStatus = transition.paymentStatus;
 
       activeEnforcement = null;
 
     } else if (eventType === 'invoice.payment_failed') {
 
-      newStatus = 'grace_period';
+      const transition = providerPaymentTransition('failure');
+      newStatus = transition.licenseStatus;
 
-      newPayStatus = 'failed';
+      newPayStatus = transition.paymentStatus;
 
     } else if (eventType === 'license.auto_suspended') {
 
@@ -6197,9 +6226,19 @@ const app = express();
 
       if (tenantRecord?.status === 'trial' && tenantRecord.trialEndsAt && tenantRecord.trialEndsAt < new Date().toISOString().slice(0,10)) {
 
-        tenantRecord.status='suspended';tenantRecord.suspendedAt=new Date().toISOString();tenantRecord.suspendedReason='Trial period ended without an active paid licence.';tenantRecord.updatedAt=new Date().toISOString();
-
-        try{await saveTenantMetadata(tenantRecord);}catch(error){console.error('[Trial enforcement] Suspension could not be persisted:',error);return res.status(503).json({error:{code:'TRIAL_STATUS_UNVERIFIED',message:'ALTIL could not verify trial status; requests are paused.'}});}
+        const today = new Date().toISOString().slice(0, 10);
+        const expiringLicenses = tenantLicenses.filter(license => license.tenantId === callerTenantId && license.contractEndDate < today && license.paymentStatus !== 'paid' && license.licenseStatus === 'active');
+        try {
+          for (const license of expiringLicenses) {
+            const transition = expiredTrialLicense({ tenantStatus: tenantRecord.status, trialEndsAt: tenantRecord.trialEndsAt, asOfDate: today, licenseStatus: license.licenseStatus, paymentStatus: license.paymentStatus });
+            if (transition) { license.licenseStatus = transition.licenseStatus; license.activeEnforcement = transition.enforcement; await dbRepository.saveTenantLicense(license); }
+          }
+          tenantRecord.status='suspended';tenantRecord.suspendedAt=new Date().toISOString();tenantRecord.suspendedReason='Trial period ended without an active paid licence.';tenantRecord.updatedAt=new Date().toISOString();
+          await saveTenantMetadata(tenantRecord);
+        } catch(error) {
+          console.error('[Trial enforcement] Suspension could not be persisted:', error instanceof Error ? error.message : 'unknown error');
+          return res.status(503).json({error:{code:'TRIAL_STATUS_UNVERIFIED',message:'ALTIL could not verify trial status; requests are paused.'}});
+        }
 
       }
 
@@ -7944,6 +7983,16 @@ Provide a structured, highly actionable diagnostic breakdown formatted cleanly i
 
   const database = await testAndInitMariaDb();
   if (localE2E && !database.connected) throw new Error('LOCAL E2E startup refused because the allowlisted database is not ready.');
+  if (process.env.ALTIL_ENVIRONMENT === 'development-test') {
+    if (!database.connected) throw new Error(`Development/test startup refused: ${database.message}`);
+    const migrationFiles = await fs.readdir(path.join(process.cwd(), 'migrations'));
+    const expectedVersions = migrationFiles.filter(name => /^\d+.*\.sql$/i.test(name)).map(name => name.match(/^(\d+)/)?.[1]).filter((version): version is string => Boolean(version));
+    const appliedRows = await executeQuery<{ version: string }>('SELECT version FROM schema_migrations ORDER BY version');
+    const migrationComparison = compareMigrationVersions(expectedVersions, appliedRows.map(row => row.version));
+    if (!migrationComparison.current) {
+      throw new Error(`Development/test startup refused because schema_migrations does not match this checkout. Missing: ${migrationComparison.missing.join(', ') || 'none'}; unexpected: ${migrationComparison.unexpected.join(', ') || 'none'}. Apply the reviewed migrations explicitly before starting.`);
+    }
+  }
   const eventEnvironment = localE2E ? 'local-test' : process.env.NODE_ENV === 'production' ? 'production' : 'development';
   configureEventLogger({
     environment: eventEnvironment,
@@ -7959,7 +8008,7 @@ Provide a structured, highly actionable diagnostic breakdown formatted cleanly i
     seedProviderAccounts();
     if (database.connected) await persistAiRegistry().catch(() => undefined);
     await restoreTenantKnowledge();
-    await purgeExpiredTenantKnowledge();
+    if (sideEffectPolicy.cleanupJobs) await purgeExpiredTenantKnowledge();
     await ensureInternalAiIdentity();
   }
 
@@ -7992,20 +8041,23 @@ Provide a structured, highly actionable diagnostic breakdown formatted cleanly i
 
     if (localE2E) return;
 
-    setInterval(() => { void purgeExpiredTenantKnowledge(); }, 60 * 60 * 1000).unref();
+    if (sideEffectPolicy.cleanupJobs) setInterval(() => { void purgeExpiredTenantKnowledge(); }, 60 * 60 * 1000).unref();
 
-    void runBillingCollections();
-
-    setInterval(() => { void runBillingCollections(); }, 5 * 60 * 1000).unref();
+    if (sideEffectPolicy.billingCollections) {
+      void runBillingCollections();
+      setInterval(() => { void runBillingCollections(); }, 5 * 60 * 1000).unref();
+    }
 
     const lastRunDate = modelCatalogStatus.lastCompletedAt?.slice(0, 10);
     const needsInitialCredentialCheck = providerAccounts.some(item => item.state !== 'active' || item.lastTestStatus !== 'passed');
     const needsPerAccountModelSweep = providerAccounts.some(account => account.enabled && account.state === 'active' && (account.verifiedModels?.length || 0) < models.filter(model => model.providerId === account.providerId && model.isFree).length);
-    if (needsInitialCredentialCheck) void (async () => { for (const account of providerAccounts.filter(item => item.state !== 'active' || item.lastTestStatus !== 'passed')) { try { await verifyProviderAccount(account); } catch { console.error(`[Provider vault] Account ${account.label} did not pass its initial live check: ${account.lastTestMessage}`); } } for (const account of providerAccounts.filter(item => item.enabled && item.state === 'active')) await refreshFreeModelCatalog(account.id); })();
-    else if (needsPerAccountModelSweep || lastRunDate !== new Date().toISOString().slice(0, 10)) void (async () => { for (const account of providerAccounts.filter(item => item.enabled && item.state === 'active')) await refreshFreeModelCatalog(account.id); })();
-    setInterval(() => {
-      if (modelCatalogStatus.lastCompletedAt?.slice(0, 10) !== new Date().toISOString().slice(0, 10)) void (async () => { for (const account of providerAccounts) { try { await verifyProviderAccount(account); } catch { /* Keep the account offline until its next passing daily check. */ } if (account.enabled && account.state === 'active') await refreshFreeModelCatalog(account.id); } })();
-    }, 60 * 60 * 1000).unref();
+    if (sideEffectPolicy.providerStartupChecks) {
+      if (needsInitialCredentialCheck) void (async () => { for (const account of providerAccounts.filter(item => item.state !== 'active' || item.lastTestStatus !== 'passed')) { try { await verifyProviderAccount(account); } catch { console.error(`[Provider vault] Account ${account.label} did not pass its initial live check: ${account.lastTestMessage}`); } } for (const account of providerAccounts.filter(item => item.enabled && item.state === 'active')) await refreshFreeModelCatalog(account.id); })();
+      else if (needsPerAccountModelSweep || lastRunDate !== new Date().toISOString().slice(0, 10)) void (async () => { for (const account of providerAccounts.filter(item => item.enabled && item.state === 'active')) await refreshFreeModelCatalog(account.id); })();
+      setInterval(() => {
+        if (modelCatalogStatus.lastCompletedAt?.slice(0, 10) !== new Date().toISOString().slice(0, 10)) void (async () => { for (const account of providerAccounts) { try { await verifyProviderAccount(account); } catch { /* Keep the account offline until its next passing daily check. */ } if (account.enabled && account.state === 'active') await refreshFreeModelCatalog(account.id); } })();
+      }, 60 * 60 * 1000).unref();
+    }
 
   });
 

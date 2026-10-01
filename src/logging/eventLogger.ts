@@ -26,7 +26,6 @@ export function makeCurrentAltilEvent(input: NewAltilEvent): AltilEvent {
 
 /** Append an event whose durable database row was committed by the caller's transaction. */
 export async function appendDurablyPersistedEvent(event: AltilEvent): Promise<void> {
-  if (!configuration.persist) throw new Error('Durable event persistence is not configured.');
   if (!configuration.localLogFile) return;
   const expectedRoot = path.resolve('.altil-data', 'logs') + path.sep;
   if (!path.resolve(configuration.localLogFile).startsWith(expectedRoot)) throw new Error('LOCAL E2E log files must stay under .altil-data/logs.');

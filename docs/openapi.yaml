@@ -978,11 +978,32 @@ paths:
   /api/v1/billing/invoices/{id}/payment:
     post:
       tags: [Billing]
-      summary: Reconcile a manual payment against an issued invoice
+      summary: Record an operator-attested manual receipt against an issued invoice
+      description: Requires an evidence reference and idempotency key. This records a manual receipt in suspense and does not represent provider confirmation or settlement.
+      security:
+        - BearerSession: []
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, evidenceReference]
+              properties:
+                amount: {type: number, exclusiveMinimum: 0}
+                currency: {type: string, description: Must match the invoice currency}
+                evidenceReference: {type: string, minLength: 3, maxLength: 120}
       responses:
-        '200': {description: Payment recorded and journaled}
+        '201': {description: Manual receipt, invoice update, suspense journal and audit record committed atomically; providerConfirmed is false}
+        '200': {description: Idempotent replay of an already recorded manual receipt}
+        '400': {description: Invalid amount, currency, evidence reference or idempotency key}
+        '403': {description: Billing write permission is required}
+        '404': {description: Invoice not found in authorized scope}
+        '409': {description: Invoice state or idempotency conflict}
+        '503': {description: Durable transaction failed; no financial writes were committed}
   /api/v1/billing/ledger:
     get:
       tags: [Billing]
