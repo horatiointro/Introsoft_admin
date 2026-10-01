@@ -9,6 +9,7 @@ import {
 } from '../middleware/authMiddleware';
 import { authorizeInContext } from '../security/authorizationContext';
 import { resolveAuthorizedTenantTarget } from '../security/tenantTarget';
+import type { DataSubjectRequest } from '../types';
 
 export const complianceRouter = express.Router();
 
@@ -111,7 +112,7 @@ const updateDsarHandler = async (req: AuthenticatedRequest, res: express.Respons
     const globalDsrGrant = req.user?.authorization?.grants.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL' && grant.permissions.includes('compliance.dsr')) === true;
     const existing = (await ComplianceRepository.getDsarRequests(globalDsrGrant ? 'all' : req.user?.tenantId || undefined)).find(item => item.id === req.params.id);
     if (!existing || !authorizeInContext(req.user?.authorization, existing.tenantId || '', 'compliance.dsr')) return res.status(404).json({ error: 'Data-subject request not found.' });
-    const body = { ...req.body, id: req.params.id, tenantId: existing.tenantId };
+    const body: DataSubjectRequest = { ...existing, ...req.body, id: req.params.id, tenantId: existing.tenantId };
     const saved = await ComplianceRepository.saveDsarRequest(body);
     res.json(saved);
   } catch (err: any) {

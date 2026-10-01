@@ -994,12 +994,16 @@ export default function App() {
     };
 
     try {
-      await apiFetch(`${API_BASE}/compliance/dsar`, {
+      const response = await apiFetch(`${API_BASE}/compliance/dsar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newDsr)
       });
-    } catch (_) {}
+      if (!response.ok) throw new Error('DSAR persistence failed.');
+    } catch (_) {
+      showToast('The DSAR could not be saved. No request was recorded.', 'error');
+      return;
+    }
 
     setDataSubjectRequests(prev => [newDsr, ...prev]);
     showToast(`Data Subject Request [${newDsr.id}] registered.`);
@@ -1007,12 +1011,16 @@ export default function App() {
 
   const handleUpdateDataSubjectRequest = async (id: string, updates: Partial<DataSubjectRequest>) => {
     try {
-      await apiFetch(`${API_BASE}/compliance/dsar/${id}`, {
+      const response = await apiFetch(`${API_BASE}/compliance/dsar/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
-    } catch (_) {}
+      if (!response.ok) throw new Error('DSAR persistence failed.');
+    } catch (_) {
+      showToast('The DSAR update could not be saved.', 'error');
+      return;
+    }
 
     setDataSubjectRequests(prev => prev.map(r => (r.id === id ? { ...r, ...updates } : r)));
     showToast(`Request ${id} status updated.`);

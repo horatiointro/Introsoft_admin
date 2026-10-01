@@ -1,8 +1,9 @@
-import { executeQuery, isDatabaseConnected } from './mariadb';
+import { executeQuery, isDatabaseConnected, withMariaDbTransaction } from './mariadb';
 import { DataSubjectRequest, GlobalComplianceConfig } from '../types';
-import { INITIAL_DATA_SUBJECT_REQUESTS, INITIAL_GLOBAL_COMPLIANCE_CONFIG } from '../data/initialState';
+import { INITIAL_GLOBAL_COMPLIANCE_CONFIG } from '../data/initialState';
+import { createHash, randomUUID } from 'node:crypto';
+import { databaseDate, databaseStatus, mapDsarRow, statutoryBasis, type DsarRow } from './dsarPersistenceMapping';
 
-let inMemoryDsar: DataSubjectRequest[] = [...INITIAL_DATA_SUBJECT_REQUESTS];
 let inMemoryConfig: GlobalComplianceConfig = { ...INITIAL_GLOBAL_COMPLIANCE_CONFIG };
 
 export const ComplianceRepository = {
@@ -35,78 +36,60 @@ export const ComplianceRepository = {
    * Get DSAR requests
    */
   async getDsarRequests(tenantId?: string): Promise<DataSubjectRequest[]> {
-    if (isDatabaseConnected()) {
-      try {
-        let sql = `SELECT * FROM compliance_dsar_requests`;
-        const params: any[] = [];
-        if (tenantId && tenantId !== 'all') {
-          sql += ` WHERE tenant_id = ?`;
-          params.push(tenantId);
-        }
-        sql += ` ORDER BY created_at DESC`;
-        const rows = await executeQuery<any>(sql, params);
-        if (rows && rows.length > 0) {
-          return rows.map(r => ({
-            id: r.id,
-            tenantId: r.tenant_id || undefined,
-            framework: (r.framework as 'POPIA' | 'GDPR') || 'POPIA',
-            requestType: r.request_type || 'access',
-            subjectIdentifier: r.subject_identifier || r.id_number_or_passport || r.data_subject_email || '',
-            requestorName: r.requestor_name || r.data_subject_name || 'Subject',
-            appId: r.app_id || undefined,
-            status: r.status || 'pending',
-            createdAt: r.created_at ? new Date(r.created_at).toISOString().replace('T', ' ').slice(0, 19) : '',
-            dueAt: r.due_at || r.statutory_deadline || new Date(Date.now() + 30 * 86400000).toISOString().replace('T', ' ').slice(0, 10),
-            notes: r.notes || ''
-          }));
-        }
-      } catch (err) {
-        console.warn('[ComplianceRepository] DSAR DB fetch warning:', err);
-      }
-    }
-    if (tenantId && tenantId !== 'all') return inMemoryDsar.filter(request => request.tenantId === tenantId);
-    return inMemoryDsar;
+    if (!isDatabaseConnected()) throw new Error('DSAR persistence is unavailable; no in-memory fallback is used.');
+    let sql = 'SELECT * FROM compliance_dsar_requests';
+    const params: any[] = [];
+    if (tenantId && tenantId !== 'all') { sql += ' WHERE tenant_id = ?'; params.push(tenantId); }
+    sql += ' ORDER BY created_at DESC';
+    const rows = await executeQuery<DsarRow>(sql, params);
+    return rows.map(mapDsarRow);
   },
 
   /**
    * Create or update DSAR request
    */
   async saveDsarRequest(dsar: DataSubjectRequest): Promise<DataSubjectRequest> {
-    const idx = inMemoryDsar.findIndex(d => d.id === dsar.id);
-    if (idx >= 0) inMemoryDsar[idx] = dsar;
-    else inMemoryDsar.unshift(dsar);
-
-    if (isDatabaseConnected()) {
-      try {
-        const sql = `
-          INSERT INTO compliance_dsar_requests (
-            id, request_type, data_subject_name, data_subject_email, id_number_or_passport,
-            status, priority, scope, notes, statutory_deadline
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            status = VALUES(status),
-            priority = VALUES(priority),
-            scope = VALUES(scope),
-            notes = VALUES(notes),
-            updated_at = NOW()
-        `;
-        await executeQuery(sql, [
-          dsar.id,
-          dsar.requestType,
-          dsar.requestorName || 'Data Subject',
-          dsar.subjectIdentifier || 'unknown',
-          dsar.subjectIdentifier || '',
-          dsar.status,
-          'standard',
-          'ALL_MODELS',
-          dsar.notes || '',
-          dsar.dueAt || null
-        ]);
-      } catch (err) {
-        console.warn('[ComplianceRepository] DSAR DB save warning:', err);
-      }
-    }
-    return dsar;
+    if (!isDatabaseConnected()) throw new Error('DSAR persistence is unavailable; no in-memory fallback is used.');
+    if (!dsar.id || dsar.id.length > 64) throw new Error('DSAR id must contain 1 to 64 characters.');
+    if (!dsar.tenantId || dsar.tenantId.length > 64) throw new Error('DSAR tenant scope is required.');
+    if (!dsar.subjectIdentifier || dsar.subjectIdentifier.length > 128) throw new Error('DSAR subject identifier is required and must be at most 128 characters.');
+    if (!dsar.requestorName || dsar.requestorName.length > 255) throw new Error('DSAR requestor name is required and must be at most 255 characters.');
+    if (!['POPIA', 'GDPR'].includes(dsar.framework)) throw new Error('DSAR framework is invalid.');
+    if (!['access', 'erasure', 'rectification', 'objection', 'portability'].includes(dsar.requestType)) throw new Error('DSAR request type is invalid.');
+    if (!['pending', 'in_progress', 'fulfilled', 'rejected'].includes(dsar.status)) throw new Error('DSAR status is invalid.');
+    if (dsar.appId && dsar.appId.length > 64) throw new Error('DSAR application id must be at most 64 characters.');
+    const receivedDate = databaseDate(dsar.createdAt, 'createdAt');
+    const dueDate = databaseDate(dsar.dueAt, 'dueAt');
+    const requestNumber = dsar.id.length <= 32 ? dsar.id : `DSR-${randomUUID().replace(/-/g, '').slice(0, 24)}`;
+    const status = databaseStatus(dsar.status);
+    const summary = `${dsar.framework} ${dsar.requestType} request (${status}).`;
+    const auditHash = createHash('sha256').update(JSON.stringify({ id: dsar.id, tenantId: dsar.tenantId, framework: dsar.framework, requestType: dsar.requestType, status, dueDate, appId: dsar.appId || null })).digest('hex');
+    const sql = `
+      INSERT INTO compliance_dsar_requests (
+        id, request_number, tenant_id, data_subject_ref, request_type, status, statutory_basis,
+        received_date, due_date, assigned_officer_email, identity_verified, verification_method,
+        redacted_summary, audit_hash, framework, requestor_name, app_id, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, FALSE, 'NOT_VERIFIED', ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        data_subject_ref = VALUES(data_subject_ref), request_type = VALUES(request_type),
+        status = VALUES(status), statutory_basis = VALUES(statutory_basis),
+        due_date = VALUES(due_date), redacted_summary = VALUES(redacted_summary),
+        audit_hash = VALUES(audit_hash), framework = VALUES(framework),
+        requestor_name = VALUES(requestor_name), app_id = VALUES(app_id), notes = VALUES(notes),
+        updated_at = CURRENT_TIMESTAMP
+    `;
+    const persistedRow = await withMariaDbTransaction(async connection => {
+      await connection.execute(sql, [
+        dsar.id, requestNumber, dsar.tenantId, dsar.subjectIdentifier, dsar.requestType.toUpperCase(), status,
+        statutoryBasis(dsar.framework, dsar.requestType), receivedDate, dueDate, summary, auditHash,
+        dsar.framework, dsar.requestorName, dsar.appId || null, dsar.notes || null,
+      ]);
+      const [rows] = await connection.execute('SELECT * FROM compliance_dsar_requests WHERE id = ? LIMIT 1', [dsar.id]);
+      const result = rows as DsarRow[];
+      if (!result.length) throw new Error('DSAR insert completed without a retrievable persisted row.');
+      return result[0];
+    });
+    return mapDsarRow(persistedRow);
   },
 
   /**

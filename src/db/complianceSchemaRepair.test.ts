@@ -57,7 +57,7 @@ function canonicalTableDefinition(sql: string, table: string): string[] {
   return [...clauses.map(clause => clause.toLowerCase()).sort(), options.toLowerCase().replace(/\s+/g, ' ')];
 }
 
-test('migration 035 is the next forward-only migration and defines all seven repair tables', () => {
+test('migration 035 is a forward-only repair migration and defines all seven repair tables', () => {
   assert.match(migrationPath, /035_compliance_dcr_schema_repair\.sql$/);
   assert.equal(Object.values(requiredColumns).reduce((sum, columns) => sum + columns.length, 0), 98);
   for (const [table, columns] of Object.entries(requiredColumns)) {
