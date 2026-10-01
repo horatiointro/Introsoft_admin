@@ -17,7 +17,7 @@ export default defineConfig(() => {
       sourcemap: true,
     },
     server: {
-      allowedHosts: ['introsoft.co.za'],
+      allowedHosts: ['introsoft.co.za', 'admin.introsoft.co.za'],
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
