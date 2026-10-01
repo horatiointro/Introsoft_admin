@@ -70,3 +70,35 @@ test('OpenRouter catalogue errors never include upstream response bodies', async
     return true;
   });
 });
+
+test('OpenRouter adapter forwards caller timeout signals and redacts abort and transport details', async () => {
+  const controller = new AbortController();
+  let receivedSignal: AbortSignal | null | undefined;
+  const adapter = new OpenRouterProviderAdapter({ apiKey: testKey, fetch: async (_input, init) => {
+    receivedSignal = init?.signal;
+    throw new Error(`transport rejected ${testKey}`);
+  } });
+  await assert.rejects(() => adapter.chatCompletions({ model: 'synthetic/model' }, controller.signal), (error: unknown) => {
+    assert.ok(error instanceof ProviderRequestError);
+    assert.equal(error.message.includes(testKey), false);
+    return true;
+  });
+  assert.equal(receivedSignal, controller.signal);
+});
+
+test('malformed catalogue responses fail closed without exposing upstream text', async () => {
+  const adapter = new OpenRouterProviderAdapter({ apiKey: testKey, fetch: async () => new Response('private provider response', { status: 200 }) });
+  await assert.rejects(() => adapter.listModels(), (error: unknown) => {
+    assert.ok(error instanceof ProviderRequestError);
+    assert.equal(error.message.includes('private provider response'), false);
+    assert.equal(error.message.includes(testKey), false);
+    return true;
+  });
+});
+
+test('provider HTTP errors remain response objects for the governed caller to classify', async () => {
+  const adapter = new OpenRouterProviderAdapter({ apiKey: testKey, fetch: async () => new Response(JSON.stringify({ error: { message: `upstream rejected ${testKey}` } }), { status: 429 }) });
+  const response = await adapter.chatCompletions({ model: 'synthetic/model' });
+  assert.equal(response.status, 429);
+  assert.match(await response.text(), /upstream rejected/);
+});

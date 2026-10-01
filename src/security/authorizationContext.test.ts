@@ -77,4 +77,21 @@ describe('authorization context from trusted role assignments', () => {
     assert.equal(authorizeAllInContext(context, 'partner-a', ['tenant.update', 'apikeys.revoke']), false);
     assert.equal(authorizeAllInContext(context, 'partner-a', ['tenant.update']), true);
   });
+
+  it('does not turn a commercial parent-child relationship into an IAM authorization grant', () => {
+    const commercialRelationship = relationships.find(edge => edge.parentOrganizationId === 'partner-a' && edge.childOrganizationId === 'client-a');
+    assert.ok(commercialRelationship, 'fixture documents the independent commercial relationship');
+    const context = buildAuthorizationContext({
+      userId: 'partner-admin',
+      assignments: [assignment({ organizationId: 'partner-a', visibility: 'ORGANISATION', permissions: ['customer.read', 'customer.write'] })],
+      organizations,
+      relationships: [],
+      asOf: '2026-09-01T00:00:00Z',
+    });
+    assert.equal(authorizeInContext(context, 'partner-a', 'customer.read'), true);
+    assert.equal(authorizeInContext(context, 'client-a', 'customer.read'), false);
+    assert.equal(authorizeInContext(context, 'client-a', 'customer.write'), false);
+    assert.equal(authorizeInContext(context, 'partner-b', 'customer.read'), false);
+    assert.equal(authorizeInContext(context, 'client-b', 'customer.read'), false);
+  });
 });
