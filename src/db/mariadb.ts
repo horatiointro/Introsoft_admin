@@ -20,55 +20,20 @@ import {
   INITIAL_TENANT_LICENSES,
   INITIAL_PAYMENT_WEBHOOK_LOGS
 } from '../data/licensingData';
+import { resolveDatabaseConfig } from '../config/environmentContract.mjs';
 
 // Configurable MariaDB connection pool parameters
 function getDatabaseConfig(): mysql.PoolOptions {
-  if (process.env.ALTIL_LOCAL_E2E === 'true') {
-    const host = process.env.MARIADB_HOST || '';
-    const database = process.env.MARIADB_DATABASE || '';
-    if (process.env.DATABASE_URL?.trim()) throw new Error('LOCAL E2E refuses DATABASE_URL; use the explicit test database settings.');
-    if (host !== '127.0.0.1') throw new Error('LOCAL E2E database host must be exactly 127.0.0.1.');
-    if (database !== 'altil_e2e_test') throw new Error('LOCAL E2E database must be exactly altil_e2e_test.');
-    if (process.env.ALTIL_LOCAL_E2E_DATABASE !== 'altil_e2e_test') throw new Error('LOCAL E2E database must be explicitly allowlisted as altil_e2e_test.');
-    return {
-      host, port: Number(process.env.MARIADB_PORT || 3306), user: process.env.MARIADB_USER || 'altil_user',
-      password: process.env.MARIADB_PASSWORD || '', database, waitForConnections: true,
-      connectionLimit: 10, queueLimit: 0, connectTimeout: 4000,
-    };
-  }
-  const ssl = process.env.MARIADB_SSL?.toLowerCase() === 'true'
-    ? {
-        rejectUnauthorized: true,
-        ...(process.env.MARIADB_SSL_CA ? { ca: fs.readFileSync(process.env.MARIADB_SSL_CA, 'utf8') } : {})
-      }
+  const resolved = resolveDatabaseConfig(process.env);
+  const ssl = resolved.ssl
+    ? { rejectUnauthorized: true, ...(resolved.sslCaPath ? { ca: fs.readFileSync(resolved.sslCaPath, 'utf8') } : {}) }
     : undefined;
-
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
-    try {
-      const parsedUrl = new URL(process.env.DATABASE_URL);
-      return {
-        host: parsedUrl.hostname || '127.0.0.1',
-        port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 3306,
-        user: decodeURIComponent(parsedUrl.username || 'altil_user'),
-        password: decodeURIComponent(parsedUrl.password || ''),
-        database: parsedUrl.pathname ? parsedUrl.pathname.replace(/^\//, '') : 'altil_db',
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-        connectTimeout: 4000,
-        ...(ssl ? { ssl } : {}),
-      };
-    } catch (e) {
-      console.warn('[MariaDB Config] Failed to parse DATABASE_URL, falling back to discrete env vars:', e);
-    }
-  }
-
   return {
-    host: process.env.MARIADB_HOST || '127.0.0.1',
-    port: parseInt(process.env.MARIADB_PORT || '3306', 10),
-    user: process.env.MARIADB_USER || 'altil_user',
-    password: process.env.MARIADB_PASSWORD || '',
-    database: process.env.MARIADB_DATABASE || 'altil_db',
+    host: resolved.host,
+    port: resolved.port,
+    user: resolved.user,
+    password: resolved.password,
+    database: resolved.database,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
@@ -117,8 +82,6 @@ export function deserializeLicensingPlanRows(
     return INITIAL_LICENSING_PLANS;
   }
 }
-
-const dbConfig = getDatabaseConfig();
 
 let pool: mysql.Pool | null = null;
 let isDbConnected = false;
@@ -186,6 +149,12 @@ export async function testAndInitMariaDb(): Promise<{ connected: boolean; versio
     const version = rows[0]?.version || 'MariaDB 10.11.18';
     const tableCheck = await executeQuery("SHOW TABLES LIKE 'tenants'");
     if (tableCheck.length === 0) {
+      if (process.env.ALTIL_ENVIRONMENT === 'development-test') {
+        isDbConnected = false;
+        dbStatusMessage = `Development/test database '${getDatabaseConfig().database}' has no ALTIL schema; apply migrations explicitly with 'npm run db:migrate'. Startup will not bootstrap the schema.`;
+        console.error(`[MariaDB] ${dbStatusMessage}`);
+        return { connected: false, version, message: dbStatusMessage };
+      }
       if (process.env.ALTIL_LOCAL_E2E === 'true') {
         isDbConnected = false;
         dbStatusMessage = 'LOCAL E2E database has not been prepared; run the explicit test database setup first.';
@@ -193,7 +162,7 @@ export async function testAndInitMariaDb(): Promise<{ connected: boolean; versio
       }
       if (process.env.NODE_ENV === 'production') {
         isDbConnected = false;
-        dbStatusMessage = `MariaDB is reachable, but the ALTIL schema is missing from '${dbConfig.database}'. Run 'npm run db:migrate' before starting the production server.`;
+        dbStatusMessage = `MariaDB is reachable, but the ALTIL schema is missing from '${getDatabaseConfig().database}'. Run 'npm run db:migrate' before starting the application.`;
         console.error(`[MariaDB] ${dbStatusMessage}`);
         return { connected: false, version, message: dbStatusMessage };
       }
@@ -231,7 +200,8 @@ export async function testAndInitMariaDb(): Promise<{ connected: boolean; versio
     }
 
     isDbConnected = true;
-    dbStatusMessage = `Connected to MariaDB (${version}) at ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`;
+    const config = getDatabaseConfig();
+    dbStatusMessage = `Connected to MariaDB (${version}) at ${config.host}:${config.port}/${config.database}`;
     console.log(`[MariaDB 10.11.18] ${dbStatusMessage}`);
     return { connected: true, version, message: dbStatusMessage };
   } catch (error: any) {
@@ -288,9 +258,9 @@ export async function getMariaDbHealth() {
     return {
       status: 'offline_fallback_active',
       databaseEngine: 'MariaDB 10.11.18 Community Engine',
-      host: dbConfig.host,
-      port: dbConfig.port,
-      databaseName: dbConfig.database,
+      host: getDatabaseConfig().host,
+      port: getDatabaseConfig().port,
+      databaseName: getDatabaseConfig().database,
       message: dbStatusMessage,
       activeTables: 12,
       totalRecordsInStore: 1420
@@ -301,14 +271,14 @@ export async function getMariaDbHealth() {
     const versionRows = await executeQuery<{ version: string }>('SELECT VERSION() AS version');
     const tables = await executeQuery<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = ?",
-      [dbConfig.database]
+      [getDatabaseConfig().database]
     );
     return {
       status: 'online',
       databaseEngine: `MariaDB ${versionRows[0]?.version || 'Community Server'}`,
-      host: dbConfig.host,
-      port: dbConfig.port,
-      databaseName: dbConfig.database,
+      host: getDatabaseConfig().host,
+      port: getDatabaseConfig().port,
+      databaseName: getDatabaseConfig().database,
       message: dbStatusMessage,
       activeTables: tables.length,
       tables: tables.map(t => t.table_name)

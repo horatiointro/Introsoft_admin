@@ -3,51 +3,19 @@ import mysql from 'mysql2/promise';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-
-function getSslConfig() {
-  if (process.env.MARIADB_SSL?.toLowerCase() !== 'true') return undefined;
-  return {
-    rejectUnauthorized: true,
-    ...(process.env.MARIADB_SSL_CA
-      ? { ca: fs.readFileSync(process.env.MARIADB_SSL_CA, 'utf8') }
-      : {})
-  };
-}
+import { resolveDatabaseConfig } from '../src/config/environmentContract.mjs';
 
 function getDatabaseConfig() {
-  if (process.env.ALTIL_LOCAL_E2E === 'true') {
-    const host = process.env.MARIADB_HOST || '';
-    const database = process.env.MARIADB_DATABASE || '';
-    if (process.env.DATABASE_URL?.trim() || host !== '127.0.0.1' || database !== 'altil_e2e_test' || process.env.ALTIL_LOCAL_E2E_DATABASE !== 'altil_e2e_test') {
-      throw new Error('LOCAL E2E migration target refused; only loopback altil_e2e_test is allowed.');
-    }
-  }
-  const ssl = getSslConfig();
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
-    try {
-      const parsedUrl = new URL(process.env.DATABASE_URL);
-      return {
-        host: parsedUrl.hostname || '127.0.0.1',
-        port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 3306,
-        user: decodeURIComponent(parsedUrl.username || 'altil_user'),
-        password: decodeURIComponent(parsedUrl.password || ''),
-        database: parsedUrl.pathname ? parsedUrl.pathname.replace(/^\//, '') : 'altil_db',
-        waitForConnections: true,
-        connectionLimit: 5,
-        connectTimeout: 4000,
-        ...(ssl ? { ssl } : {})
-      };
-    } catch (e) {
-      console.warn('[Migrate CLI] Failed parsing DATABASE_URL, using discrete variables.');
-    }
-  }
-
+  const resolved = resolveDatabaseConfig(process.env);
+  const ssl = resolved.ssl
+    ? { rejectUnauthorized: true, ...(resolved.sslCaPath ? { ca: fs.readFileSync(resolved.sslCaPath, 'utf8') } : {}) }
+    : undefined;
   return {
-    host: process.env.MARIADB_HOST || '127.0.0.1',
-    port: parseInt(process.env.MARIADB_PORT || '3306', 10),
-    user: process.env.MARIADB_USER || 'altil_user',
-    password: process.env.MARIADB_PASSWORD || '',
-    database: process.env.MARIADB_DATABASE || 'altil_db',
+    host: resolved.host,
+    port: resolved.port,
+    user: resolved.user,
+    password: resolved.password,
+    database: resolved.database,
     waitForConnections: true,
     connectionLimit: 5,
     connectTimeout: 4000,
