@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { InfoButton } from './InfoButton';
 import React, { useState, useEffect } from 'react';
 import {
@@ -78,7 +79,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
     if (!provId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/providers/${provId}/telemetry`);
+      const res = await apiFetch(`/api/v1/providers/${provId}/telemetry`);
       if (res.ok) {
         const data: ProviderTelemetryData = await res.json();
         setTelemetry(data);
@@ -181,7 +182,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
     setBenchmarking(true);
     setBenchmarkResult(null);
     try {
-      const res = await fetch(`/api/v1/providers/${currentProvider.id}/benchmark`, {
+      const res = await apiFetch(`/api/v1/providers/${currentProvider.id}/benchmark`, {
         method: 'POST'
       });
       if (res.ok) {

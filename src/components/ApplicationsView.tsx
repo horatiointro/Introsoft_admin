@@ -142,10 +142,28 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
     }
   };
 
-  const filteredApps = applications.filter(a =>
-    a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    a.appIdentifier.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    a.contactEmail.toLowerCase().includes(searchQuery.toLowerCase())
+  // Persisted application metadata can predate contactEmail and other newer
+  // profile fields. Normalize at the view boundary so one incomplete record
+  // cannot crash the entire Applications screen.
+  const safeApplications = (Array.isArray(applications) ? applications : [])
+    .filter((app): app is Application => Boolean(app && typeof app.id === 'string' && app.id.trim()))
+    .map(app => ({
+      ...app,
+      name: String(app.name ?? 'Unnamed application'),
+      appIdentifier: String(app.appIdentifier ?? ''),
+      description: String(app.description ?? ''),
+      contactEmail: String(app.contactEmail ?? ''),
+      status: ['active', 'suspended', 'revoked'].includes(String(app.status)) ? app.status : 'suspended',
+      environment: ['production', 'staging', 'development'].includes(String(app.environment)) ? app.environment : 'development',
+      allowedCapabilities: Array.isArray(app.allowedCapabilities) ? app.allowedCapabilities : [],
+      assignedPolicyIds: Array.isArray(app.assignedPolicyIds) ? app.assignedPolicyIds : [],
+      rateLimitRpm: Number.isFinite(Number(app.rateLimitRpm)) ? Number(app.rateLimitRpm) : 0,
+      quotaMonthlyRequests: Number.isFinite(Number(app.quotaMonthlyRequests)) ? Number(app.quotaMonthlyRequests) : 0,
+      quotaUsedRequests: Number.isFinite(Number(app.quotaUsedRequests)) ? Number(app.quotaUsedRequests) : 0,
+    }));
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredApps = safeApplications.filter(app =>
+    [app.name, app.appIdentifier, app.contactEmail].some(value => value.toLowerCase().includes(normalizedSearch))
   );
 
   return (

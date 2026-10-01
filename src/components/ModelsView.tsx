@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { InfoButton } from './InfoButton';
 import React, { useEffect, useState } from 'react';
 import {
@@ -54,7 +55,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
 
   const loadFleet = async () => {
     try {
-      const response = await fetch(`${MODEL_API_BASE}/models/fleet`);
+      const response = await apiFetch(`${MODEL_API_BASE}/models/fleet`);
       if (!response.ok) return;
       const data = await response.json();
       setFleetStatus(data.status);
@@ -71,7 +72,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
   const refreshCatalog = async () => {
     setRefreshing(true);
     try {
-      const response = await fetch(`${MODEL_API_BASE}/models/refresh`, { method: 'POST' });
+      const response = await apiFetch(`${MODEL_API_BASE}/models/refresh`, { method: 'POST' });
       const data = await response.json();
       setFleetStatus(data);
       await onRefreshModels?.();

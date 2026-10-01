@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { InfoButton } from './InfoButton';
 import React, { useState, useEffect } from 'react';
 import {
@@ -140,10 +141,10 @@ export const DataProtectionDcrView: React.FC<DataProtectionDcrViewProps> = ({
       };
 
       const [vaultRes, polRes, ledRes, keyRes] = await Promise.all([
-        fetch('/api/v1/dcr/vault', { headers }).catch(() => null),
-        fetch('/api/v1/dcr/policies', { headers }).catch(() => null),
-        fetch('/api/v1/dcr/ledger', { headers }).catch(() => null),
-        fetch('/api/v1/dcr/keys', { headers }).catch(() => null)
+        apiFetch('/api/v1/dcr/vault', { headers }).catch(() => null),
+        apiFetch('/api/v1/dcr/policies', { headers }).catch(() => null),
+        apiFetch('/api/v1/dcr/ledger', { headers }).catch(() => null),
+        apiFetch('/api/v1/dcr/keys', { headers }).catch(() => null)
       ]);
 
       if (vaultRes && vaultRes.ok) {
@@ -181,7 +182,7 @@ export const DataProtectionDcrView: React.FC<DataProtectionDcrViewProps> = ({
         simResponse = `Evaluation complete. Generated score for ALTIL_ZAID_999999 and approved request. Recommended follow up for ALTIL_PERSON_UNKNOWN.`;
       }
 
-      const res = await fetch('/api/v1/dcr/pipeline', {
+      const res = await apiFetch('/api/v1/dcr/pipeline', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -216,7 +217,7 @@ export const DataProtectionDcrView: React.FC<DataProtectionDcrViewProps> = ({
     setRevealLoading(true);
     setRevealModalOpen(true);
     try {
-      const res = await fetch('/api/v1/dcr/vault/reveal', {
+      const res = await apiFetch('/api/v1/dcr/vault/reveal', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -241,7 +242,7 @@ export const DataProtectionDcrView: React.FC<DataProtectionDcrViewProps> = ({
   const handleRotateKey = async () => {
     setRotatingKey(true);
     try {
-      const res = await fetch('/api/v1/dcr/keys/rotate', {
+      const res = await apiFetch('/api/v1/dcr/keys/rotate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { IamRepository, IamUserRecord } from '../db/iamRepository';
+import { dbRepository } from '../db/mariadb';
+import { authorizeInContext, buildAuthorizationContext, type AuthorizationContext } from '../security/authorizationContext';
+import { emitAltilEvent } from '../logging/eventLogger';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -12,7 +15,28 @@ export interface AuthenticatedRequest extends Request {
     roles: string[];
     permissions: string[];
     sessionId: string;
+    authorization?: AuthorizationContext;
   };
+}
+
+function auditAuthorizationDenial(req: AuthenticatedRequest, action: string, targetOrganizationId: string | undefined, reason: string): void {
+  console.warn(JSON.stringify({
+    event: 'authorization.denied',
+    userId: req.user?.id || null,
+    organizationId: req.user?.authorization?.organizationId || null,
+    requestedAction: action,
+    resourceId: targetOrganizationId || null,
+    reason,
+    timestamp: new Date().toISOString(),
+  }));
+  void emitAltilEvent({
+    category: 'AUTHORIZATION', action, actorId: req.user?.id, actorEmail: req.user?.email,
+    tenantId: req.user?.tenantId || undefined,
+    organizationId: targetOrganizationId || req.user?.authorization?.organizationId || req.user?.tenantId || undefined,
+    outcome: 'DENIED', statusCode: 403, requiredPermission: action,
+    grantedPermissions: req.user?.authorization ? [...req.user.authorization.permissions] : undefined, actualScope: targetOrganizationId,
+    reason,
+  }).catch(() => { /* Audit failure must not change an authorization decision. */ });
 }
 
 /**
@@ -95,6 +119,16 @@ export async function requireAuthentication(
     }
 
     const { roles, permissions, tenantId } = await IamRepository.getUserRolesAndPermissions(user.id);
+    const [assignments, organizationGraph] = await Promise.all([
+      IamRepository.getAuthorizationAssignments(user.id),
+      dbRepository.getOrganizationGraph(),
+    ]);
+    const authorization = buildAuthorizationContext({
+      userId: user.id,
+      assignments,
+      organizations: organizationGraph.nodes,
+      relationships: organizationGraph.relationships,
+    });
 
     // 2. Admin Session Security Idle Timeout (15-Minute maximum idle limit)
     const isAdmin = roles.includes('SUPER_ADMIN') || roles.includes('SECURITY_OFFICER');
@@ -126,6 +160,7 @@ export async function requireAuthentication(
       roles,
       permissions,
       sessionId: session.id,
+      authorization,
     };
 
     next();
@@ -136,7 +171,8 @@ export async function requireAuthentication(
 }
 
 /**
- * Middleware: Requires at least one of the specified roles (or SUPER_ADMIN)
+ * Middleware: Requires at least one of the specified roles. SUPER_ADMIN only satisfies
+ * this guard when its persisted assignment has explicit GLOBAL visibility.
  */
 export function requireRole(allowedRoles: string[]) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
@@ -146,14 +182,13 @@ export function requireRole(allowedRoles: string[]) {
     }
 
     const userRoles = req.user.roles || [];
-    const isSuperAdmin = userRoles.includes('SUPER_ADMIN') || userRoles.includes('Super Admin');
-
-    if (isSuperAdmin) {
-      return next();
-    }
-
-    const hasRole = allowedRoles.some(r => userRoles.includes(r));
+    const hasGlobalGrant = req.user.authorization?.grants?.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL') === true;
+    const hasRole = allowedRoles.some(role => {
+      if (role === 'SUPER_ADMIN' || role === 'Super Admin') return hasGlobalGrant && userRoles.some(userRole => userRole === 'SUPER_ADMIN' || userRole === 'Super Admin');
+      return userRoles.includes(role);
+    });
     if (!hasRole) {
+      auditAuthorizationDenial(req, `role:${allowedRoles.join('|')}`, undefined, 'REQUIRED_ROLE_NOT_ASSIGNED');
       res.status(403).json({
         error: 'Forbidden',
         code: 'INSUFFICIENT_ROLE',
@@ -167,7 +202,7 @@ export function requireRole(allowedRoles: string[]) {
 }
 
 /**
- * Middleware: Requires a specific granular permission
+ * Middleware: Requires a permission present on a verified role/scope assignment.
  */
 export function requirePermission(permissionCode: string) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
@@ -176,13 +211,9 @@ export function requirePermission(permissionCode: string) {
       return;
     }
 
-    const userRoles = req.user.roles || [];
-    if (userRoles.includes('SUPER_ADMIN') || userRoles.includes('Super Admin')) {
-      return next();
-    }
-
-    const permissions = req.user.permissions || [];
-    if (!permissions.includes(permissionCode)) {
+    const permitted = req.user.authorization?.grants?.some(grant => grant.permissions.includes(permissionCode)) === true;
+    if (!permitted) {
+      auditAuthorizationDenial(req, permissionCode, undefined, 'PERMISSION_NOT_ASSIGNED');
       res.status(403).json({
         error: 'Forbidden',
         code: 'PERMISSION_DENIED',
@@ -191,6 +222,31 @@ export function requirePermission(permissionCode: string) {
       return;
     }
 
+    next();
+  };
+}
+
+/** Requires both a permission and the target organization to be granted by the same assignment. */
+export function requireOrganizationPermission(permissionCode: string, paramName: string = 'id') {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED', message: 'Authentication required.' });
+      return;
+    }
+
+    const targetOrganizationId = String(
+      req.params[paramName] || req.query[paramName] || req.body?.[paramName] || req.body?.tenantId || req.body?.tenant_id || req.body?.customerId || req.body?.organizationId || '',
+    ).trim();
+    if (!targetOrganizationId) {
+      auditAuthorizationDenial(req, permissionCode, undefined, 'TARGET_ORGANIZATION_REQUIRED');
+      res.status(403).json({ error: 'Forbidden', code: 'ORGANIZATION_SCOPE_REQUIRED', message: 'A target organization is required for this operation.' });
+      return;
+    }
+    if (!authorizeInContext(req.user.authorization, targetOrganizationId, permissionCode)) {
+      auditAuthorizationDenial(req, permissionCode, targetOrganizationId, 'PERMISSION_OR_SCOPE_NOT_ASSIGNED');
+      res.status(403).json({ error: 'Forbidden', code: 'ORGANIZATION_PERMISSION_DENIED', message: 'This operation is not authorized for the target organization.' });
+      return;
+    }
     next();
   };
 }
@@ -290,23 +346,26 @@ export function requireTenantAccess(paramName: string = 'id') {
       return;
     }
 
-    const isSuperAdmin = req.user.roles.includes('SUPER_ADMIN') || req.user.roles.includes('Super Admin');
-    if (isSuperAdmin) {
-      return next();
-    }
-
-    const targetTenantId = req.params[paramName] || req.query[paramName] || req.body[paramName] || req.body.tenantId;
+    const targetTenantId = String(
+      req.params[paramName] || req.query[paramName] || req.body?.[paramName] || req.body?.tenantId || req.body?.tenant_id || req.body?.customerId || req.body?.organizationId || ''
+    ).trim();
 
     if (!targetTenantId) {
-      return next();
+      auditAuthorizationDenial(req, `${req.method} ${req.baseUrl}${req.path}`, undefined, 'TARGET_ORGANIZATION_REQUIRED');
+      res.status(403).json({ error: 'Forbidden', code: 'ORGANIZATION_SCOPE_REQUIRED', message: 'A target organization is required for this operation.' });
+      return;
     }
 
-    if (req.user.tenantId && req.user.tenantId !== targetTenantId) {
-      console.warn(`[Security Alert] Cross-tenant access attempt by user ${req.user.email} (Tenant: ${req.user.tenantId}) to Tenant: ${targetTenantId}`);
+    const inScope = req.user.authorization?.grants?.some(grant => {
+      const visible = grant.visibleOrganizationIds as ReadonlySet<string> | readonly string[];
+      return visible instanceof Set ? visible.has(targetTenantId) : Array.isArray(visible) && visible.includes(targetTenantId);
+    }) === true;
+    if (!inScope) {
+      auditAuthorizationDenial(req, `${req.method} ${req.baseUrl}${req.path}`, targetTenantId, 'OUT_OF_SCOPE');
       res.status(403).json({
         error: 'Forbidden',
-        code: 'CROSS_TENANT_ACCESS_DENIED',
-        message: 'Security Boundary Enforced: You are not authorized to view or modify resources outside your assigned tenant domain.'
+        code: 'CROSS_ORGANIZATION_ACCESS_DENIED',
+        message: 'You are not authorized to access this organization.'
       });
       return;
     }

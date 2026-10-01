@@ -33,8 +33,8 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
   appCount,
   isAudited
 }) => {
-  const safeCustomers = Array.isArray(customers) ? customers : [];
-  const safeApps = Array.isArray(applications) ? applications : [];
+  const safeCustomers = Array.isArray(customers) ? customers.filter(customer => Boolean(customer && typeof customer === 'object')) : [];
+  const safeApps = Array.isArray(applications) ? applications.filter(application => Boolean(application && typeof application === 'object')) : [];
   const safeScope = scopeFilter || { tenantId: 'all', appId: 'all', scopeName: activeScopeName || 'Total Company View' };
 
   const selectedTenant = safeCustomers.find(c => c && c.id === safeScope.tenantId);
@@ -164,10 +164,10 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
                   onChange={e => handleTenantSelect(e.target.value)}
                   className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer pr-2"
                 >
-                  <option value="all" className="bg-[#12141c] text-white">Total Company (All Tenants)</option>
-                  {safeCustomers.map(c => (
-                    <option key={c.id} value={c.id} className="bg-[#12141c] text-white">
-                      {c.name} ({c.tier || 'Enterprise'})
+                  <option key="all-tenants" value="all" className="bg-[#12141c] text-white">Total Company (All Tenants)</option>
+                  {safeCustomers.map((c, index) => (
+                    <option key={`${String(c.id || 'tenant')}-${index}`} value={c.id} className="bg-[#12141c] text-white">
+                      {c.name || c.id || 'Unnamed tenant'} ({c.tier || 'Enterprise'})
                     </option>
                   ))}
                 </select>
@@ -198,10 +198,10 @@ export const ScopeHeaderBar: React.FC<ScopeHeaderBarProps> = ({
                 onChange={e => handleAppSelect(e.target.value)}
                 className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer pr-2"
               >
-                <option value="all" className="bg-[#12141c] text-white">All Applications ({filteredApps.length})</option>
-                {filteredApps.map(a => (
-                  <option key={a.id} value={a.id} className="bg-[#12141c] text-white">
-                    {a.name}
+                <option key="all-applications" value="all" className="bg-[#12141c] text-white">All Applications ({filteredApps.length})</option>
+                {filteredApps.map((a, index) => (
+                  <option key={`${String(a.id || 'application')}-${index}`} value={a.id} className="bg-[#12141c] text-white">
+                    {a.name || a.id || 'Unnamed application'}
                   </option>
                 ))}
               </select>

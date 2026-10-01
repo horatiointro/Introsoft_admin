@@ -48,6 +48,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { scanAndSanitizePrompt } from '../utils/complianceEngine';
 import { ProvenanceBadge } from './ProvenanceBadge';
+import { apiFetch } from '../utils/apiFetch';
 
 interface PopiaGdprComplianceViewProps {
   policies: AIPolicy[];
@@ -118,12 +119,12 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
   const [regModelId, setRegModelId] = useState('m-gemini-flash');
 
   useEffect(() => {
-    fetch('/api/v1/device-trust/records')
+    apiFetch('/api/v1/device-trust/records')
       .then(res => res.json())
       .then(data => setServerDevices(data))
       .catch(err => console.error('Failed to load device trust records:', err));
 
-    fetch('/api/v1/device-trust/analytics')
+    apiFetch('/api/v1/device-trust/analytics')
       .then(res => res.json())
       .then(data => setAnalytics(data))
       .catch(err => console.error('Failed to load analytics:', err));
@@ -133,7 +134,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
     e.preventDefault();
     try {
       const m = effectiveModels.find(mod => mod.id === regModelId) || effectiveModels[0];
-      const res = await fetch('/api/v1/device-trust/register', {
+      const res = await apiFetch('/api/v1/device-trust/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber: regPhone, modelId: m.id, modelName: m.displayName })
@@ -152,7 +153,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
   const handleInspectCellNumber = async (phone: string) => {
     setLoadingMessages(true);
     try {
-      const res = await fetch(`/api/v1/device-trust/messages/${encodeURIComponent(phone)}`);
+      const res = await apiFetch(`/api/v1/device-trust/messages/${encodeURIComponent(phone)}`);
       const data = await res.json();
       setSelectedCellMessages(data);
     } catch (err) {
@@ -165,7 +166,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
   const handleDeleteDevice = async (id: string) => {
     if (!confirm('Are you sure you want to revoke and delete this immutable device binding?')) return;
     try {
-      const res = await fetch(`/api/v1/device-trust/records/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/v1/device-trust/records/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setServerDevices(prev => prev.filter(d => d.id !== id));
@@ -179,7 +180,7 @@ export const PopiaGdprComplianceView: React.FC<PopiaGdprComplianceViewProps> = (
     const nextLevel: 'ultra_secure' | 'secure' | 'not_trusted' = 
       d.trustLevel === 'ultra_secure' ? 'secure' : d.trustLevel === 'secure' ? 'not_trusted' : 'ultra_secure';
     try {
-      const res = await fetch(`/api/v1/device-trust/records/${d.id}`, {
+      const res = await apiFetch(`/api/v1/device-trust/records/${d.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ trustLevel: nextLevel, description: `Updated trust status to ${nextLevel} under POPIA compliance audit.` })

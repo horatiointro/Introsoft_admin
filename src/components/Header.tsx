@@ -58,6 +58,7 @@ interface HeaderProps {
   dbStatusMessage?: string;
   onNavigate?: (tab: any) => void;
   activeTab?: string;
+  customerMode?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -75,7 +76,8 @@ export const Header: React.FC<HeaderProps> = ({
   dbConnected = false,
   dbStatusMessage = 'MariaDB Storage Layer',
   onNavigate,
-  activeTab
+  activeTab,
+  customerMode = false
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const unreadAlerts = alertsList.filter(a => !a.isRead);
@@ -90,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Center Live System Heartbeat & Persistence Provenance */}
-      <div className="hidden lg:flex items-center space-x-4 text-xs text-[#888888]">
+      {!customerMode && <div className="hidden lg:flex items-center space-x-4 text-xs text-[#888888]">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-green-500"></span>
           <span className="text-[10px] font-mono uppercase text-[#888888]">Gateway: Online</span>
@@ -129,12 +131,12 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="h-3.5 w-px bg-[#222222]" />
 
         <span className="text-[10px] font-mono text-[#666666]">v2.4.1-stable</span>
-      </div>
+      </div>}
 
       {/* Right Admin Profile & Quick Actions */}
       <div className="flex items-center space-x-3">
         {/* Multi-Channel Notification Bell */}
-        <div className="relative">
+        {!customerMode && <div className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
             className="p-2 rounded-lg bg-[#141414] hover:bg-[#1a1a1a] text-[#888888] hover:text-white border border-[#222222] transition-colors relative"
@@ -194,25 +196,25 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
-        <button
+        {!customerMode && <button
           id="btn-architecture-diagram"
           onClick={onOpenArchitecture}
           className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium bg-[#141414] hover:bg-[#1a1a1a] text-[#888888] hover:text-white border border-[#222222] transition-colors"
         >
           <Activity className="w-3.5 h-3.5 text-blue-400" />
           <span>Architecture</span>
-        </button>
+        </button>}
 
-        <button
+        {!customerMode && <button
           id="btn-quick-playground"
           onClick={onOpenPlayground}
           className="flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors shadow-sm"
         >
           <Play className="w-3 h-3 fill-current" />
           <span>Simulate API</span>
-        </button>
+        </button>}
 
         {/* Admin Profile & Logout */}
         <div className="flex items-center gap-3 pl-3 border-l border-[#222222]">
@@ -221,7 +223,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div className="hidden xl:flex flex-col">
             <span className="text-xs font-semibold text-white leading-tight">{currentUser.name}</span>
-            <span className="text-[10px] text-emerald-400 font-mono leading-tight">{currentUser.role}</span>
+            <span className="text-[10px] text-emerald-400 font-mono leading-tight">{customerMode ? 'Customer · My account' : currentUser.role}</span>
           </div>
 
           {onLogout && (

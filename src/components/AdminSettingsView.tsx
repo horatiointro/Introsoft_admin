@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowDownToLine, Check, CircleDollarSign, Clock3, Globe2, RefreshCw, Save, ShieldCheck } from 'lucide-react';
 
@@ -22,7 +23,7 @@ export const AdminSettingsView: React.FC = () => {
   const refresh = async () => {
     setBusy('loading');
     try {
-      const response = await fetch(`${API_BASE}/currency/config`, { headers: authHeaders() });
+      const response = await apiFetch(`${API_BASE}/currency/config`, { headers: authHeaders() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Currency setup could not be loaded.');
       setConfig(data); setDefaultDisplayCurrency(data.defaultDisplayCurrency); setDefaultLocale(data.defaultLocale); setRateStaleAfterHours(data.rateStaleAfterHours);
@@ -37,7 +38,7 @@ export const AdminSettingsView: React.FC = () => {
   const saveDefaults = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy('defaults'); setError('');
     try {
-      const response = await fetch(`${API_BASE}/admin/currency/config`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ defaultDisplayCurrency, defaultLocale, rateStaleAfterHours }) });
+      const response = await apiFetch(`${API_BASE}/admin/currency/config`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ defaultDisplayCurrency, defaultLocale, rateStaleAfterHours }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Currency defaults could not be saved.');
       setNotice(data.message); await refresh();
     } catch (e: any) { setError(e.message || 'Currency defaults could not be saved.'); }
@@ -49,7 +50,7 @@ export const AdminSettingsView: React.FC = () => {
     if (!Number.isFinite(unitsPerUsd) || unitsPerUsd <= 0 || !source.trim()) { setError('Enter a positive FX rate and a source.'); return; }
     setBusy(row.code); setError('');
     try {
-      const response = await fetch(`${API_BASE}/admin/currency/rates/${row.code}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ unitsPerUsd, source }) });
+      const response = await apiFetch(`${API_BASE}/admin/currency/rates/${row.code}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ unitsPerUsd, source }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || 'FX rate could not be saved.');
       setNotice(`${row.code} rate saved at ${new Date(data.asOf).toLocaleString()}.`); await refresh();
     } catch (e: any) { setError(e.message || 'FX rate could not be saved.'); }
@@ -57,12 +58,12 @@ export const AdminSettingsView: React.FC = () => {
   };
   const loadHistory = async (code: string) => {
     setBusy(`history-${code}`); setError('');
-    try { const response = await fetch(`${API_BASE}/admin/currency/rates/${code}/history`, { headers: authHeaders() }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Rate history could not be loaded.'); setHistory(current => ({ ...current, [code]: data })); }
+    try { const response = await apiFetch(`${API_BASE}/admin/currency/rates/${code}/history`, { headers: authHeaders() }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Rate history could not be loaded.'); setHistory(current => ({ ...current, [code]: data })); }
     catch (e: any) { setError(e.message || 'Rate history could not be loaded.'); } finally { setBusy(''); }
   };
   const removeRate = async (code: string) => {
     setBusy(code); setError('');
-    try { const response = await fetch(`${API_BASE}/admin/currency/rates/${code}`, { method: 'DELETE', headers: authHeaders() }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Rate could not be removed.'); setNotice(data.message); await refresh(); }
+    try { const response = await apiFetch(`${API_BASE}/admin/currency/rates/${code}`, { method: 'DELETE', headers: authHeaders() }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Rate could not be removed.'); setNotice(data.message); await refresh(); }
     catch (e: any) { setError(e.message || 'Rate could not be removed.'); }
     finally { setBusy(''); }
   };

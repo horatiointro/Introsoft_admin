@@ -452,6 +452,8 @@ export interface ComplianceScanResult {
 
 export interface DataSubjectRequest {
   id: string;
+  /** Technical tenant scope when supplied by a persisted or explicitly scoped request. */
+  tenantId?: string;
   framework: 'POPIA' | 'GDPR';
   requestType: 'access' | 'erasure' | 'rectification' | 'objection' | 'portability';
   subjectIdentifier: string;
@@ -506,6 +508,34 @@ export interface AuditLog {
   promptPreview?: string;
   responsePreview?: string;
   clientIp?: string;
+  localEvent?: {
+    source: 'LOCAL_TEST';
+    actor: string;
+    tenantId: string;
+    requestId: string;
+    method: string;
+    route: string;
+    statusCode: number;
+    outcome: 'SUCCESS' | 'DENIED' | 'FAILURE';
+    detail: string;
+  };
+  environment?: 'production' | 'development' | 'local-test';
+  testRunId?: string;
+  actorId?: string;
+  actorEmail?: string;
+  eventCategory?: 'APPLICATION_LOG' | 'API_REQUEST' | 'AUTHORIZATION' | 'AUDIT' | 'SECURITY_EVENT' | 'ERROR';
+  action?: string;
+  resourceType?: string;
+  resourceId?: string;
+  outcome?: 'SUCCESS' | 'DENIED' | 'FAILURE' | 'INFO';
+  organizationId?: string;
+  tenantId?: string;
+  requestId?: string;
+  statusCode?: number;
+  requiredPermission?: string;
+  grantedPermissions?: string[];
+  actualScope?: string;
+  denialReason?: string;
 }
 
 export interface UsageMetric {
@@ -552,10 +582,8 @@ export interface OrchestrationStep {
 
 export interface OrchestrationRequest {
   appId: string;
-  apiKey: string;
   capability: string;
   prompt: string;
-  simulateProviderFailure?: boolean;
 }
 
 export interface OrchestrationResponse {
@@ -571,6 +599,7 @@ export interface OrchestrationResponse {
   fallbackTriggered?: boolean;
   policyPassed?: boolean;
   piiScrubbed?: boolean;
+  metricsAvailable?: boolean;
 }
 
 export interface OrchestrationExecutionResult {

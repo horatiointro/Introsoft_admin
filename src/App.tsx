@@ -67,7 +67,9 @@ import { TrustFabricView } from './components/TrustFabricView';
 import { UsageLogsView } from './components/UsageLogsView';
 import { PlaygroundView } from './components/PlaygroundView';
 import { ApiDocumentationView } from './components/ApiDocumentationView';
+import { DeveloperCentreView } from './components/DeveloperCentreView';
 import { OrgHierarchyView } from './components/OrgHierarchyView';
+import { CommercialAccountPortalView } from './components/CommercialAccountPortalView';
 import { AdminSettingsView } from './components/AdminSettingsView';
 import { HelpGuideView } from './components/HelpGuideView';
 import { HelpContext, InfoButton } from './components/InfoButton';
@@ -93,6 +95,7 @@ import { LicensingMonetizationView } from './components/LicensingMonetizationVie
 import { BillingAdminView } from './components/BillingAdminView';
 import { FinanceCommerceView } from './components/FinanceCommerceView';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
+import { AccountActivationPage } from './components/AccountActivationPage';
 import { SaasGrowthView } from './components/SaasGrowthView';
 import { CommunicationsHubView } from './components/CommunicationsHubView';
 import { TenantPortalView } from './components/TenantPortalView';
@@ -120,6 +123,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { INITIAL_INCIDENTS_LIST, INITIAL_ALERTS_LIST, INITIAL_RAG_KNOWLEDGE_BASE } from './data/incidentData';
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { apiFetch } from './utils/apiFetch';
+import { normalizeOrchestrationResponse } from './utils/orchestrationResponse';
 
 const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
 
@@ -132,6 +136,12 @@ export default function App() {
     role: 'Global Super Admin',
     tenant: 'Total Company Scope'
   });
+  const [authorizationScope, setAuthorizationScope] = useState<{
+    organizationId: string | null;
+    visibleOrganizationIds: string[];
+    permissions: string[];
+    global: boolean;
+  } | null>(null);
 
   const [activeTab, setActiveTab] = useState<NavTabId>('command_centre');
   const [onboardingOrderCustomerId, setOnboardingOrderCustomerId] = useState<string | undefined>();
@@ -298,7 +308,7 @@ export default function App() {
   };
 
   const saveCommercialRecord = async (path: string, record: LicensingPlanTemplate | TenantAppLicense) => {
-    const response = await fetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record) });
+    const response = await apiFetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record) });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || 'ALTIL could not save this commercial change.');
     return result;
@@ -330,7 +340,7 @@ export default function App() {
     if (!isAuthenticated) return;
     const fetchInitialData = async () => {
       try {
-        const [resProv, resMod, resCust, resApp, resKeys, resRoutes, resPol, resLogs, resComp, resDsar] = await Promise.allSettled([
+        const [resProv, resMod, resCust, resApp, resKeys, resRoutes, resPol, resLogs, resComp, resDsar, resMe] = await Promise.allSettled([
           apiFetch(`${API_BASE}/providers`).then(r => r.json()),
           apiFetch(`${API_BASE}/models`).then(r => r.json()),
           apiFetch(`${API_BASE}/customers`).then(r => r.json()),
@@ -340,7 +350,8 @@ export default function App() {
           apiFetch(`${API_BASE}/policies`).then(r => r.json()),
           apiFetch(`${API_BASE}/logs`).then(r => r.json()),
           apiFetch(`${API_BASE}/compliance/config`).then(r => r.json()),
-          apiFetch(`${API_BASE}/compliance/dsar`).then(r => r.json())
+          apiFetch(`${API_BASE}/compliance/dsar`).then(r => r.json()),
+          apiFetch(`${API_BASE}/auth/me`).then(r => r.json())
         ]);
 
         if (resProv.status === 'fulfilled' && Array.isArray(resProv.value)) setProviders(resProv.value);
@@ -353,12 +364,44 @@ export default function App() {
         if (resLogs.status === 'fulfilled' && Array.isArray(resLogs.value)) setAuditLogs(resLogs.value);
         if (resComp.status === 'fulfilled' && resComp.value?.popia) setGlobalComplianceConfig(resComp.value);
         if (resDsar.status === 'fulfilled' && Array.isArray(resDsar.value)) setDataSubjectRequests(resDsar.value);
+        if (resMe.status === 'fulfilled' && resMe.value?.user?.authorization) {
+          const authorization = resMe.value.user.authorization;
+          setAuthorizationScope({
+            organizationId: authorization.organizationId || null,
+            visibleOrganizationIds: Array.isArray(authorization.visibleOrganizationIds) ? authorization.visibleOrganizationIds : [],
+            permissions: Array.isArray(authorization.permissions) ? authorization.permissions : [],
+            global: Array.isArray(authorization.scopes) && authorization.scopes.some((scope: any) => scope.visibility === 'GLOBAL')
+          });
+        } else {
+          setAuthorizationScope(null);
+        }
       } catch (err) {
         console.warn('Backend API connection defaulted to local state sync:', err);
       }
     };
     fetchInitialData();
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== 'logs' || import.meta.env.BASE_URL !== '/admin-test/') return;
+    let active = true;
+    const refreshAuditLogs = async () => {
+      try {
+        const response = await apiFetch(`${API_BASE}/logs`);
+        if (!response.ok) return;
+        const logs = await response.json();
+        if (active && Array.isArray(logs)) setAuditLogs(logs);
+      } catch {
+        // Keep the last successfully loaded audit view when the endpoint is unavailable.
+      }
+    };
+    void refreshAuditLogs();
+    const timer = window.setInterval(() => void refreshAuditLogs(), 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [activeTab, isAuthenticated]);
 
   // --- Customer / Tenant Handlers ---
   const handleAddCustomer = async (customerData: any) => {
@@ -400,7 +443,7 @@ export default function App() {
 
   const handleDeleteCustomer = async (id: string) => {
     try {
-      const res = await fetch(`${API_BASE}/customers/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${API_BASE}/customers/${id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.customer) throw new Error(data.error || 'Customer could not be archived.');
       setCustomers(prev => prev.map(c => c.id === id ? data.customer : c));
@@ -413,7 +456,7 @@ export default function App() {
 
   const handleAddCustomerUser = async (customerId: string, userData: Partial<CustomerUser>) => {
     try {
-      const res = await fetch(`${API_BASE}/customers/${customerId}/users`, {
+      const res = await apiFetch(`${API_BASE}/customers/${customerId}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData)
@@ -450,7 +493,7 @@ export default function App() {
 
   const handleUpdateCustomerUser = async (customerId: string, userId: string, updates: Partial<CustomerUser>) => {
     try {
-      await fetch(`${API_BASE}/customers/${customerId}/users/${userId}`, {
+      await apiFetch(`${API_BASE}/customers/${customerId}/users/${userId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -472,7 +515,7 @@ export default function App() {
 
   const handleDeleteCustomerUser = async (customerId: string, userId: string) => {
     try {
-      await fetch(`${API_BASE}/customers/${customerId}/users/${userId}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE}/customers/${customerId}/users/${userId}`, { method: 'DELETE' });
     } catch (_) {}
 
     setCustomers(prev =>
@@ -490,7 +533,7 @@ export default function App() {
     keyData: { name: string; appId?: string; rateLimitRpm?: number; expiresInDays?: number; ipWhitelist?: string[]; scopes?: string[] }
   ): Promise<ApiKey | null> => {
     try {
-      const res = await fetch(`${API_BASE}/customers/${customerId}/keys`, {
+      const res = await apiFetch(`${API_BASE}/customers/${customerId}/keys`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(keyData)
@@ -546,26 +589,9 @@ export default function App() {
   };
 
   // --- IAM User & Role Lifecycle Handlers ---
-  const handleAddIamUser = async (newUser: IamUser) => {
-    try {
-      await fetch(`${API_BASE}/iam/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: newUser.id,
-          email: newUser.email,
-          first_name: newUser.name.split(' ')[0] || 'Enterprise',
-          last_name: newUser.name.split(' ').slice(1).join(' ') || 'User',
-          department: newUser.department,
-          title: newUser.designation,
-          mfa_enabled: newUser.mfaEnabled,
-          status: newUser.status.toUpperCase(),
-          tenant_id: newUser.tenantId
-        })
-      });
-    } catch (_) {}
+  const handleAddIamUser = (newUser: IamUser) => {
     setIamUsers(prev => [newUser, ...prev]);
-    showToast(`IAM User "${newUser.name}" provisioned successfully.`);
+    showToast(`Invitation created for "${newUser.name}". The account remains inactive until activation.`);
   };
 
   const handleUpdateIamUser = async (id: string, updates: Partial<IamUser>) => {
@@ -573,7 +599,7 @@ export default function App() {
       const existingUser = iamUsers.find(u => u.id === id);
       if (existingUser) {
         const merged = { ...existingUser, ...updates };
-        await fetch(`${API_BASE}/iam/users`, {
+        await apiFetch(`${API_BASE}/iam/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -635,7 +661,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/providers`, {
+      await apiFetch(`${API_BASE}/providers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProv)
@@ -648,7 +674,7 @@ export default function App() {
 
   const handleUpdateProvider = async (id: string, updates: Partial<AIProvider>) => {
     try {
-      await fetch(`${API_BASE}/providers/${id}`, {
+      await apiFetch(`${API_BASE}/providers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -661,7 +687,7 @@ export default function App() {
 
   const handleDeleteProvider = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/providers/${id}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE}/providers/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setProviders(prev => prev.filter(p => p.id !== id));
@@ -670,7 +696,7 @@ export default function App() {
 
   const handleTestProvider = async (providerId: string): Promise<ProviderTestResult> => {
     try {
-      const res = await fetch(`${API_BASE}/providers/${providerId}/test`, {
+      const res = await apiFetch(`${API_BASE}/providers/${providerId}/test`, {
         method: 'POST'
       });
       const result = await res.json().catch(() => ({}));
@@ -700,7 +726,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/models`, {
+      await apiFetch(`${API_BASE}/models`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newMod)
@@ -713,7 +739,7 @@ export default function App() {
 
   const handleUpdateModel = async (id: string, updates: Partial<AIModel>) => {
     try {
-      await fetch(`${API_BASE}/models/${id}`, {
+      await apiFetch(`${API_BASE}/models/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -726,7 +752,7 @@ export default function App() {
 
   const handleDeleteModel = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/models/${id}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE}/models/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setModels(prev => prev.filter(m => m.id !== id));
@@ -736,7 +762,7 @@ export default function App() {
   // --- Application Handlers ---
   const handleAddApplication = async (appData: Partial<Application>) => {
     try {
-      const response = await fetch(`${API_BASE}/applications`, {
+      const response = await apiFetch(`${API_BASE}/applications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...appData, customerId: scopeFilter.tenantId === 'all' ? customers[0]?.id : scopeFilter.tenantId })
@@ -753,44 +779,47 @@ export default function App() {
 
   const handleUpdateApplication = async (id: string, updates: Partial<Application>) => {
     try {
-      await fetch(`${API_BASE}/applications/${id}`, {
+      const response = await apiFetch(`${API_BASE}/applications/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
-    } catch (_) {}
-
-    setApplications(prev => prev.map(a => (a.id === id ? { ...a, ...updates } : a)));
-    showToast('Application settings updated.');
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Application settings could not be saved.');
+      setApplications(prev => prev.map(a => (a.id === id ? { ...a, ...result } : a)));
+      showToast('Application settings updated.');
+    } catch (error: any) { showToast(error?.message || 'Application settings could not be saved.', 'error'); }
   };
 
   const handleDeleteApplication = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/applications/${id}`, { method: 'DELETE' });
-    } catch (_) {}
-
-    setApplications(prev => prev.filter(a => a.id !== id));
-    showToast('Application deleted.');
+      const response = await apiFetch(`${API_BASE}/applications/${id}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Application could not be deleted.');
+      setApplications(prev => prev.filter(a => a.id !== id));
+      showToast('Application deleted.');
+    } catch (error: any) { showToast(error?.message || 'Application could not be deleted.', 'error'); }
   };
 
   const handleToggleAppStatus = async (id: string, status: ApplicationStatus) => {
     try {
-      await fetch(`${API_BASE}/applications/${id}`, {
+      const response = await apiFetch(`${API_BASE}/applications/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
-    } catch (_) {}
-
-    setApplications(prev => prev.map(a => (a.id === id ? { ...a, status } : a)));
-    showToast(`Application access ${status === 'active' ? 'restored' : 'revoked'}.`);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Application status could not be changed.');
+      setApplications(prev => prev.map(a => (a.id === id ? { ...a, ...result } : a)));
+      showToast(`Application access ${status === 'active' ? 'restored' : 'revoked'}.`);
+    } catch (error: any) { showToast(error?.message || 'Application status could not be changed.', 'error'); }
   };
 
   // --- API Key Handlers ---
   const handleAddApiKey = async (keyData: Partial<ApiKey>): Promise<ApiKey> => {
     const app = applications.find(item => item.id === keyData.appId);
     const payload = { ...keyData, customerId: app?.customerId, appId: app?.id };
-    const response = await fetch(`${API_BASE}/api-keys`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const response = await apiFetch(`${API_BASE}/api-keys`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'ALTIL could not issue this API key.');
     const newKey = result as ApiKey;
@@ -801,7 +830,7 @@ export default function App() {
 
   const handleRevokeApiKey = async (id: string) => {
     try {
-      const response = await fetch(`${API_BASE}/api-keys/${id}/revoke`, { method: 'PUT' });
+      const response = await apiFetch(`${API_BASE}/api-keys/${id}/revoke`, { method: 'PUT' });
       if (!response.ok) throw new Error('ALTIL could not confirm this key revocation.');
     } catch (error: any) { showToast(error?.message || 'Could not revoke key.', 'error'); return; }
 
@@ -813,11 +842,12 @@ export default function App() {
 
   const handleDeleteApiKey = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/api-keys/${id}`, { method: 'DELETE' });
-    } catch (_) {}
-
-    setApiKeys(prev => prev.filter(k => k.id !== id));
-    showToast('API Key removed.');
+      const response = await apiFetch(`${API_BASE}/api-keys/${id}`, { method: 'DELETE' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'API key could not be removed.');
+      setApiKeys(prev => prev.filter(k => k.id !== id));
+      showToast('API Key removed.');
+    } catch (error: any) { showToast(error?.message || 'API key could not be removed.', 'error'); }
   };
 
   // --- Route Handlers ---
@@ -839,7 +869,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/routes`, {
+      await apiFetch(`${API_BASE}/routes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRoute)
@@ -852,7 +882,7 @@ export default function App() {
 
   const handleUpdateRoute = async (id: string, updates: Partial<RoutingRule>) => {
     try {
-      await fetch(`${API_BASE}/routes/${id}`, {
+      await apiFetch(`${API_BASE}/routes/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -865,7 +895,7 @@ export default function App() {
 
   const handleDeleteRoute = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/routes/${id}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE}/routes/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setRoutingRules(prev => prev.filter(r => r.id !== id));
@@ -880,7 +910,8 @@ export default function App() {
       name: policyData.name || 'New Policy',
       description: policyData.description || '',
       appliesToAppIds: policyData.appliesToAppIds || ['all'],
-      status: 'active',
+      tenantId: policyData.tenantId,
+      status: policyData.status || 'active',
       createdAt: nowStr,
       updatedAt: nowStr,
       rules: policyData.rules || {
@@ -897,21 +928,24 @@ export default function App() {
       }
     };
 
+    let savedPolicy = newPol;
     try {
-      await fetch(`${API_BASE}/policies`, {
+      const response = await apiFetch(`${API_BASE}/policies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPol)
       });
+      const result = await response.json().catch(() => null);
+      if (response.ok && result?.id) savedPolicy = result as AIPolicy;
     } catch (_) {}
 
-    setPolicies(prev => [newPol, ...prev]);
+    setPolicies(prev => [savedPolicy, ...prev]);
     showToast(`AI Policy "${newPol.name}" created.`);
   };
 
   const handleUpdatePolicy = async (id: string, updates: Partial<AIPolicy>) => {
     try {
-      await fetch(`${API_BASE}/policies/${id}`, {
+      await apiFetch(`${API_BASE}/policies/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -924,7 +958,7 @@ export default function App() {
 
   const handleDeletePolicy = async (id: string) => {
     try {
-      await fetch(`${API_BASE}/policies/${id}`, { method: 'DELETE' });
+      await apiFetch(`${API_BASE}/policies/${id}`, { method: 'DELETE' });
     } catch (_) {}
 
     setPolicies(prev => prev.filter(p => p.id !== id));
@@ -934,7 +968,7 @@ export default function App() {
   // --- Compliance & Data Subject Request Handlers ---
   const handleSaveGlobalComplianceConfig = async (newConfig: GlobalComplianceConfig) => {
     try {
-      await fetch(`${API_BASE}/compliance/config`, {
+      await apiFetch(`${API_BASE}/compliance/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newConfig)
@@ -960,7 +994,7 @@ export default function App() {
     };
 
     try {
-      await fetch(`${API_BASE}/compliance/dsar`, {
+      await apiFetch(`${API_BASE}/compliance/dsar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newDsr)
@@ -973,7 +1007,7 @@ export default function App() {
 
   const handleUpdateDataSubjectRequest = async (id: string, updates: Partial<DataSubjectRequest>) => {
     try {
-      await fetch(`${API_BASE}/compliance/dsar/${id}`, {
+      await apiFetch(`${API_BASE}/compliance/dsar/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
@@ -986,99 +1020,22 @@ export default function App() {
 
   // --- Orchestration Execution in Playground ---
   const handleOrchestrate = async (payload: OrchestrationRequest): Promise<OrchestrationResponse> => {
+    const attemptedAt = new Date().toISOString();
     try {
-      const res = await fetch(`${API_BASE}/orchestrate`, {
+      const res = await apiFetch(`${API_BASE}/orchestrate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      const data = await res.json();
-
-      const executedProvName = data.executedProvider || data.selectedProvider || 'Ollama Local Cluster';
-      const executedModName = data.executedModel || data.selectedModel || 'qwen3.6:16k';
-      const outputText = data.output || data.response || data.error || 'Orchestration execution completed.';
-      const tokensCount = typeof data.tokensConsumed === 'number' 
-        ? data.tokensConsumed 
-        : (data.totalTokens ? ((data.totalTokens.input || 0) + (data.totalTokens.output || 0)) : 280);
-
-      const normalizedResponse: OrchestrationResponse = {
-        id: data.id || data.requestId || `ALTIL-${Date.now().toString(36).toUpperCase()}`,
-        status: data.status || (res.ok ? 'SUCCESS' : 'ERROR'),
-        capability: data.capability || payload.capability || 'general_ai',
-        executedModel: executedModName,
-        executedProvider: executedProvName,
-        durationSeconds: typeof data.durationSeconds === 'number' ? data.durationSeconds : 0.22,
-        tokensConsumed: tokensCount,
-        output: outputText,
-        timestamp: data.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 19),
-        fallbackTriggered: Boolean(data.fallbackTriggered),
-        policyPassed: data.policyPassed ?? (data.status !== 'POLICY_BLOCKED'),
-        piiScrubbed: Boolean(data.piiScrubbed)
-      };
-
-      // Dynamically insert into Audit log list so the user immediately sees it
-      const newLog: AuditLog = {
-        id: normalizedResponse.id,
-        timestamp: normalizedResponse.timestamp,
-        appId: payload.appId,
-        appName: applications.find(a => a.id === payload.appId)?.name || 'Introsoft Client',
-        capability: payload.capability,
-        providerId: (executedProvName || 'altil').toLowerCase().replace(/[^a-z0-9]/g, '-'),
-        providerName: executedProvName,
-        modelIdentifier: executedModName,
-        tokensConsumed: normalizedResponse.tokensConsumed,
-        durationSeconds: normalizedResponse.durationSeconds,
-        status: normalizedResponse.status,
-        policyChecksPassed: normalizedResponse.policyPassed ?? true,
-        piiScrubbed: normalizedResponse.piiScrubbed,
-        promptPreview: (payload.prompt || '').slice(0, 100) + ((payload.prompt || '').length > 100 ? '...' : ''),
-        responsePreview: outputText.slice(0, 180) + (outputText.length > 180 ? '...' : '')
-      };
-
-      setAuditLogs(prev => [newLog, ...prev]);
-
-      return normalizedResponse;
-    } catch (err: any) {
-      // Fallback local simulation if backend route fails
-      const fallbackProv = payload.simulateProviderFailure ? 'Groq Cloud LPU' : 'Ollama Local Cluster';
-      const fallbackMod = payload.simulateProviderFailure ? 'llama-3.3-70b-versatile' : 'qwen3.6:16k';
-      
-      const fallbackResponse: OrchestrationResponse = {
-        id: `ALTIL-LOCAL-${Date.now().toString(36).toUpperCase()}`,
-        status: payload.simulateProviderFailure ? 'FALLBACK_SUCCESS' : 'SUCCESS',
-        capability: payload.capability || 'general_ai',
-        executedModel: fallbackMod,
-        executedProvider: fallbackProv,
-        durationSeconds: 0.18,
-        tokensConsumed: 310,
-        output: `[ALTIL Local Fallback Engine]\n\nOrchestration completed for application payload.\n\nOutput Summary:\n${payload.prompt}`,
-        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        fallbackTriggered: Boolean(payload.simulateProviderFailure),
-        policyPassed: true,
-        piiScrubbed: false
-      };
-
-      const fallbackLog: AuditLog = {
-        id: fallbackResponse.id,
-        timestamp: fallbackResponse.timestamp,
-        appId: payload.appId,
-        appName: applications.find(a => a.id === payload.appId)?.name || 'Introsoft Client',
-        capability: payload.capability,
-        providerId: fallbackProv.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-        providerName: fallbackProv,
-        modelIdentifier: fallbackMod,
-        tokensConsumed: 310,
-        durationSeconds: 0.18,
-        status: fallbackResponse.status,
-        policyChecksPassed: true,
-        piiScrubbed: false,
-        promptPreview: (payload.prompt || '').slice(0, 100) + '...',
-        responsePreview: fallbackResponse.output.slice(0, 180) + '...'
-      };
-
-      setAuditLogs(prev => [fallbackLog, ...prev]);
-      return fallbackResponse;
+      const data = await res.json().catch(() => ({}));
+      const normalized = normalizeOrchestrationResponse({ payload: data, httpOk: res.ok, attemptedAt });
+      return normalized.response;
+    } catch (error) {
+      return normalizeOrchestrationResponse({
+        payload: { error: error instanceof Error ? error.message : 'The orchestration request failed.' },
+        httpOk: false,
+        attemptedAt,
+      }).response;
     }
   };
 
@@ -1093,6 +1050,7 @@ export default function App() {
 
   const handleLoginSuccess = (user: { name: string; email: string; role: string; tenant: string }) => {
     setCurrentUser(user);
+    if (user.role === 'CUSTOMER_ACCOUNT_USER') setActiveTab('commercial_account_portal');
     setIsSplashActive(true);
   };
 
@@ -1105,7 +1063,7 @@ export default function App() {
     try {
       const token = localStorage.getItem('altil_auth_token');
       if (token) {
-        await fetch(`${API_BASE}/auth/logout`, {
+        await apiFetch(`${API_BASE}/auth/logout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1137,6 +1095,7 @@ export default function App() {
   }, []);
 
   if (window.location.pathname.replace(/\/$/, '').endsWith('/register')) return <SelfRegistrationPage />;
+  if (window.location.pathname.replace(/\/$/, '').endsWith('/activate-account')) return <AccountActivationPage />;
   if (window.location.pathname.replace(/\/$/, '').startsWith('/legal/')) return <LegalPolicyPage />;
 
   if (!isAuthenticated && !isSplashActive) {
@@ -1170,10 +1129,16 @@ export default function App() {
         onLogout={handleLogout}
         onNavigate={setActiveTab}
         activeTab={activeTab}
+        customerMode={currentUser.role === 'CUSTOMER_ACCOUNT_USER'}
       />
 
       {/* Universal Enterprise Live Event Ticker */}
-      <UniversalActivityTicker />
+      {currentUser.role !== 'CUSTOMER_ACCOUNT_USER' && <UniversalActivityTicker />}
+
+      <div className="flex min-h-8 items-center gap-2 border-b border-white/5 bg-[#10131b] px-4 text-[10px] text-slate-400" aria-label="Authorization scope">
+        <span className="font-semibold uppercase tracking-wider text-slate-500">Administration scope</span>
+        {currentUser.role === 'CUSTOMER_ACCOUNT_USER' ? <span className="text-cyan-200">Customer mode · own commercial account</span> : authorizationScope?.global ? <span className="text-cyan-200">Introsoft Platform · Global</span> : authorizationScope?.organizationId ? <span>{authorizationScope.organizationId} · {authorizationScope.visibleOrganizationIds.length > 1 ? `This organisation + ${authorizationScope.visibleOrganizationIds.length - 1} authorised descendants` : 'This organisation'}</span> : <span className="text-amber-200">Scope unavailable · access is restricted</span>}
+      </div>
 
       {/* Main App Workspace */}
       <div className="flex-1 flex overflow-hidden">
@@ -1181,6 +1146,11 @@ export default function App() {
         <Sidebar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          permissions={authorizationScope?.permissions || []}
+          globalScope={authorizationScope?.global || false}
+          userName={currentUser.name}
+          userRole={currentUser.role}
+          customerMode={currentUser.role === 'CUSTOMER_ACCOUNT_USER'}
           theme={theme}
           onToggleTheme={toggleTheme}
           counts={{
@@ -1215,6 +1185,12 @@ export default function App() {
 
           {activeTab === 'help_guide' && <HelpGuideView onNavigate={setActiveTab} />}
           {activeTab === 'api_docs' && <ApiDocumentationView />}
+          {activeTab === 'developer_home' && <DeveloperCentreView
+            onNavigate={setActiveTab}
+            organizationLabel={authorizationScope?.organizationId || currentUser.tenant}
+            globalScope={authorizationScope?.global || false}
+            permissions={authorizationScope?.permissions || []}
+          />}
 
           {(activeTab === 'command_centre' || activeTab === 'dashboard') && (
             <CommandCentreView
@@ -1296,9 +1272,6 @@ export default function App() {
               customers={customers}
               applications={applications}
               apiKeys={apiKeys}
-              onSelectCustomer={(cId) => {
-                setActiveTab('tenants');
-              }}
             />
           )}
 
@@ -1389,7 +1362,7 @@ export default function App() {
                   onUpdateModel={handleUpdateModel}
                   onDeleteModel={handleDeleteModel}
                   onRefreshModels={async () => {
-                    const response = await fetch(`${API_BASE}/models`);
+                    const response = await apiFetch(`${API_BASE}/models`);
                     if (response.ok) setModels(await response.json());
                   }}
                 />
@@ -1464,6 +1437,8 @@ export default function App() {
               policies={policies}
               applications={applications}
               providers={providers}
+              customers={customers}
+              initialTenantId={scopeFilter.tenantId}
               onAddPolicy={handleAddPolicy}
               onUpdatePolicy={handleUpdatePolicy}
               onDeletePolicy={handleDeletePolicy}
@@ -1523,7 +1498,7 @@ export default function App() {
               onProcessPaymentWebhook={(event) => {
                 void (async () => {
                   try {
-                    const response = await fetch(`${API_BASE}/licensing/payment-webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId: event.tenantId, eventType: event.eventType, invoiceId: event.invoiceId, amount: event.amount, gatewayProvider: event.gatewayProvider }) });
+                    const response = await apiFetch(`${API_BASE}/licensing/payment-webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId: event.tenantId, eventType: event.eventType, invoiceId: event.invoiceId, amount: event.amount, gatewayProvider: event.gatewayProvider }) });
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || result.message || 'Payment event could not be recorded.');
                     setPaymentLogs(current => [result.webhookLog || event, ...current]);
@@ -1534,8 +1509,22 @@ export default function App() {
             />
           )}
 
-          {(activeTab === 'billing_admin' || activeTab === 'billing_accounts' || activeTab === 'billing_invoices' || activeTab === 'billing_refunds' || activeTab === 'billing_settlement') && (
-            <BillingAdminView customers={customers} licenses={tenantLicenses} />
+          {activeTab === 'commercial_account_portal' && <CommercialAccountPortalView onNavigate={(tab) => setActiveTab(tab as any)} />}
+
+          {(activeTab === 'billing_admin' || activeTab === 'billing_accounts' || activeTab === 'billing_invoices') && (
+            <BillingAdminView
+              customers={customers}
+              licenses={tenantLicenses}
+              initialSection={activeTab === 'billing_invoices' ? 'invoices' : 'portfolio'}
+            />
+          )}
+
+          {activeTab === 'billing_refunds' && (
+            <AccountingControlView customers={customers} initialSection="refunds" />
+          )}
+
+          {activeTab === 'billing_settlement' && (
+            <AccountingControlView customers={customers} initialSection="reconcile" />
           )}
 
           {activeTab === 'billing_commercial' && <StageFFinanceView />}
@@ -1544,8 +1533,11 @@ export default function App() {
             <FinanceCommerceView mode={activeTab === 'billing_orders' ? 'orders' : 'products'} customers={customers} initialTenantId={onboardingOrderCustomerId} />
           )}
 
-          {activeTab === 'accounting' && (
-            <AccountingControlView customers={customers} />
+          {(activeTab === 'accounting' || activeTab === 'accounting_journals' || activeTab === 'accounting_chart') && (
+            <AccountingControlView
+              customers={customers}
+              initialSection={activeTab === 'accounting_journals' ? 'journals' : 'overview'}
+            />
           )}
 
           {activeTab === 'saas_admin' && (
@@ -1628,6 +1620,7 @@ export default function App() {
               models={models}
               selectedLogToInspect={selectedLogToInspect}
               onCloseInspectModal={() => setSelectedLogToInspect(null)}
+              initialSection={activeTab === 'logs' ? 'logs' : 'analytics'}
             />
           )}
 
@@ -1682,7 +1675,7 @@ export default function App() {
           <span>{toast.message}</span>
         </div>
       )}
-      <ScreenAssistant activeTab={activeTab} onNavigate={setActiveTab} />
+      {currentUser.role !== 'CUSTOMER_ACCOUNT_USER' && <ScreenAssistant activeTab={activeTab} onNavigate={setActiveTab} />}
     </div>
     </HelpContext.Provider>
   );

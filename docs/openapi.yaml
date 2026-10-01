@@ -18,12 +18,354 @@ security:
 tags:
   - name: Public SaaS
   - name: Tenants and IAM
+  - name: Commercial foundation
+  - name: Developers
   - name: Packages and licensing
   - name: Billing
   - name: Governed AI
   - name: Communications
   - name: Mobile devices
 paths:
+  /api/v1/applications:
+    get:
+      tags: [Developers]
+      summary: List applications visible in the caller's organization scope
+      description: Returns applications from organizations visible under the authenticated ALTIL session. Application creation currently creates an initial inference credential as part of the same workflow.
+      security:
+        - BearerSession: []
+      responses:
+        '200':
+          description: Visible application records
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/DeveloperApplication'}}
+        '401': {description: ALTIL session required}
+        '403': {description: Organization read permission is not available}
+    post:
+      tags: [Developers]
+      summary: Create an application and its initial inference credential
+      description: Requires SUPER_ADMIN or TENANT_ADMIN plus tenant.update and apikeys.create for the same target organization. The generated credential secret is returned once in the response. Only the enforced read:inference scope is grantable.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 120}
+                customerId: {type: string, description: Target organization; defaults to the authorized current organization}
+                tenantId: {type: string, description: Legacy target-organization alias}
+                appIdentifier: {type: string, pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'}
+                description: {type: string, maxLength: 2000}
+                environment: {type: string, enum: [development, staging, production], default: production}
+                status: {type: string, enum: [active, suspended, revoked], default: active}
+                allowedCapabilities: {type: array, maxItems: 50, items: {type: string, maxLength: 100}}
+                assignedPolicyIds: {type: array, maxItems: 50, items: {type: string, maxLength: 128}}
+                parentApplicationId: {type: [string, 'null']}
+                applicationType: {type: string, enum: [application, sub_application, function]}
+                functionIdentifier: {type: string, maxLength: 100}
+                rateLimitRpm: {type: integer, minimum: 1, maximum: 1000000, default: 120}
+                quotaMonthlyRequests: {type: integer, minimum: 1, maximum: 1000000000, default: 50000}
+                contactEmail: {type: string, format: email, maxLength: 254}
+      responses:
+        '201':
+          description: Application and one-time credential response
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [application, apiKey]
+                properties:
+                  application: {$ref: '#/components/schemas/DeveloperApplication'}
+                  apiKey: {$ref: '#/components/schemas/DeveloperCredentialIssuedOnce'}
+        '400': {description: Invalid application or parent-application fields}
+        '401': {description: ALTIL session required}
+        '403': {description: Role, organization authority, or runtime-scope grant denied}
+        '503': {description: Application or credential registry unavailable}
+  /api/v1/applications/{id}:
+    put:
+      tags: [Developers]
+      summary: Update an application profile
+      description: Updates allowlisted profile fields in the application's owning organization. Identity, organization, parent and application-type reassignment are rejected.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                name: {type: string, minLength: 1, maxLength: 120}
+                appIdentifier: {type: string, pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$'}
+                description: {type: string, maxLength: 2000}
+                status: {type: string, enum: [active, suspended, revoked]}
+                environment: {type: string, enum: [development, staging, production]}
+                allowedCapabilities: {type: array, maxItems: 50, items: {type: string, maxLength: 100}}
+                assignedPolicyIds: {type: array, maxItems: 50, items: {type: string, maxLength: 128}}
+                rateLimitRpm: {type: integer, minimum: 1, maximum: 1000000}
+                quotaMonthlyRequests: {type: integer, minimum: 1, maximum: 1000000000}
+                contactEmail: {type: string, format: email, maxLength: 254}
+      responses:
+        '200':
+          description: Updated application record
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeveloperApplication'}
+        '400': {description: Unsupported or invalid update fields}
+        '401': {description: ALTIL session required}
+        '404': {description: Application not found in caller scope}
+        '503': {description: Durable application update could not be confirmed}
+    delete:
+      tags: [Developers]
+      summary: Delete an application and its associated credentials
+      description: Requires tenant.update and apikeys.revoke on the owning organization. This operation removes application and credential records when persistence is enabled.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Application removed
+          content:
+            application/json:
+              schema: {type: object, required: [success], properties: {success: {type: boolean, const: true}}}
+        '401': {description: ALTIL session required}
+        '404': {description: Application not found in caller scope}
+        '503': {description: Durable application removal unavailable}
+  /api/v1/api-keys:
+    get:
+      tags: [Developers]
+      summary: List credential metadata visible in the caller's organization scope
+      description: Secret and digest fields are omitted. Existing credential secrets cannot be revealed again.
+      security:
+        - BearerSession: []
+      responses:
+        '200':
+          description: Visible credential metadata
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/DeveloperCredentialMetadata'}}
+        '401': {description: ALTIL session required}
+        '403': {description: Organization read permission is not available}
+    post:
+      tags: [Developers]
+      summary: Create an application-bound API credential
+      description: Requires apikeys.create and SUPER_ADMIN or TENANT_ADMIN. The application must be active and belong to the authorized organization. Secret is returned once; only read:inference is currently grantable.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customerId: {type: string, description: Target organization; defaults to the authorized current organization}
+                appId: {type: string}
+                name: {type: string, maxLength: 120}
+                scopes: {type: array, minItems: 1, maxItems: 1, items: {type: string, enum: [read:inference]}}
+                ipWhitelist: {type: array, maxItems: 100, items: {type: string, description: IPv4 address or CIDR}}
+                expiresAt: {type: [string, 'null'], format: date-time}
+                rateLimitRpm: {type: integer, minimum: 1, maximum: 1000000, default: 120}
+                monthlyRequestLimit: {type: [integer, 'null'], minimum: 1, maximum: 1000000000}
+                monthlySpendLimitUsd: {type: [number, 'null'], minimum: 0, maximum: 1000000000}
+                billingMode: {type: string, enum: [included, prepaid, metered]}
+      responses:
+        '201':
+          description: Credential and one-time secret response
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeveloperCredentialIssuedOnce'}
+        '400': {description: Invalid credential restrictions or application binding}
+        '401': {description: ALTIL session required}
+        '403': {description: Role, organization authority, or requested scope denied}
+        '503': {description: Credential registry unavailable; no credential was issued}
+  /api/v1/api-keys/{id}/revoke:
+    put:
+      tags: [Developers]
+      summary: Revoke a credential
+      description: Requires apikeys.revoke and SUPER_ADMIN or TENANT_ADMIN for the owning organization. Revocation blocks use immediately in the current runtime.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Revoked credential metadata
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeveloperCredentialMetadata'}
+        '401': {description: ALTIL session required}
+        '404': {description: Credential not found in caller scope}
+        '503': {description: Durable revocation could not be confirmed}
+  /api/v1/api-keys/{id}:
+    delete:
+      tags: [Developers]
+      summary: Delete a credential record
+      description: Requires explicit SUPER_ADMIN role and apikeys.revoke for the owning organization. This is deletion, not archive or rotation.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Credential removed
+          content:
+            application/json:
+              schema: {type: object, required: [success], properties: {success: {type: boolean, const: true}}}
+        '401': {description: ALTIL session required}
+        '404': {description: Credential not found in caller scope}
+        '503': {description: Durable deletion could not be confirmed}
+  /api/v1/usage:
+    get:
+      tags: [Developers]
+      summary: Read organization-scoped usage and quota aggregates
+      description: Requires tenant.read. Daily success/failure, token totals and provider-share are returned as unavailable by the current handler; recorded aggregates may be absent.
+      security:
+        - BearerSession: []
+      responses:
+        '200':
+          description: Scoped stored aggregates or explicit unavailable values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chartData: {type: array, items: {type: object}}
+                  todayRequests: {type: [integer, 'null']}
+                  todaySuccessful: {type: [integer, 'null']}
+                  todayFailed: {type: [integer, 'null']}
+                  inputTokensToday: {type: [integer, 'null']}
+                  outputTokensToday: {type: [integer, 'null']}
+                  providerShare: {type: array, items: {type: object}}
+                  applicationUsage: {type: array, items: {type: object, required: [id, name, requests, quota, status], properties: {id: {type: string}, name: {type: string}, requests: {type: integer}, quota: {type: integer}, quotaPct: {type: [integer, 'null']}, status: {type: string}}}}
+                  recordedUsage: {type: [object, 'null']}
+                  recordedUsageStatus: {type: string, enum: [AVAILABLE, NO_SCOPED_ROWS]}
+                  activityWindow: {type: string}
+        '401': {description: ALTIL session required}
+        '403': {description: No organization usage scope assigned}
+  /api/v1/logs:
+    get:
+      tags: [Developers]
+      summary: Read audit and request activity within authorized organization scope
+      description: >-
+        Requires audit.read and an authorized audit role. Results for records without a known
+        application-to-organization relationship are omitted for scoped callers. Stored prompt and
+        response preview fields may be present; this handler does not establish policy-based
+        redaction, so treat preview values as potentially sensitive.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: appId, in: query, required: false, schema: {type: string}}
+        - {name: providerId, in: query, required: false, schema: {type: string}}
+        - {name: status, in: query, required: false, schema: {type: string}}
+        - {name: search, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: Authorized audit records; preview fields may contain sensitive content
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/DeveloperAuditEvent'}}
+        '401': {description: ALTIL session required}
+        '403': {description: Audit permission or role is not available}
+  /api/v1/orchestrate:
+    post:
+      tags: [Governed AI]
+      summary: Submit a legacy ALTIL orchestration request
+      description: >-
+        Existing compatibility route for governed orchestration. Prefer POST /v1/chat/completions
+        for new AI integrations. Authenticate with x-api-key or a Bearer ALTIL session. The
+        handler also accepts an API key in the JSON body for compatibility; do not use that form,
+        because secrets in request bodies may be captured by client/server diagnostics. A valid
+        API key requires read:inference. A successful request may call a configured external
+        provider, update usage/quota state, and incur provider or tenant charges. Runtime behavior
+        and persistence depend on deployment configuration; this operation has not been exercised
+        by this source audit.
+      security:
+        - ALTILKey: []
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apiKey: {type: string, writeOnly: true, description: Compatibility-only credential input. Prefer the x-api-key header.}
+                appId: {type: string}
+                capability: {type: string, default: general_ai}
+                task: {type: string}
+                model: {type: string}
+                prompt: {type: string, writeOnly: true}
+                input: {type: string, writeOnly: true}
+                simulatePrimaryFailure: {type: boolean, description: Existing failure-simulation input; do not use for production requests.}
+                simulateProviderFailure: {type: boolean, description: Existing failure-simulation input; do not use for production requests.}
+      responses:
+        '200':
+          description: Orchestration result and request metadata
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LegacyOrchestrationResult'}
+        '401': {description: Missing or invalid session/API credential}
+        '402': {description: Tenant, license, request, or spend limit prevents execution}
+        '403': {description: Credential, application, or tenant authorization denied}
+        '404': {description: Requested model is not in the ALTIL catalogue}
+        '422': {description: Policy or compliance rejected the request}
+        '429': {description: Credential rate limit exceeded}
+        '500': {description: Orchestration pipeline failure}
+        '503': {description: Provider, billing, quota, or policy readiness unavailable}
+  /api/v1/capabilities:
+    get:
+      tags: [Tenants and IAM]
+      summary: Read the source-reviewed capability inventory
+      description: >-
+        Returns a deliberately partial source-reviewed list of routes, authorization requirements,
+        scope, and implementation status. Availability is evaluated for the current ALTIL session
+        where applicable. This checkout-based inventory does not prove production deployment;
+        omitted entries are unassessed, not absent.
+      security:
+        - BearerSession: []
+      responses:
+        '200':
+          description: Capability inventory for the authenticated identity
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inventoryComplete, evidenceBasis, generatedAt, capabilities]
+                properties:
+                  inventoryComplete: {type: boolean, const: false}
+                  evidenceBasis: {type: string}
+                  generatedAt: {type: string, format: date-time}
+                  capabilities:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, domain, name, method, route, authentication, scope, status, availableToCurrentIdentity]
+                      properties:
+                        id: {type: string}
+                        domain: {type: string}
+                        name: {type: string}
+                        description: {type: string}
+                        method: {type: string}
+                        route: {type: string}
+                        authentication: {type: string, enum: [PUBLIC, ALTIL_SESSION, TENANT_API_KEY]}
+                        requiredRoles: {type: array, items: {type: string}}
+                        requiredPermissions: {type: array, items: {type: string}}
+                        scope: {type: string, enum: [PUBLIC, PLATFORM, ORGANISATION, TENANT]}
+                        status: {type: string, enum: [IMPLEMENTED, PARTIALLY_IMPLEMENTED, CONFIGURED, PLANNED, UNAVAILABLE, REQUIRES_AUTHORIZATION, NOT_ASSESSED]}
+                        ui: {type: array, items: {type: string}}
+                        source: {type: string}
+                        limitations: {type: array, items: {type: string}}
+                        availableToCurrentIdentity: {type: [boolean, 'null']}
+        '401': {description: ALTIL session required}
   /api/v1/currency/config:
     get:
       tags: [Billing]
@@ -169,6 +511,419 @@ paths:
       summary: Admin-provision a tenant, owner, hierarchy node, application and optional key
       responses:
         '201': {description: Tenant provisioned}
+  /api/v1/commercial/account-portal:
+    get:
+      tags: [Commercial foundation]
+      summary: Read an authorized commercial account portal
+      description: Operator requests require tenant.read and exactly one account identifier. A customer account user must have the single CUSTOMER_ACCOUNT_USER role and exactly one effective persisted account-IAM relationship, and must omit account identifiers; the server resolves only that linked customer/account. Organization summaries include only effective, explicit customer and technical-scope relationships in the caller's commercial scope. Financial aggregates are returned only when billing.read is independently granted and an explicit organization-to-tenant or customer-to-tenant link exists, except customer self views are limited to their explicit account link. Product catalogue visibility can use an explicit customer-owner organization without technical provisioning. Payment-intent captures are not bank-cash evidence.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: organizationId, in: query, required: false, schema: {type: string}}
+        - {name: customerId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Authorized account identity, effective relationships, and conditionally authorized financial aggregates}
+        '400': {description: Exactly one organizationId or customerId is required}
+        '401': {description: ALTIL session required}
+        '403': {description: tenant.read permission required}
+        '404': {description: Account is not visible in the caller's authorized scope}
+        '503': {description: Commercial account data is unavailable}
+  /api/v1/commercial/account-portal/profile:
+    patch:
+      tags: [Commercial foundation]
+      summary: Update allowlisted commercial account profile fields
+      description: Operator updates require tenant.write and an effective explicit organization/customer relationship in scope. Customer self-service requires an active PRIMARY_CONTACT or ACCOUNT_ADMIN identity relationship and cannot select an account. Only supported profile fields are accepted; hierarchy, IAM, tenant ownership and financial fields are rejected. Idempotency-Key is required. The account update, audit row, and idempotency result are committed atomically.
+      security: [{BearerSession: []}]
+      parameters:
+        - {name: organizationId, in: query, required: false, schema: {type: string}}
+        - {name: customerId, in: query, required: false, schema: {type: string}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: {type: string, maxLength: 180}
+                displayName: {type: string, maxLength: 180}
+                individualGivenName: {type: string, maxLength: 180}
+                individualFamilyName: {type: string, maxLength: 180}
+                companyName: {type: string, maxLength: 180}
+                contact: {type: object, description: Allowlisted contact, addresses, and notification preferences}
+      responses:
+        '200': {description: Profile change persisted and audited}
+        '400': {description: Unsupported field or invalid profile data}
+        '401': {description: ALTIL session required}
+        '403': {description: tenant.write permission required}
+        '404': {description: Account is not visible in the caller's authorized scope}
+        '409': {description: Idempotency key conflict}
+        '503': {description: Profile update could not be completed}
+  /api/v1/commercial/account-portal/identity-links:
+    post:
+      tags: [Commercial foundation]
+      summary: Bind a tenantless IAM identity to a commercial account
+      description: Requires a globally scoped SUPER_ADMIN with tenant.write, an exact single-use owner approval, and an active tenantless IAM user. The operation assigns only CUSTOMER_ACCOUNT_USER and creates no technical tenant, application, API credential, or provider access. Customer authentication must use the existing IAM login flow.
+      security: [{BearerSession: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [accountId, customerId, userId, relationshipType, approvalId, evidenceReference]
+              properties:
+                accountId: {type: string}
+                customerId: {type: string}
+                userId: {type: string}
+                relationshipType: {type: string, enum: [PRIMARY_CONTACT, ACCOUNT_ADMIN, BILLING_CONTACT, AUTHORIZED_CONTACT]}
+                approvalId: {type: string}
+                evidenceReference: {type: string, maxLength: 180}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time, nullable: true}
+      responses:
+        '201': {description: Tenantless IAM identity bound to one commercial account}
+        '400': {description: Invalid identity relationship or effective period}
+        '401': {description: ALTIL session required}
+        '403': {description: Global Super Admin and tenant.write are required}
+        '409': {description: Identity, relationship, or approval conflict}
+        '503': {description: Identity relationship could not be completed}
+  /api/v1/commercial/organizations:
+    get:
+      tags: [Commercial foundation]
+      summary: Read explicit commercial organizations in authorized scope
+      description: Commercial hierarchy comes only from commercial_organization_relationships. Tenant metadata and customer names do not establish commercial hierarchy. An explicit technical scope link and the existing IAM grant are both required for scoped access.
+      security: [{BearerSession: []}]
+      responses:
+        '200': {description: Authorized commercial organizations, explicit hierarchy edges, and directly related customers}
+        '401': {description: ALTIL session required}
+        '403': {description: tenant.read permission required}
+    post:
+      tags: [Commercial foundation]
+      summary: Create a commercial organization under an explicit parent
+      description: Requires tenant.write and authorized access to the parent organization. Requires a matching unused owner approval. Does not create a technical tenant, application, or credential. Introsoft root is seeded by migration 025. All commercial mutations require Idempotency-Key; replay returns the stored status and body, while reuse with a different request returns 409. Mutation, approval use, audit row, and idempotency completion share one database transaction.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, organizationType, parentOrganizationId, approvalId]
+              properties:
+                name: {type: string, maxLength: 180}
+                organizationType: {type: string, enum: [SUBSIDIARY, PARTNER, RESELLER]}
+                parentOrganizationId: {type: string}
+                approvalId: {type: string}
+      responses:
+        '201': {description: Commercial organization and parent relationship created}
+        '400': {description: Invalid request}
+        '403': {description: tenant.write permission or parent scope unavailable}
+        '409': {description: Approval conflict or idempotency key reused with a different request}
+  /api/v1/commercial/customers:
+    get:
+      tags: [Commercial foundation]
+      summary: Read commercial customers linked to authorized organizations
+      description: Returns only buyer records with an explicit active customer-to-organization relationship in the caller's independently authorized scope.
+      security: [{BearerSession: []}]
+      responses:
+        '200': {description: Commercial buyer records}
+        '401': {description: ALTIL session required}
+        '403': {description: tenant.read permission required}
+    post:
+      tags: [Commercial foundation]
+      summary: Create a commercial customer without technical provisioning
+      description: Requires tenant.write, authorized organization scope, and a matching unused owner approval. Customer creation does not create a tenant, application, API key, or commercial account. All commercial mutations require Idempotency-Key; replay returns the stored result and reuse with a different request returns 409. Mutation, approval use, audit row, and idempotency completion share one database transaction.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerType, displayName, organizationId, approvalId]
+              properties:
+                customerType: {type: string, enum: [INDIVIDUAL, COMPANY]}
+                displayName: {type: string, maxLength: 180}
+                companyName: {type: string, maxLength: 180}
+                individualGivenName: {type: string, maxLength: 100}
+                individualFamilyName: {type: string, maxLength: 100}
+                organizationId: {type: string}
+                approvalId: {type: string}
+                contact:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    email: {type: string, maxLength: 254}
+                    phone: {type: string, maxLength: 254}
+                    billingEmail: {type: string, maxLength: 254}
+                    address:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        line1: {type: string, maxLength: 160}
+                        line2: {type: string, maxLength: 160}
+                        city: {type: string, maxLength: 160}
+                        region: {type: string, maxLength: 160}
+                        postalCode: {type: string, maxLength: 160}
+                        country: {type: string, maxLength: 160}
+      responses:
+        '201': {description: Commercial customer and explicit customer-organization relationship created}
+        '400': {description: Invalid customer type or missing required variant data}
+        '403': {description: tenant.write permission or organization scope unavailable}
+        '409': {description: Approval conflict or idempotency key reused with a different request}
+  /api/v1/commercial/accounts:
+    post:
+      tags: [Commercial foundation]
+      summary: Create a commercial account for an authorized customer
+      description: Requires tenant.write, an explicit customer-organization relationship in authorized scope, and a matching unused owner approval. The customer and account remain distinct records. All commercial mutations require Idempotency-Key; replay returns the stored result and reuse with a different request returns 409. Mutation, approval use, audit row, and idempotency completion share one database transaction.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, accountName, approvalId]
+              properties:
+                customerId: {type: string}
+                accountName: {type: string, maxLength: 180}
+                legalEntityId: {type: string}
+                approvalId: {type: string}
+      responses:
+        '201': {description: Commercial account created}
+        '400': {description: Invalid account or legal entity ownership}
+        '403': {description: tenant.write permission or customer scope unavailable}
+        '409': {description: Approval conflict or idempotency key reused with a different request}
+  /api/v1/commercial/evidence-approvals:
+    post:
+      tags: [Commercial foundation]
+      summary: Record a one-use owner approval for commercial creation
+      description: Requires an explicitly global SUPER_ADMIN grant and tenant.write permission. The approval is scoped to one organization, operation, optional customer, and for technical scope or Phase B1 catalogue operations the exact target identifiers and normalized requested details. It can be consumed once. All commercial mutations require Idempotency-Key; replay returns the stored result and reuse with a different request returns 409.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, operation, evidenceReference, reason]
+              properties:
+                organizationId: {type: string}
+                operation: {type: string, enum: [ORGANIZATION_CREATE, CUSTOMER_CREATE, LEGAL_ENTITY_CREATE, ACCOUNT_CREATE, ORGANIZATION_TENANT_SCOPE_CREATE, PRODUCT_RELATIONSHIP_CREATE, RESELLER_PRODUCT_AUTHORIZATION_CREATE, RESELLER_PRODUCT_PRICE_CREATE]}
+                customerId: {type: string}
+                targetTenantId: {type: string}
+                targetOrganizationId: {type: string, description: Required for reseller authorization and pricing approvals.}
+                targetProductId: {type: string, description: Required for Phase B1 product approval.}
+                requestedDetails: {type: object, description: Exact allowlisted operation fields; excludes secrets and unrelated personal data.}
+                scopeLinkType: {type: string, enum: [PRIMARY, PRODUCTION, SANDBOX, DEVELOPMENT]}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time, nullable: true}
+                evidenceReference: {type: string, maxLength: 180}
+                reason: {type: string, maxLength: 500}
+      responses:
+        '201': {description: Owner approval recorded for one use}
+        '403': {description: Global SUPER_ADMIN grant and tenant.write required}
+        '409': {description: Idempotency key reused with a different request}
+  /api/v1/commercial/organization-tenant-scopes:
+    post:
+      tags: [Commercial foundation]
+      summary: Link a technical tenant to one commercial organization
+      description: Requires SUPER_ADMIN, tenant.write, a GLOBAL Super Admin grant, technical tenant authorization, and an exact one-use approval. Organizations may link many tenants; a tenant can have only one overlapping active/effective organization owner. Overlap checks are serialized by locking the technical tenant row. Commercial links do not grant IAM access. All commercial mutations require Idempotency-Key.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, tenantId, scopeLinkType, effectiveFrom, approvalId]
+              properties:
+                organizationId: {type: string}
+                tenantId: {type: string}
+                scopeLinkType: {type: string, enum: [PRIMARY, PRODUCTION, SANDBOX, DEVELOPMENT]}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time, nullable: true}
+                approvalId: {type: string}
+      responses:
+        '201': {description: Effective-dated commercial organization to technical tenant link created}
+        '400': {description: Invalid link type or effective period}
+        '403': {description: Required Super Admin or tenant.write authorization unavailable}
+        '404': {description: Organization or tenant is outside authorized scope}
+        '409': {description: Approval unavailable, conflicting scope interval, or changed idempotency request}
+  /api/v1/commercial/organizations/{organizationId}/technical-scopes:
+    get:
+      tags: [Commercial foundation]
+      summary: Read explicitly linked technical tenant scopes for an organization
+      parameters:
+        - {name: organizationId, in: path, required: true, schema: {type: string}}
+      security: [{BearerSession: []}]
+      responses:
+        '200': {description: Technical scopes linked to the authorized commercial organization}
+        '404': {description: Organization is outside authorized scope}
+  /api/v1/commercial/catalogue:
+    get:
+      tags: [Commercial catalogue]
+      summary: Read the existing billing product catalogue with relationships and separate resale authority
+      description: Requires billing.read and an explicitly authorized organizationId. Product visibility does not grant resale rights; resaleAuthorized is true only for an active, effective persisted product authorization.
+      parameters:
+        - {name: organizationId, in: query, required: true, schema: {type: string}}
+      security: [{BearerSession: []}]
+      responses:
+        '200': {description: Existing billing products, effective product relationships and per-organization resale flags}
+        '404': {description: Organization is outside authorized scope}
+  /api/v1/commercial/catalogue/relationships:
+    post:
+      tags: [Commercial catalogue]
+      summary: Create an approved product relationship or bundle membership
+      description: Uses existing billing_products identities. BUNDLE_MEMBER is stored as a product relationship and requires a bundle product parent plus a non-bundle member. Recommendations and upgrade guidance require an explanation. Requires GLOBAL Super Admin, tenant.write, exact one-use owner approval, Idempotency-Key, and one atomic transaction for relationship, approval use, audit and idempotency result.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceProductId, targetProductId, relationshipType, effectiveFrom, approvalId]
+              properties:
+                sourceProductId: {type: string}
+                targetProductId: {type: string}
+                relationshipType: {type: string, enum: [REQUIRES, RECOMMENDS, COMPATIBLE_WITH, INCOMPATIBLE_WITH, UPGRADE_TO, DOWNGRADE_TO, ADD_ON, BUNDLE_MEMBER, ALTERNATIVE, REPLACEMENT, FOLLOW_ON]}
+                quantity: {type: number, exclusiveMinimum: 0, default: 1}
+                explanation: {type: string, maxLength: 500}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time, nullable: true}
+                approvalId: {type: string}
+      responses:
+        '201': {description: Product relationship or bundle membership created}
+        '400': {description: Invalid relationship, bundle definition or effective period}
+        '409': {description: Conflicting relationship, approval or idempotency key}
+  /api/v1/commercial/reseller-authorizations:
+    get:
+      tags: [Commercial catalogue]
+      summary: Read reseller product authorizations for an authorized organization
+      parameters:
+        - {name: organizationId, in: query, required: true, schema: {type: string}}
+      security: [{BearerSession: []}]
+      responses:
+        '200': {description: Explicit owner-to-reseller product grants and effective status}
+        '404': {description: Organization is outside authorized scope}
+    post:
+      tags: [Commercial catalogue]
+      summary: Authorize a directly related reseller to sell one product
+      description: Requires tenant.write in the owner scope, an explicit active direct reseller relationship covering the entire authorization period, an Introsoft-descendant owner, exact one-use global owner approval, and Idempotency-Key. This grant does not create IAM access or expose unrelated customers.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ownerOrganizationId, resellerOrganizationId, productId, effectiveFrom, approvalId]
+              properties:
+                ownerOrganizationId: {type: string}
+                resellerOrganizationId: {type: string}
+                productId: {type: string}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time, nullable: true}
+                approvalId: {type: string}
+      responses:
+        '201': {description: Effective-dated product resale authority created}
+        '403': {description: tenant.write or required scope unavailable}
+        '409': {description: Relationship, approval, interval or idempotency conflict}
+  /api/v1/commercial/reseller-pricing:
+    get:
+      tags: [Commercial catalogue]
+      summary: Read effective reseller prices for an authorized reseller organization
+      parameters:
+        - {name: resellerOrganizationId, in: query, required: true, schema: {type: string}}
+        - {name: ownerOrganizationId, in: query, required: false, schema: {type: string}, description: Optional owner filter; the caller must be authorized for the owner or reseller organization.}
+      security: [{BearerSession: []}]
+      responses:
+        '200': {description: Current authorized reseller cost, minimum customer price and explainable recommended price}
+        '404': {description: Requested price scope is not authorized}
+    post:
+      tags: [Commercial catalogue]
+      summary: Create an approved effective reseller price version
+      description: Price currency must equal the product currency; no FX is inferred. Reseller cost, minimum customer price and recommended markup are separate from the provider inference cost markup on billing_products. Requires an active matching resale grant, tenant.write, exact one-use owner approval, Idempotency-Key, and atomic audit.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ownerOrganizationId, resellerOrganizationId, productId, currency, resellerCost, minimumCustomerPrice, recommendedMarkupPercent, effectiveFrom, approvalId]
+              properties:
+                ownerOrganizationId: {type: string}
+                resellerOrganizationId: {type: string}
+                productId: {type: string}
+                currency: {type: string, pattern: '^[A-Z]{3}$'}
+                resellerCost: {type: number, minimum: 0}
+                minimumCustomerPrice: {type: number, minimum: 0}
+                recommendedMarkupPercent: {type: number, minimum: 0, maximum: 500}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time, nullable: true}
+                approvalId: {type: string}
+      responses:
+        '201': {description: Effective-dated reseller pricing version created}
+        '400': {description: Invalid price, currency or effective period}
+        '409': {description: Authorization, price interval, approval or idempotency conflict}
+  /api/v1/commercial/legal-entities:
+    post:
+      tags: [Commercial foundation]
+      summary: Create a customer legal entity
+      description: Requires tenant.write, an explicit customer relationship in scope, and matching unused owner approval. Registration references are stored but not returned by the read endpoint. All commercial mutations require Idempotency-Key; replay returns the stored result and reuse with a different request returns 409. Mutation, approval use, audit row, and idempotency completion share one database transaction.
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 200}}
+      security: [{BearerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, legalName, jurisdiction, approvalId]
+              properties:
+                customerId: {type: string}
+                legalName: {type: string, maxLength: 180}
+                jurisdiction: {type: string, pattern: '^[A-Z]{2}$'}
+                registrationReference: {type: string, maxLength: 160}
+                approvalId: {type: string}
+      responses:
+        '201': {description: Commercial legal entity created}
+        '400': {description: Invalid legal entity details}
+        '409': {description: Matching owner approval unavailable or already used}
+  /api/v1/commercial/customers/{customerId}/legal-entities:
+    get:
+      tags: [Commercial foundation]
+      summary: List legal entities for an authorized commercial customer
+      parameters:
+        - {name: customerId, in: path, required: true, schema: {type: string}}
+      security: [{BearerSession: []}]
+      responses:
+        '200': {description: Legal entity metadata without registration references}
+        '404': {description: Customer is outside authorized scope}
   /api/v1/customers/{id}/users:
     post:
       tags: [Tenants and IAM]
@@ -245,37 +1000,217 @@ paths:
       summary: Prepare reviewable invoice drafts for due application licences
       responses:
         '200': {description: Due billing cycles prepared}
-  /v1/models:
+  /api/v1/models:
     get:
       tags: [Governed AI]
-      summary: List live, available ALTIL model identifiers
+      summary: List routeable OpenRouter models
+      description: Returns only live ALTIL registry models routed through OpenRouter. API-key callers require the currently enforced `read:inference` scope. No upstream catalogue refresh is triggered by this read.
+      security:
+        - ALTILKey: []
+        - BearerSession: []
       responses:
-        '200': {description: Model catalog}
-  /v1/chat/completions:
+        '200':
+          description: OpenAI-compatible model list from the ALTIL registry
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [object, data]
+                properties:
+                  object: {type: string, const: list}
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, object, created, owned_by]
+                      properties:
+                        id: {type: string}
+                        object: {type: string, const: model}
+                        created: {type: integer}
+                        owned_by: {type: string}
+                        name: {type: string}
+                        context_length: {type: integer}
+                        capabilities: {type: array, items: {type: string}}
+        '401': {description: API key or session is required}
+        '403': {description: Tenant scope or inference permission denied}
+        '429': {description: Key rate limit reached}
+        '503': {description: OpenRouter runtime is not configured}
+  /api/v1/gateway/usage:
+    get:
+      tags: [Governed AI]
+      summary: Read aggregate activity for the caller's tenant
+      description: Requires an API key with the currently enforced read:inference scope or a tenant-scoped ALTIL session. Does not expose another tenant's activity.
+      security:
+        - ALTILKey: []
+        - BearerSession: []
+      responses:
+        '200':
+          description: Tenant-scoped inference counters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenantId: {type: string}
+                  requests: {type: integer}
+                  inputTokens: {type: integer}
+                  outputTokens: {type: integer}
+                  byCapability: {type: object, additionalProperties: {type: integer}}
+                  byApplication: {type: object, additionalProperties: {type: integer}}
+                  byModel: {type: object, additionalProperties: {type: integer}}
+                  lastRequestAt: {type: [string, 'null'], format: date-time}
+        '401': {description: API key or session required}
+        '403': {description: Tenant scope or inference permission denied}
+        '429': {description: Key rate limit reached}
+  /api/v1/chat/completions:
     post:
       tags: [Governed AI]
-      summary: OpenAI-compatible governed chat completion
-      description: Requires tenant-scoped key; policy, application, rate, spend and licence quotas are checked before provider routing.
+      summary: Create an ALTIL-governed OpenAI-compatible chat completion
+      description: The selected model must be present and routeable in the ALTIL model registry through OpenRouter. Existing application binding, tenant isolation, rate/spend/licence quotas, policy and compliance checks apply. OpenRouter credentials remain server-side. Streaming relays upstream SSE progressively. When provider usage is unavailable, ALTIL's existing usage ledger uses estimates and the non-streaming response marks them with `altil.usage_estimated=true`.
+      security:
+        - ALTILKey: []
+        - BearerSession: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [messages]
+              required: [model, messages]
+              additionalProperties: false
               properties:
-                model: {type: string, default: altil-auto}
-                messages: {type: array, items: {type: object}}
-                app_id: {type: string}
-                stream: {type: boolean}
+                model: {type: string, description: Exact model ID returned by GET /api/v1/models}
+                messages:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [role, content]
+                    properties:
+                      role: {type: string, enum: [system, user, assistant]}
+                      content:
+                        oneOf:
+                          - {type: string}
+                          - {type: array, items: {type: object, required: [type, text], properties: {type: {type: string, enum: [text, input_text]}, text: {type: string}}}}
+                stream: {type: boolean, default: false}
+                temperature: {type: number, minimum: 0, maximum: 2}
+                top_p: {type: number, minimum: 0, maximum: 1}
+                max_tokens: {type: integer, minimum: 1, maximum: 131072}
+                max_completion_tokens: {type: integer, minimum: 1, maximum: 131072}
+                stop: {oneOf: [{type: string}, {type: array, maxItems: 4, items: {type: string}}]}
+                app_id: {type: string, description: Optional ALTIL application binding; must match the API key's application}
+                capability: {type: string, description: Optional existing ALTIL capability selector}
+                metadata: {type: object, additionalProperties: true}
+                stream_options: {type: object, additionalProperties: true}
       responses:
-        '200': {description: Governed completion}
-        '401': {description: API key rejected}
+        '200':
+          description: OpenAI-compatible chat completion JSON or text/event-stream when stream=true
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, object, created, model, choices, usage]
+                properties:
+                  id: {type: string}
+                  object: {type: string, const: chat.completion}
+                  created: {type: integer}
+                  model: {type: string}
+                  choices: {type: array, items: {type: object, properties: {index: {type: integer}, message: {type: object, properties: {role: {type: string}, content: {type: string}}}, finish_reason: {type: string}}}}
+                  usage: {type: object, properties: {prompt_tokens: {type: integer}, completion_tokens: {type: integer}, total_tokens: {type: integer}}}
+                  altil: {type: object, properties: {request_id: {type: string}, usage_reported: {type: boolean}, usage_estimated: {type: boolean}}}
+            text/event-stream:
+              schema: {type: string, description: Upstream OpenAI-compatible SSE chunks relayed progressively, including data: [DONE]}
+        '400': {description: Invalid request or unsupported parameter/content}
+        '401': {description: API key or session rejected}
         '402': {description: Tenant, licence, request or spend quota suspended}
+        '403': {description: Tenant, key, application, scope or policy boundary denied}
+        '404': {description: Model is not present or routeable in the ALTIL registry}
+        '422': {description: Request blocked by a policy or compliance guardrail}
+        '429': {description: Key rate limit reached}
+        '502': {description: OpenRouter provider failure or invalid upstream response}
+        '503': {description: Fail-closed guardrail or provider availability error}
+  /api/v1/responses:
+    post:
+      tags: [Governed AI]
+      summary: Responses-style completion through existing ALTIL compatibility path
+      description: Preserves the existing Responses compatibility behavior. Request is governed by the same tenant, application, quota, policy and compliance checks. Full Responses API feature parity is not claimed.
+      security:
+        - ALTILKey: []
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                model: {type: string}
+                input: {oneOf: [{type: string}, {type: array, items: {type: object}}]}
+                stream: {type: boolean, description: Compatibility mode only; incremental Responses streaming is not guaranteed}
+                app_id: {type: string}
+                metadata: {type: object, additionalProperties: true}
+      responses:
+        '200': {description: Responses-style completion in the existing compatibility shape}
+        '400': {description: Invalid request}
+        '401': {description: API key or session rejected}
+        '402': {description: Tenant or licence quota denied}
         '403': {description: Tenant, key, application or policy boundary denied}
         '422': {description: Request blocked by a guardrail}
-        '429': {description: Key rate limit reached}
-        '503': {description: Fail-closed guardrail or provider availability error}
+        '502': {description: Upstream provider failure}
+        '503': {description: Provider availability error}
+  /v1/models:
+    get:
+      tags: [Governed AI]
+      summary: Alias for GET /api/v1/models
+      security:
+        - ALTILKey: []
+        - BearerSession: []
+      responses:
+        '200': {description: OpenAI-compatible model list from the ALTIL registry}
+        '401': {description: API key or session required}
+        '403': {description: Tenant or scope denied}
+        '503': {description: OpenRouter runtime is not configured}
+  /v1/chat/completions:
+    post:
+      tags: [Governed AI]
+      summary: Alias for POST /api/v1/chat/completions
+      description: Uses the same OpenAI-compatible request schema, authentication, policy checks, response formats and errors as the /api/v1 route.
+      security:
+        - ALTILKey: []
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/paths/~1api~1v1~1chat~1completions/post/requestBody/content/application~1json/schema'}
+      responses:
+        '200': {description: OpenAI-compatible JSON completion or progressive SSE stream}
+        '400': {description: Invalid request}
+        '401': {description: API key or session rejected}
+        '403': {description: Tenant, key, application or policy boundary denied}
+        '404': {description: Model unavailable}
+        '422': {description: Policy or compliance denial}
+        '502': {description: Upstream provider failure}
+        '503': {description: Provider unavailable}
+  /v1/responses:
+    post:
+      tags: [Governed AI]
+      summary: Alias for POST /api/v1/responses
+      security:
+        - ALTILKey: []
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/paths/~1api~1v1~1responses/post/requestBody/content/application~1json/schema'}
+      responses:
+        '200': {description: Existing Responses compatibility output}
+        '401': {description: API key or session rejected}
+        '403': {description: Tenant, key, application or policy boundary denied}
+        '502': {description: Upstream provider failure}
   /api/v1/communications/channels:
     get:
       tags: [Communications]
@@ -701,5 +1636,124 @@ components:
     ALTILKey: {type: apiKey, in: header, name: x-api-key}
     BearerSession: {type: http, scheme: bearer, bearerFormat: ALTIL session}
     DeviceSecret: {type: apiKey, in: header, name: x-device-secret}
+  schemas:
+    DeveloperApplication:
+      type: object
+      required: [id, name, status, environment, allowedCapabilities, createdAt, updatedAt]
+      properties:
+        id: {type: string}
+        customerId: {type: [string, 'null']}
+        customerName: {type: string}
+        parentApplicationId: {type: [string, 'null']}
+        applicationType: {type: string, enum: [application, sub_application, function]}
+        functionIdentifier: {type: [string, 'null']}
+        appIdentifier: {type: string}
+        name: {type: string}
+        description: {type: string}
+        status: {type: string, enum: [active, suspended, revoked]}
+        environment: {type: string, enum: [development, staging, production]}
+        allowedCapabilities: {type: array, items: {type: string}}
+        rateLimitRpm: {type: integer}
+        quotaMonthlyRequests: {type: integer}
+        quotaUsedRequests: {type: integer}
+        assignedPolicyIds: {type: array, items: {type: string}}
+        contactEmail: {type: string}
+        createdAt: {type: string}
+        updatedAt: {type: string}
+    DeveloperCredentialMetadata:
+      type: object
+      description: Credential metadata only. Secret and digest are never returned by list/revoke operations.
+      required: [id, appId, name, prefix, status, createdAt, rateLimitRpm, scopes]
+      properties:
+        id: {type: string}
+        customerId: {type: [string, 'null']}
+        appId: {type: string}
+        appName: {type: string}
+        name: {type: string}
+        prefix: {type: string}
+        status: {type: string, enum: [active, revoked, expired]}
+        createdAt: {type: string}
+        expiresAt: {type: [string, 'null'], format: date-time}
+        lastUsedAt: {type: [string, 'null'], format: date-time}
+        rateLimitRpm: {type: integer}
+        ipWhitelist: {type: array, items: {type: string}}
+        scopes:
+          type: array
+          description: Existing records may contain legacy values; only read:inference is currently grantable and runtime-enforced.
+          items: {type: string}
+        billingMode: {type: string, enum: [included, prepaid, metered]}
+        monthlyRequestLimit: {type: [integer, 'null']}
+        monthlySpendLimitUsd: {type: [number, 'null']}
+    DeveloperCredentialIssuedOnce:
+      allOf:
+        - {$ref: '#/components/schemas/DeveloperCredentialMetadata'}
+        - type: object
+          required: [key]
+          properties:
+            key: {type: string, writeOnly: true, description: Full credential secret; returned only at creation and never retrievable afterward}
+    DeveloperAuditEvent:
+      type: object
+      description: Audit metadata. Preview values are returned as stored and are not guaranteed to be policy-redacted by this route.
+      required: [id, timestamp, appId, appName, capability, providerName, modelIdentifier, durationSeconds, status]
+      properties:
+        id: {type: string}
+        timestamp: {type: string}
+        appId: {type: string}
+        appName: {type: string}
+        apiKeyPrefix: {type: string}
+        requestType: {type: string}
+        capability: {type: string}
+        providerId: {type: string}
+        providerName: {type: string}
+        modelId: {type: string}
+        modelIdentifier: {type: string}
+        durationSeconds: {type: number}
+        status: {type: string}
+        fallbackAttempted: {type: boolean}
+        fallbackProviderName: {type: string}
+        fallbackModelIdentifier: {type: string}
+        inputTokens: {type: integer}
+        outputTokens: {type: integer}
+        tokensConsumed: {type: integer}
+        costEstimated: {type: number}
+        policyApplied: {type: string}
+        policyChecksPassed: {type: boolean}
+        policyViolations: {type: array, items: {type: string}}
+        piiScrubbed: {type: boolean}
+        sanitizedPromptPreview: {type: string}
+        sanitizedResponsePreview: {type: string}
+        promptPreview: {type: string}
+        responsePreview: {type: string}
+        clientIp: {type: string}
+    LegacyOrchestrationResult:
+      type: object
+      required: [id, requestId, timestamp, capability, executedProvider, executedModel, status]
+      properties:
+        id: {type: string}
+        requestId: {type: string}
+        timestamp: {type: string}
+        application: {type: object, properties: {id: {type: string}, name: {type: string}}}
+        capability: {type: string}
+        executedProvider: {type: string}
+        selectedProvider: {type: string}
+        executedModel: {type: string}
+        modelIdentifier: {type: string}
+        executedModelId: {type: string}
+        selectedModel: {type: string}
+        selectedModelId: {type: string}
+        fallbackTriggered: {type: boolean}
+        knowledgeContextUsed: {type: boolean}
+        tenantContextSignalsUsed: {type: boolean}
+        knowledgeSources: {type: array, items: {type: object, properties: {id: {type: string}, title: {type: string}, tags: {type: array, items: {type: string}}}}}
+        durationSeconds: {type: number}
+        tokensConsumed: {type: integer}
+        totalTokens: {type: object, properties: {input: {type: integer}, output: {type: integer}}}
+        policyPassed: {type: boolean}
+        piiScrubbed: {type: boolean}
+        policyChecks: {type: array, items: {type: object}}
+        steps: {type: array, items: {type: object}}
+        output: {type: string}
+        response: {type: string}
+        status: {type: string}
 
 

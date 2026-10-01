@@ -1,4 +1,5 @@
 import { InfoButton } from './InfoButton';
+import { apiFetch } from '../utils/apiFetch';
 import React, { useState, useEffect } from 'react';
 import {
   Shield,
@@ -104,12 +105,12 @@ export function TrustFabricView() {
     setLoading(true);
     try {
       const [tRes, pRes, iRes, dRes, cRes, eRes] = await Promise.all([
-        fetch('/api/v1/trust/tenants').then(r => r.json()),
-        fetch('/api/v1/trust/principals').then(r => r.json()),
-        fetch('/api/v1/trust/identities').then(r => r.json()),
-        fetch('/api/v1/trust/devices').then(r => r.json()),
-        fetch('/api/v1/trust/credentials').then(r => r.json()),
-        fetch('/api/v1/trust/evidence').then(r => r.json()),
+        apiFetch('/api/v1/trust/tenants').then(r => r.json()),
+        apiFetch('/api/v1/trust/principals').then(r => r.json()),
+        apiFetch('/api/v1/trust/identities').then(r => r.json()),
+        apiFetch('/api/v1/trust/devices').then(r => r.json()),
+        apiFetch('/api/v1/trust/credentials').then(r => r.json()),
+        apiFetch('/api/v1/trust/evidence').then(r => r.json()),
       ]);
       setTenants(Array.isArray(tRes) ? tRes : []);
       setPrincipals(Array.isArray(pRes) ? pRes : []);
@@ -127,7 +128,7 @@ export function TrustFabricView() {
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/v1/trust/tenants', {
+      const res = await apiFetch('/api/v1/trust/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newTenantName, domain: newTenantDomain })
@@ -147,7 +148,7 @@ export function TrustFabricView() {
   const handleCreateCredential = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/v1/trust/credentials', {
+      const res = await apiFetch('/api/v1/trust/credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenantId: newCredTenantId, principalId: newCredPrincipalId, credentialType: newCredType })

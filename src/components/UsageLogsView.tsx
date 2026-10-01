@@ -45,6 +45,7 @@ interface UsageLogsViewProps {
   models: AIModel[];
   selectedLogToInspect?: AuditLog | null;
   onCloseInspectModal?: () => void;
+  initialSection?: 'analytics' | 'logs';
 }
 
 export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
@@ -54,9 +55,10 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
   providers,
   models,
   selectedLogToInspect,
-  onCloseInspectModal
+  onCloseInspectModal,
+  initialSection = 'analytics'
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'analytics' | 'logs'>('analytics');
+  const [activeSubTab, setActiveSubTab] = useState<'analytics' | 'logs'>(initialSection);
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
   const [logFilterApp, setLogFilterApp] = useState('all');
   const [logFilterStatus, setLogFilterStatus] = useState('all');
@@ -103,7 +105,9 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
       log.appName.toLowerCase().includes(searchLogQuery.toLowerCase()) ||
       log.capability.toLowerCase().includes(searchLogQuery.toLowerCase()) ||
       log.modelIdentifier.toLowerCase().includes(searchLogQuery.toLowerCase()) ||
-      (log.providerName && log.providerName.toLowerCase().includes(searchLogQuery.toLowerCase()));
+      (log.providerName && log.providerName.toLowerCase().includes(searchLogQuery.toLowerCase())) ||
+      [log.actorEmail, log.actorId, log.tenantId, log.organizationId, log.requestId, log.testRunId, log.action, log.eventCategory, log.resourceType, log.resourceId, log.denialReason].some(value => String(value || '').toLowerCase().includes(searchLogQuery.toLowerCase())) ||
+      (log.localEvent && `${log.localEvent.actor} ${log.localEvent.tenantId} ${log.localEvent.route} ${log.localEvent.detail}`.toLowerCase().includes(searchLogQuery.toLowerCase()));
     return matchesApp && matchesStatus && matchesSearch;
   });
 
@@ -366,6 +370,11 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
       ) : (
         /* Live Audit Logs Stream */
         <div className="space-y-4">
+          {auditLogs.some(log => log.environment === 'local-test' || log.localEvent?.source === 'LOCAL_TEST') && (
+            <div className="rounded border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
+              <strong>TEST · LOCAL E2E.</strong> Events use the shared ALTIL event model and are persisted in the isolated test database and local structured logs. Request bodies, credentials, and query strings are not recorded.
+            </div>
+          )}
           {/* Filter Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded bg-[#141414] border border-[#222222] text-xs">
             <div className="relative">
@@ -418,13 +427,14 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                 <thead>
                   <tr className="border-b border-[#222222] bg-[#141414] text-[#666666] text-[10px] uppercase tracking-wider">
                     <th className="py-3 px-4 font-semibold">TIMESTAMP</th>
-                    <th className="py-3 px-4 font-semibold">APPLICATION</th>
-                    <th className="py-3 px-4 font-semibold">TASK / CAPABILITY</th>
-                    <th className="py-3 px-4 font-semibold">PROVIDER</th>
-                    <th className="py-3 px-4 font-semibold">MODEL</th>
-                    <th className="py-3 px-4 font-semibold">TOKENS</th>
-                    <th className="py-3 px-4 font-semibold">DURATION</th>
-                    <th className="py-3 px-4 font-semibold">STATUS</th>
+                    <th className="py-3 px-4 font-semibold">ENVIRONMENT</th>
+                    <th className="py-3 px-4 font-semibold">TEST RUN ID</th>
+                    <th className="py-3 px-4 font-semibold">ACTOR</th>
+                    <th className="py-3 px-4 font-semibold">CATEGORY / ACTION</th>
+                    <th className="py-3 px-4 font-semibold">RESOURCE</th>
+                    <th className="py-3 px-4 font-semibold">ORG / TENANT</th>
+                    <th className="py-3 px-4 font-semibold">OUTCOME</th>
+                    <th className="py-3 px-4 font-semibold">REQUEST ID</th>
                     <th className="py-3 px-4 font-semibold text-right">INSPECT</th>
                   </tr>
                 </thead>
@@ -438,26 +448,12 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                       <td className="py-3 px-4 text-[11px] text-[#666666] whitespace-nowrap">
                         {log.timestamp}
                       </td>
-                      <td className="py-3 px-4 font-bold text-white font-sans">
-                        {log.appName}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#0a0a0a] text-blue-300 border border-[#222222]">
-                          {log.capability}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-[#888888]">
-                        {log.providerName || 'ALTIL Gateway'}
-                      </td>
-                      <td className="py-3 px-4 text-[#666666] text-[11px]">
-                        {log.modelIdentifier}
-                      </td>
-                      <td className="py-3 px-4 text-[#888888]">
-                        {log.tokensConsumed.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 text-[#888888]">
-                        {log.durationSeconds}s
-                      </td>
+                      <td className="py-3 px-4 text-amber-200">{log.environment === 'local-test' ? 'TEST · LOCAL' : log.environment?.toUpperCase() || 'UNKNOWN'}</td>
+                      <td className="py-3 px-4 text-[11px] text-amber-200">{log.testRunId || '—'}</td>
+                      <td className="py-3 px-4 text-[#dddddd]">{log.actorEmail || log.actorId || 'System'}</td>
+                      <td className="py-3 px-4"><div className="text-blue-300">{log.eventCategory || 'APPLICATION_LOG'}</div><div className="text-[#aaaaaa]">{log.action || log.capability}</div></td>
+                      <td className="py-3 px-4 text-[#bbbbbb]">{[log.resourceType, log.resourceId].filter(Boolean).join(' · ') || '—'}</td>
+                      <td className="py-3 px-4 text-[#bbbbbb]">{log.organizationId || log.tenantId || '—'}</td>
                       <td className="py-3 px-4">
                         <span
                           className={`text-[10px] font-mono flex items-center gap-1 ${
@@ -471,9 +467,10 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                           }`}
                         >
                           <span>●</span>
-                          <span>{log.status}</span>
+                          <span>{log.outcome || log.status}</span>
                         </span>
                       </td>
+                      <td className="py-3 px-4 text-[#777777]">{log.requestId || '—'}</td>
                       <td className="py-3 px-4 text-right">
                         <button
                           onClick={e => {
@@ -487,6 +484,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                       </td>
                     </tr>
                   ))}
+                  {!filteredLogs.length && <tr><td className="px-4 py-8 text-center text-[#777777]" colSpan={10}>No persisted events match this view.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -523,6 +521,30 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
               </button>
             </div>
 
+            {inspectingLog.action || inspectingLog.localEvent ? (
+              <div className="space-y-3 text-xs">
+                <div className="rounded border border-amber-500/30 bg-amber-500/10 p-3 text-amber-100">
+                  {inspectingLog.environment === 'local-test' ? 'TEST · LOCAL E2E persisted event.' : `${inspectingLog.environment || 'Unknown'} persisted event.`} Sensitive request bodies and credentials are excluded.
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    ['Environment', inspectingLog.environment || 'Unknown'], ['Test Run ID', inspectingLog.testRunId || 'Not applicable'],
+                    ['Actor', inspectingLog.actorEmail || inspectingLog.actorId || 'System'], ['Event category', inspectingLog.eventCategory || 'Unknown'],
+                    ['Action', inspectingLog.action || inspectingLog.capability], ['Resource', [inspectingLog.resourceType, inspectingLog.resourceId].filter(Boolean).join(' / ') || '—'],
+                    ['Tenant / organization', inspectingLog.organizationId || inspectingLog.tenantId || 'None'], ['Request / correlation ID', inspectingLog.requestId || '—'],
+                    ['Outcome / status', `${inspectingLog.outcome || inspectingLog.status} / ${inspectingLog.statusCode ?? '—'}`],
+                    ['Required permission', inspectingLog.requiredPermission || '—'], ['Actual scope', inspectingLog.actualScope || '—'],
+                    ['Denial reason', inspectingLog.denialReason || '—'], ['Detail', inspectingLog.localEvent?.detail || '—'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="p-2.5 rounded bg-[#0a0a0a] border border-[#222222]">
+                      <div className="text-[10px] text-[#666666]">{label}</div>
+                      <div className="text-[#e5e5e5] mt-0.5 break-all">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+            <>
             {/* Status & Key Parameters */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               <div className="p-2.5 rounded bg-[#0a0a0a] border border-[#222222]">
@@ -552,9 +574,11 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                 {inspectingLog.promptPreview || 'Prompt content masked by enterprise compliance policy.'}
               </div>
             </div>
+            </>
+            )}
 
             {/* Response Preview */}
-            {inspectingLog.responsePreview && (
+            {!inspectingLog.action && !inspectingLog.localEvent && inspectingLog.responsePreview && (
               <div>
                 <div className="text-[10px] font-bold text-[#888888] uppercase tracking-wider mb-1">
                   Model Output Preview
@@ -566,7 +590,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
             )}
 
             {/* Governance Checks */}
-            <div>
+            {!inspectingLog.action && !inspectingLog.localEvent && <div>
               <div className="text-[10px] font-bold text-[#888888] uppercase tracking-wider mb-1.5">
                 ALTIL Governance Checks Applied
               </div>
@@ -584,7 +608,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                   <span>Telemetry dispatched to immutable audit ledger</span>
                 </div>
               </div>
-            </div>
+            </div>}
 
             <div className="pt-2 border-t border-[#222222] flex justify-end">
               <button

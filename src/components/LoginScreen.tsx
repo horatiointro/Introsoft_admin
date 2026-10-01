@@ -18,7 +18,7 @@ async function readAuthResponse(response: Response) {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('horatio.huxham@gmail.com');
+  const [email, setEmail] = useState(import.meta.env.BASE_URL === '/admin-test/' ? 'supertest@introsoft.co.za' : 'horatio.huxham@gmail.com');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [mfaCode, setMfaCode] = useState(import.meta.env.BASE_URL === '/admin-test/' ? '000000' : '849201');

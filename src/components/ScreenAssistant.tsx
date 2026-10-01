@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Bot, LoaderCircle, Send, Sparkles, X } from 'lucide-react';
 import type { NavTabId } from './Sidebar';
@@ -98,7 +99,7 @@ export const ScreenAssistant: React.FC<ScreenAssistantProps> = ({ activeTab, onN
 
     try {
       const token = localStorage.getItem('altil_auth_token');
-      const response = await fetch(`${API_BASE}/internal/screen-assistant`, {
+      const response = await apiFetch(`${API_BASE}/internal/screen-assistant`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {

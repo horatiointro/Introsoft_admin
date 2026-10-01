@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { apiFetch } from '../utils/apiFetch';
+import { buildCustomerRegistrationPayload, customerRegistrationVariant, validateCustomerRegistration } from '../utils/customerRegistration';
 import {
   Building2,
   UserCheck,
@@ -140,6 +141,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
   // New Customer Wizard Form State
   const [newCustType, setNewCustType] = useState<CustomerType>('company');
+  const registrationVariant = customerRegistrationVariant(newCustType);
   const [newCustName, setNewCustName] = useState('');
   const [newCustLegalName, setNewCustLegalName] = useState('');
   const [newCustRegNumber, setNewCustRegNumber] = useState('');
@@ -196,7 +198,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [keyRpm, setKeyRpm] = useState<number>(240);
   const [keyExpiresDays, setKeyExpiresDays] = useState<number>(365);
   const [keyIpWhitelist, setKeyIpWhitelist] = useState<string>('');
-  const [keyScopes, setKeyScopes] = useState<string[]>(['read:inference', 'read:models']);
+  const [keyScopes, setKeyScopes] = useState<string[]>(['read:inference']);
 
   // Key Tester & Validator State
   const [testKeyInput, setTestKeyInput] = useState('');
@@ -373,31 +375,29 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   // Handle Add Customer Submit
   const handleSubmitNewCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustName.trim()) return;
+    const validationErrors = validateCustomerRegistration({ type: newCustType, name: newCustName, contactEmail: newContactEmail });
+    if (validationErrors.length) {
+      setCustomerFormError(validationErrors[0]);
+      return;
+    }
     if (!editingCustomer && customerWizardStep === 'details') {
       setCustomerFormError('');
       setCustomerWizardStep('review');
       return;
     }
 
-    const payload = {
+    const payload = buildCustomerRegistrationPayload({
       type: newCustType,
-      name: newCustName.trim(),
-      legalName: newCustLegalName.trim() || newCustName.trim(),
-      registrationNumber: newCustRegNumber.trim(),
-      taxVatNumber: newCustVatNumber.trim(),
+      name: newCustName,
+      legalName: newCustLegalName,
+      registrationNumber: newCustRegNumber,
+      taxVatNumber: newCustVatNumber,
       industry: newCustIndustry,
       country: newCustCountry,
       tier: newCustTier,
-      monthlyBudgetUsd: Number(newCustBudget) || 2500,
-      rateLimitRpm: Number(newCustRpm) || 240,
+      monthlyBudgetUsd: newCustBudget,
+      rateLimitRpm: newCustRpm,
       notes: newCustNotes,
-      primaryContact: {
-        name: newContactName || 'Primary Contact',
-        email: newContactEmail || 'admin@tenant.internal',
-        phone: newContactPhone,
-        role: newContactRole
-      },
       statutoryOfficers: {
         informationOfficer: hasInfoOfficer && ioName.trim() ? {
           name: ioName.trim(),
@@ -419,9 +419,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           registeredDate: new Date().toISOString().slice(0, 10)
         } : undefined
       },
-      initialApplicationName: autoCreateApp && initialAppName.trim() ? initialAppName.trim() : (autoCreateApp ? `${newCustName} AI Ingress` : undefined),
-      initialApplicationIdentifier: autoCreateApp && initialAppIdentifier.trim() ? initialAppIdentifier.trim() : undefined
-    };
+      contactName: newContactName,
+      contactEmail: newContactEmail,
+      contactPhone: newContactPhone,
+      contactRole: newContactRole,
+      initialApplicationName: autoCreateApp ? (initialAppName.trim() || `${newCustName.trim()} AI Ingress`) : undefined,
+      initialApplicationIdentifier: autoCreateApp ? initialAppIdentifier.trim() || undefined : undefined,
+    });
 
     try {
       if (editingCustomer) await onUpdateCustomer(editingCustomer.id, payload);
@@ -616,7 +620,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setKeyRpm(customer.rateLimitRpm || 240);
     setKeyExpiresDays(365);
     setKeyIpWhitelist('');
-    setKeyScopes(['read:inference', 'read:models']);
+    setKeyScopes(['read:inference']);
     setCreatedKeyDetails(null);
   };
 
@@ -1937,13 +1941,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <li className="rounded-lg border border-white/10 bg-white/[.03] p-3 text-[#888888]">3. Product &amp; order</li>
                 </ol>
                 <dl className="grid gap-3 rounded-xl border border-white/10 bg-white/[.03] p-5 text-sm sm:grid-cols-2">
-                  <div><dt className="text-xs text-slate-500">Customer name</dt><dd className="mt-1 text-white">{newCustName.trim()}</dd></div>
-                  <div><dt className="text-xs text-slate-500">Legal entity</dt><dd className="mt-1 text-white">{newCustLegalName.trim() || newCustName.trim()}</dd></div>
-                  <div><dt className="text-xs text-slate-500">Entity type / country</dt><dd className="mt-1 text-white">{newCustType} · {newCustCountry}</dd></div>
-                  <div><dt className="text-xs text-slate-500">Industry / service tier</dt><dd className="mt-1 text-white">{newCustIndustry} · {newCustTier}</dd></div>
-                  <div><dt className="text-xs text-slate-500">Primary contact</dt><dd className="mt-1 text-white">{newContactName.trim() || 'Not supplied'}</dd></div>
+                  <div><dt className="text-xs text-slate-500">{registrationVariant.nameLabel}</dt><dd className="mt-1 text-white">{newCustName.trim()}</dd></div>
+                  {registrationVariant.companyDetails && <div><dt className="text-xs text-slate-500">Legal entity</dt><dd className="mt-1 text-white">{newCustLegalName.trim() || newCustName.trim()}</dd></div>}
+                  <div><dt className="text-xs text-slate-500">Account type / country</dt><dd className="mt-1 text-white">{newCustType} · {newCustCountry}</dd></div>
+                  <div><dt className="text-xs text-slate-500">{registrationVariant.industryField ? 'Industry / service tier' : 'Service tier'}</dt><dd className="mt-1 text-white">{registrationVariant.industryField ? `${newCustIndustry} · ${newCustTier}` : newCustTier}</dd></div>
+                  <div><dt className="text-xs text-slate-500">{registrationVariant.contactHeading}</dt><dd className="mt-1 text-white">{newCustType === 'individual' ? newCustName.trim() : newContactName.trim() || 'Not supplied'}</dd></div>
                   <div><dt className="text-xs text-slate-500">Contact email</dt><dd className="mt-1 break-all text-white">{newContactEmail.trim() || 'Not supplied'}</dd></div>
-                  <div><dt className="text-xs text-slate-500">Registration / tax reference</dt><dd className="mt-1 text-white">{newCustRegNumber.trim() || 'Not supplied'} · {newCustVatNumber.trim() || 'Not supplied'}</dd></div>
+                  {registrationVariant.companyDetails && <div><dt className="text-xs text-slate-500">Registration / tax reference</dt><dd className="mt-1 text-white">{newCustRegNumber.trim() || 'Not supplied'} · {newCustVatNumber.trim() || 'Not supplied'}</dd></div>}
                   <div><dt className="text-xs text-slate-500">Initial application</dt><dd className="mt-1 text-white">{autoCreateApp ? initialAppName.trim() || `${newCustName.trim()} AI Ingress` : 'Not requested'}</dd></div>
                 </dl>
                 <p className="text-xs text-slate-400">Customer registration does not create an order, invoice, payment, or active service. The next step is available only after the existing customer endpoint confirms creation.</p>
@@ -1964,6 +1968,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setNewCustType('company')}
+                    disabled={Boolean(editingCustomer)}
                     className={`p-3 rounded border text-left flex items-start space-x-3 transition-colors ${
                       newCustType === 'company'
                         ? 'bg-blue-600/10 border-blue-500 text-white'
@@ -1982,6 +1987,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setNewCustType('individual')}
+                    disabled={Boolean(editingCustomer)}
                     className={`p-3 rounded border text-left flex items-start space-x-3 transition-colors ${
                       newCustType === 'individual'
                         ? 'bg-emerald-600/10 border-emerald-500 text-white'
@@ -2001,23 +2007,23 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
               {/* Organization & Legal Details */}
               <div className="space-y-3">
-                <label className="block text-xs font-semibold text-[#aaaaaa] uppercase tracking-wider">
-                  2. Organization & Entity Details
+                  <label className="block text-xs font-semibold text-[#aaaaaa] uppercase tracking-wider">
+                  2. {registrationVariant.identityHeading}
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-[#888888] mb-1">Customer / Trading Name *</label>
+                    <label className="block text-xs text-[#888888] mb-1">{registrationVariant.nameLabel} *</label>
                     <input
                       type="text"
                       required
                       value={newCustName}
                       onChange={e => setNewCustName(e.target.value)}
-                      placeholder="e.g. Acme Financial Group"
+                      placeholder={registrationVariant.namePlaceholder}
                       className="w-full bg-[#181818] border border-[#2a2a2a] focus:border-blue-500 rounded px-3 py-1.5 text-xs text-white outline-none"
                     />
                   </div>
 
-                  <div>
+                  {registrationVariant.companyDetails && <div>
                     <label className="block text-xs text-[#888888] mb-1">Full Legal Entity Name</label>
                     <input
                       type="text"
@@ -2026,9 +2032,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       placeholder="e.g. Acme Financial Services (Pty) Ltd"
                       className="w-full bg-[#181818] border border-[#2a2a2a] focus:border-blue-500 rounded px-3 py-1.5 text-xs text-white outline-none"
                     />
-                  </div>
+                  </div>}
 
-                  <div>
+                  {registrationVariant.companyDetails && <div>
                     <label className="block text-xs text-[#888888] mb-1">Company Registration Number</label>
                     <input
                       type="text"
@@ -2037,9 +2043,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       placeholder="e.g. 2018/192837/07 or 12345678"
                       className="w-full bg-[#181818] border border-[#2a2a2a] focus:border-blue-500 rounded px-3 py-1.5 text-xs text-white outline-none font-mono"
                     />
-                  </div>
+                  </div>}
 
-                  <div>
+                  {registrationVariant.companyDetails && <div>
                     <label className="block text-xs text-[#888888] mb-1">Tax / VAT Number</label>
                     <input
                       type="text"
@@ -2048,7 +2054,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       placeholder="e.g. 4820192837"
                       className="w-full bg-[#181818] border border-[#2a2a2a] focus:border-blue-500 rounded px-3 py-1.5 text-xs text-white outline-none font-mono"
                     />
-                  </div>
+                  </div>}
 
                   <div>
                     <label className="block text-xs text-[#888888] mb-1">Country / Jurisdiction</label>
@@ -2065,7 +2071,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     </select>
                   </div>
 
-                  <div>
+                  {registrationVariant.industryField && <div>
                     <label className="block text-xs text-[#888888] mb-1">Industry Sector</label>
                     <select
                       value={newCustIndustry}
@@ -2079,7 +2085,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       <option value="Retail & E-Commerce">Retail & E-Commerce</option>
                       <option value="Software & SaaS">Software & SaaS</option>
                     </select>
-                  </div>
+                  </div>}
                 </div>
               </div>
 
@@ -2128,10 +2134,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               {/* Primary Contact */}
               <div className="space-y-3">
                 <label className="block text-xs font-semibold text-[#aaaaaa] uppercase tracking-wider">
-                  4. Primary Executive Contact
+                  4. {registrationVariant.contactHeading}
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
+                  {newCustType === 'company' && <div>
                     <label className="block text-xs text-[#888888] mb-1">Contact Full Name</label>
                     <input
                       type="text"
@@ -2140,12 +2146,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       placeholder="e.g. Jane Doe"
                       className="w-full bg-[#181818] border border-[#2a2a2a] focus:border-blue-500 rounded px-3 py-1.5 text-xs text-white outline-none"
                     />
-                  </div>
+                  </div>}
 
                   <div>
                     <label className="block text-xs text-[#888888] mb-1">Contact Email Address</label>
                     <input
                       type="email"
+                      required
                       value={newContactEmail}
                       onChange={e => setNewContactEmail(e.target.value)}
                       placeholder="e.g. jdoe@company.com"
@@ -2164,7 +2171,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     />
                   </div>
 
-                  <div>
+                  {newCustType === 'company' && <div>
                     <label className="block text-xs text-[#888888] mb-1">Designation / Executive Role</label>
                     <input
                       type="text"
@@ -2173,19 +2180,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       placeholder="e.g. Chief Technology Officer"
                       className="w-full bg-[#181818] border border-[#2a2a2a] focus:border-blue-500 rounded px-3 py-1.5 text-xs text-white outline-none"
                     />
-                  </div>
+                  </div>}
                 </div>
               </div>
 
               {/* Statutory Officers (POPIA / GDPR) */}
-              <div className="space-y-3 bg-[#181818] border border-[#262626] rounded p-4">
+              {registrationVariant.statutoryOfficers && <div className="space-y-3 bg-[#181818] border border-[#262626] rounded p-4">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-white flex items-center gap-1.5 uppercase tracking-wider">
                     <ShieldCheck className="w-4 h-4 text-emerald-400" />
                     5. Statutory Regulatory Officers (POPIA / GDPR)
                   </label>
-                  <span className="text-[11px] text-emerald-400 font-mono">
-                    Mandatory for Data Processing Compliance
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    Record where applicable
                   </span>
                 </div>
 
@@ -2317,7 +2324,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </div>}
 
               {/* Initial Connected App Provisioning */}
               {!editingCustomer && (
@@ -2904,12 +2911,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     <label className="block text-[#888888] mb-1">Security Scopes</label>
                     <div className="flex items-center space-x-2 pt-1">
                       <span className="px-2 py-0.5 bg-[#222222] text-[#cccccc] rounded text-[11px] font-mono">
-                        read:inference
-                      </span>
-                      <span className="px-2 py-0.5 bg-[#222222] text-[#cccccc] rounded text-[11px] font-mono">
-                        read:models
+                        read:inference · enforced
                       </span>
                     </div>
+                    <p className="mt-1 text-[10px] text-[#9298a6]">Only inference access is currently enforced. Other scope operations are unavailable.</p>
                   </div>
                 </div>
 

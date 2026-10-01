@@ -40,7 +40,7 @@ export const ComplianceRepository = {
         let sql = `SELECT * FROM compliance_dsar_requests`;
         const params: any[] = [];
         if (tenantId && tenantId !== 'all') {
-          sql += ` WHERE tenant_id = ? OR tenant_id IS NULL`;
+          sql += ` WHERE tenant_id = ?`;
           params.push(tenantId);
         }
         sql += ` ORDER BY created_at DESC`;
@@ -48,6 +48,7 @@ export const ComplianceRepository = {
         if (rows && rows.length > 0) {
           return rows.map(r => ({
             id: r.id,
+            tenantId: r.tenant_id || undefined,
             framework: (r.framework as 'POPIA' | 'GDPR') || 'POPIA',
             requestType: r.request_type || 'access',
             subjectIdentifier: r.subject_identifier || r.id_number_or_passport || r.data_subject_email || '',
@@ -63,6 +64,7 @@ export const ComplianceRepository = {
         console.warn('[ComplianceRepository] DSAR DB fetch warning:', err);
       }
     }
+    if (tenantId && tenantId !== 'all') return inMemoryDsar.filter(request => request.tenantId === tenantId);
     return inMemoryDsar;
   },
 
@@ -216,6 +218,7 @@ export const ComplianceRepository = {
       }
     }
     const { IN_MEMORY_SIMULATED_TRAFFIC } = await import('../utils/complianceSimulationEngine');
+    if (tenantId && tenantId !== 'all') return IN_MEMORY_SIMULATED_TRAFFIC.filter(packet => packet.companyId === tenantId);
     return IN_MEMORY_SIMULATED_TRAFFIC;
   },
 

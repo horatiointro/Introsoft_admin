@@ -67,6 +67,7 @@ describe('LOCAL TEST harness safety contract', () => {
   });
   it('reproduces and prevents the LOCAL TEST sign-in form MFA default mismatch', async () => {
     const loginSource = await readFile(new URL('../components/LoginScreen.tsx', import.meta.url), 'utf8');
+    assert.match(loginSource, /import\.meta\.env\.BASE_URL\s*===\s*'\/admin-test\/'\s*\?\s*'supertest@introsoft\.co\.za'\s*:\s*'horatio\.huxham@gmail\.com'/);
     assert.match(loginSource, /import\.meta\.env\.BASE_URL\s*===\s*'\/admin-test\/'\s*\?\s*'000000'\s*:\s*'849201'/);
     const wrongFormDefault = await fetch(`${baseUrl}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'supertest@introsoft.co.za', password: 'supertest', mfaCode: '849201', selectedTenant: 'all' }) });
     assert.equal(wrongFormDefault.status, 401);
@@ -85,15 +86,39 @@ describe('LOCAL TEST harness safety contract', () => {
   it('17. associates the accepted bearer token with the expected authenticated identity', async () => {
     const response = await fetch(`${baseUrl}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${supertestToken}` } });
     assert.equal(response.status, 200);
-    const body = await response.json() as { user: { id: string; name: string; firstName: string; lastName: string; email: string; role: string; roles: string[]; permissions: string[]; sessionId: string; tenant: string; tenantId: string; status: string; environment: string; label: string } };
-    assert.deepEqual(body.user, {
-      id: 'local-test-supertest-user', name: 'LOCAL TEST SUPERTEST', firstName: 'LOCAL TEST', lastName: 'SUPERTEST',
-      email: 'supertest@introsoft.co.za', role: 'super_admin', roles: ['SUPER_ADMIN'], permissions: body.user.permissions,
-      sessionId: body.user.sessionId, tenant: 'local-test-tenant', tenantId: 'local-test-tenant', status: 'ACTIVE',
-      environment: 'LOCAL_TEST', label: 'LOCAL TEST ONLY',
-    });
+    const body = await response.json() as { user: { id: string; name: string; firstName: string; lastName: string; email: string; role: string; roles: string[]; permissions: string[]; sessionId: string; tenant: string; tenantId: string; status: string; environment: string; label: string; authorization: { scopes: Array<{ role: string; visibility: string }>; visibleOrganizationIds: string[] } } };
+    assert.equal(body.user.id, 'local-test-supertest-user');
+    assert.equal(body.user.name, 'LOCAL TEST SUPERTEST');
+    assert.equal(body.user.firstName, 'LOCAL TEST');
+    assert.equal(body.user.lastName, 'SUPERTEST');
+    assert.equal(body.user.email, 'supertest@introsoft.co.za');
+    assert.equal(body.user.role, 'super_admin');
+    assert.deepEqual(body.user.roles, ['SUPER_ADMIN']);
+    assert.equal(body.user.tenantId, 'local-test-tenant');
+    assert.equal(body.user.status, 'ACTIVE');
+    assert.equal(body.user.environment, 'LOCAL_TEST');
+    assert.equal(body.user.label, 'LOCAL TEST ONLY');
     assert.ok(body.user.permissions.length > 0);
+    assert.equal(body.user.authorization.scopes[0]?.visibility, 'GLOBAL');
+    assert.deepEqual(body.user.authorization.visibleOrganizationIds, ['local-test-tenant']);
+    assert.ok(body.user.permissions.length > 0);
+    for (const required of [
+      'tenant.read', 'tenant.write', 'tenant.update', 'tenant.delete',
+      'apikeys.create', 'apikeys.revoke', 'iam.users.write', 'billing.write',
+      'compliance.dsr', 'audit.read', 'policy.read', 'policy.create',
+      'policy.modify', 'policy.disable', 'system.configure',
+    ]) assert.ok(body.user.permissions.includes(required), `Super Admin is missing ${required}`);
     assert.match(body.user.sessionId, /^local-test-session-/);
+  });
+  it('publishes the partial capability inventory only through an authenticated read endpoint', async () => {
+    const denied = await fetch(`${baseUrl}/api/v1/capabilities`);
+    assert.equal(denied.status, 401);
+    const response = await fetch(`${baseUrl}/api/v1/capabilities`, { headers: { Authorization: `Bearer ${supertestToken}` } });
+    assert.equal(response.status, 200);
+    const body = await response.json() as { inventoryComplete: boolean; capabilities: Array<{ id: string; status: string; availableToCurrentIdentity: boolean | null }> };
+    assert.equal(body.inventoryComplete, false);
+    assert.ok(body.capabilities.some(capability => capability.id === 'gateway.chat-completions' && capability.availableToCurrentIdentity === null));
+    assert.ok(body.capabilities.every(capability => Boolean(capability.id) && Boolean(capability.status)));
   });
   it('18. keeps the account unavailable when the harness flag is disabled', async () => {
     assert.throws(() => validateLocalHarnessEnvironment({ ALTIL_LOCAL_TEST_HARNESS: 'false' }), /ALTIL_LOCAL_TEST_HARNESS/);
@@ -109,7 +134,7 @@ describe('LOCAL TEST harness safety contract', () => {
 
     const { requirePermission, requireRole } = await import('../middleware/authMiddleware.ts');
     let roleAllowed = false;
-    requireRole(['SECURITY_ADMIN'])({ user } as never, {} as never, (() => { roleAllowed = true; }) as never);
+    requireRole(['SUPER_ADMIN'])({ user } as never, {} as never, (() => { roleAllowed = true; }) as never);
     assert.equal(roleAllowed, true);
     let permissionAllowed = false;
     requirePermission('system.configure')({ user } as never, {} as never, (() => { permissionAllowed = true; }) as never);
@@ -126,6 +151,13 @@ describe('LOCAL TEST harness safety contract', () => {
   });
   it('10. state is in-memory and health declares no persistence', async () => {
     assert.deepEqual(await (await fetch(`${baseUrl}/health`)).json(), { status: 'ok', label: 'LOCAL TEST ONLY', database: false, providers: false, persistence: false });
+  });
+  it('serves the read-only OpenAPI contract without a session while protected API data stays authenticated', async () => {
+    const contract = await fetch(`${baseUrl}/api/v1/openapi.yaml`);
+    assert.equal(contract.status, 200);
+    assert.match(contract.headers.get('content-type') ?? '', /text\/yaml/);
+    assert.match(await contract.text(), /^openapi:\s*3\./);
+    assert.equal((await fetch(`${baseUrl}/api/v1/customers`)).status, 401);
   });
   it('11. rejects unauthenticated reads and writes', async () => {
     assert.equal((await fetch(`${baseUrl}/api/v1/customers`)).status, 401);
@@ -148,6 +180,20 @@ describe('LOCAL TEST harness safety contract', () => {
       const response = await fetch(`${baseUrl}/api/v1/billing/orders/local-test-order`, { method, headers: { ...headers, 'content-type': 'application/json' }, body: method === 'DELETE' ? undefined : '{}' });
       assert.equal(response.status, 405, `${method} /api/v1/billing/orders/local-test-order`);
     }
+    const auditResponse = await fetch(`${baseUrl}/api/v1/logs`, { headers });
+    assert.equal(auditResponse.status, 200);
+    const events = await auditResponse.json() as Array<{ localEvent?: { source: string; method: string; route: string; statusCode: number; outcome: string } }>;
+    assert.ok(events.some(event => event.localEvent?.source === 'LOCAL_TEST' && event.localEvent.method === 'POST' && event.localEvent.route === '/api/v1/billing/orders/local-test-order' && event.localEvent.statusCode === 405 && event.localEvent.outcome === 'DENIED'));
+  });
+  it('records local sign-in and authenticated reads without sensitive request data', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/logs`, { headers: { Authorization: `Bearer ${supertestToken}` } });
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    const events = JSON.parse(body) as Array<{ localEvent?: { source: string; actor: string; method: string; route: string; statusCode: number } }>;
+    assert.ok(events.some(event => event.localEvent?.source === 'LOCAL_TEST' && event.localEvent.actor === 'supertest@introsoft.co.za' && event.localEvent.method === 'POST' && event.localEvent.route === '/api/v1/auth/login' && event.localEvent.statusCode === 200));
+    assert.ok(events.some(event => event.localEvent?.source === 'LOCAL_TEST' && event.localEvent.actor === 'supertest@introsoft.co.za' && event.localEvent.method === 'GET' && event.localEvent.route === '/api/v1/auth/me' && event.localEvent.statusCode === 200));
+    assert.equal(body.includes('supertest"'), false);
+    assert.equal(body.includes(supertestToken), false);
   });
   it('14. keeps normal deterministic local-test login behavior intact', async () => {
     const response = await fetch(`${baseUrl}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'local-test@altil.invalid', password: 'local-test-password', mfaCode: '000000', selectedTenant: 'local-test-tenant' }) });

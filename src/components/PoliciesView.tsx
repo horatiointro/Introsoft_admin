@@ -1,5 +1,5 @@
 import { InfoButton } from './InfoButton';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ShieldCheck,
   Plus,
@@ -14,13 +14,45 @@ import {
   Sparkles,
   AppWindow
 } from 'lucide-react';
-import { AIPolicy, Application, AIProvider } from '../types';
+import { AIPolicy, Application, AIProvider, Customer } from '../types';
+
+type ImportedPolicyCategory = 'Confidentiality' | 'Data security';
+type PolicyImportTemplate = {
+  id: string;
+  category: ImportedPolicyCategory;
+  name: string;
+  summary: string;
+  rules: Partial<AIPolicy['rules']>;
+};
+
+const TEST_POLICY_LIBRARY: PolicyImportTemplate[] = [
+  { id: 'confidential-information', category: 'Confidentiality', name: 'Confidential Information Classification and Handling', summary: 'Classify company information and only share it with approved people and systems on a need-to-know basis.', rules: { redactPII: true, anonymizePromptsInAudit: true } },
+  { id: 'ai-prompt-confidentiality', category: 'Confidentiality', name: 'Confidential Information in AI Prompts and Outputs', summary: 'Prevent confidential business, customer, employee, and unpublished information from being exposed through prompts or generated outputs.', rules: { redactPII: true, anonymizePromptsInAudit: true, blockSensitiveFinancialData: true } },
+  { id: 'trade-secrets-ip', category: 'Confidentiality', name: 'Trade Secrets and Intellectual Property', summary: 'Protect source code, designs, inventions, pricing, strategy, and other proprietary material from unauthorized disclosure or reuse.', rules: { anonymizePromptsInAudit: true, requireApprovedProvider: true } },
+  { id: 'confidentiality-agreements', category: 'Confidentiality', name: 'Confidentiality Agreements and Third-Party Disclosure', summary: 'Allow disclosure to suppliers, advisers, and processors only under approved confidentiality terms and documented purpose.', rules: { requireApprovedProvider: true, logRequestMetadata: true } },
+  { id: 'purpose-minimization', category: 'Confidentiality', name: 'Purpose Limitation and Data Minimisation', summary: 'Use only the minimum confidential information required for an approved business purpose; remove unrelated context.', rules: { redactPII: true, anonymizePromptsInAudit: true } },
+  { id: 'confidential-sharing', category: 'Confidentiality', name: 'Confidential Output and External Sharing', summary: 'Review AI-generated material for confidential content before publication, customer delivery, or external sharing.', rules: { redactPII: true, enableAuditTrail: true } },
+  { id: 'least-privilege', category: 'Data security', name: 'Identity, Access Control, and Least Privilege', summary: 'Restrict policy and data access to authenticated users and service identities with approved, minimum necessary permissions.', rules: { enableAuditTrail: true, logRequestMetadata: true } },
+  { id: 'secure-authentication', category: 'Data security', name: 'Authentication and Account Security', summary: 'Require strong authentication, protect credentials, and promptly remove access when a person or service no longer needs it.', rules: { enableAuditTrail: true, requireApprovedProvider: true } },
+  { id: 'encryption', category: 'Data security', name: 'Encryption in Transit and at Rest', summary: 'Protect company data with approved encryption during transmission and while stored; manage keys separately from data.', rules: { requireApprovedProvider: true } },
+  { id: 'data-loss-egress', category: 'Data security', name: 'Data Loss Prevention and Secure Egress', summary: 'Inspect outbound prompts and outputs, block prohibited sensitive data, and restrict transfers to approved destinations.', rules: { blockSensitiveFinancialData: true, redactPII: true, requireApprovedProvider: true } },
+  { id: 'secure-dev-config', category: 'Data security', name: 'Secure Configuration and Change Management', summary: 'Use reviewed configurations, separate test and company data, and approve material changes to AI and data-security controls.', rules: { enableAuditTrail: true, logRequestMetadata: true } },
+  { id: 'vulnerability-patching', category: 'Data security', name: 'Vulnerability and Patch Management', summary: 'Track security weaknesses in systems that process company data and apply risk-based remediation within defined timeframes.', rules: { requireApprovedProvider: true, enableAuditTrail: true } },
+  { id: 'retention-disposal', category: 'Data security', name: 'Data Retention and Secure Disposal', summary: 'Keep prompts, outputs, and derived records only for approved periods, then securely delete or de-identify them.', rules: { anonymizePromptsInAudit: true, logRequestMetadata: true } },
+  { id: 'incident-response', category: 'Data security', name: 'Security Incident and Breach Response', summary: 'Detect, contain, investigate, and escalate suspected exposure or compromise of company data and preserve relevant evidence.', rules: { enableAuditTrail: true, logRequestMetadata: true } },
+  { id: 'security-monitoring', category: 'Data security', name: 'Security Logging and Monitoring', summary: 'Record access and security-relevant activity without storing secrets or unnecessary raw confidential content.', rules: { enableAuditTrail: true, logRequestMetadata: true, anonymizePromptsInAudit: true } },
+  { id: 'backup-recovery', category: 'Data security', name: 'Backup, Recovery, and Resilience', summary: 'Protect recoverable copies of important company data, restrict backup access, and periodically validate restoration procedures.', rules: { requireApprovedProvider: true, enableAuditTrail: true } },
+  { id: 'residency-transfer', category: 'Data security', name: 'Data Residency and Cross-Border Transfers', summary: 'Identify where company data is processed and stored, and permit cross-border transfers only after company approval.', rules: { requireApprovedProvider: true, logRequestMetadata: true } },
+  { id: 'supplier-security', category: 'Data security', name: 'Supplier and Cloud Service Security', summary: 'Assess providers that process company data, limit their access, and review security commitments and changes.', rules: { requireApprovedProvider: true, enableAuditTrail: true } },
+];
 
 interface PoliciesViewProps {
   policies: AIPolicy[];
   applications: Application[];
   providers: AIProvider[];
-  onAddPolicy: (policy: Partial<AIPolicy>) => void;
+  customers: Customer[];
+  initialTenantId: string;
+  onAddPolicy: (policy: Partial<AIPolicy>) => void | Promise<void>;
   onUpdatePolicy: (id: string, policy: Partial<AIPolicy>) => void;
   onDeletePolicy: (id: string) => void;
 }
@@ -29,12 +61,27 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
   policies,
   applications,
   providers,
+  customers,
+  initialTenantId,
   onAddPolicy,
   onUpdatePolicy,
   onDeletePolicy
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState<AIPolicy | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [showImportReview, setShowImportReview] = useState(false);
+  const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
+  const importInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const importTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const companies = customers.filter(customer => customer.type === 'company' && customer.status !== 'archived' && customer.status !== 'terminated');
+
+  useEffect(() => () => {
+    if (importInterval.current) clearInterval(importInterval.current);
+    if (importTimeout.current) clearTimeout(importTimeout.current);
+  }, []);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -57,6 +104,11 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
 
   const handleOpenCreate = () => {
     setEditingPolicy(null);
+    setSelectedCompanyId(companies.some(company => company.id === initialTenantId) ? initialTenantId : companies[0]?.id || '');
+    setImporting(false);
+    setImportProgress(0);
+    setShowImportReview(false);
+    setSelectedImportIds([]);
     setFormData({
       name: '',
       description: '',
@@ -80,6 +132,8 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
 
   const handleOpenEdit = (p: AIPolicy) => {
     setEditingPolicy(p);
+    setSelectedCompanyId(p.tenantId || '');
+    setShowImportReview(false);
     setFormData({
       name: p.name,
       description: p.description,
@@ -127,10 +181,79 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
     if (editingPolicy) {
       onUpdatePolicy(editingPolicy.id, formData);
     } else {
-      onAddPolicy(formData);
+      if (!selectedCompanyId) return;
+      onAddPolicy({ ...formData, tenantId: selectedCompanyId });
     }
     setIsModalOpen(false);
   };
+
+  const startPolicyImport = () => {
+    if (!selectedCompanyId || importing) return;
+    if (importInterval.current) clearInterval(importInterval.current);
+    if (importTimeout.current) clearTimeout(importTimeout.current);
+    setShowImportReview(false);
+    setSelectedImportIds([]);
+    setImportProgress(0);
+    setImporting(true);
+    const startedAt = Date.now();
+    importInterval.current = setInterval(() => {
+      setImportProgress(Math.min(99, Math.floor(((Date.now() - startedAt) / 5000) * 100)));
+    }, 100);
+    importTimeout.current = setTimeout(() => {
+      if (importInterval.current) clearInterval(importInterval.current);
+      importInterval.current = null;
+      importTimeout.current = null;
+      setImportProgress(100);
+      setImporting(false);
+      setShowImportReview(true);
+      setSelectedImportIds(TEST_POLICY_LIBRARY.filter(template => !policies.some(policy => policy.tenantId === selectedCompanyId && policy.name === template.name)).map(template => template.id));
+    }, 5000);
+  };
+
+  const importSelectedPolicies = async () => {
+    if (!selectedCompanyId || importing) return;
+    const selectedTemplates = TEST_POLICY_LIBRARY.filter(template => selectedImportIds.includes(template.id) && !policies.some(policy => policy.tenantId === selectedCompanyId && policy.name === template.name));
+    for (const template of selectedTemplates) {
+      await onAddPolicy({
+        name: template.name,
+        description: `TEST DATA · ${template.category}. ${template.summary} This sample is a draft for company review; it is not an imported company document.`,
+        appliesToAppIds: ['all'],
+        tenantId: selectedCompanyId,
+        status: 'draft',
+        rules: {
+          blockSensitiveFinancialData: false,
+          redactPII: true,
+          logRequestMetadata: true,
+          anonymizePromptsInAudit: true,
+          requireApprovedProvider: true,
+          maxContextTokens: 16384,
+          maxResponseTokens: 4096,
+          enableAuditTrail: true,
+          blockPromptInjections: true,
+          ...template.rules,
+          allowedProviderIds: [],
+        },
+      });
+    }
+    setIsModalOpen(false);
+    setShowImportReview(false);
+    setSelectedImportIds([]);
+  };
+
+  const toggleImportedPolicy = (id: string) => {
+    setSelectedImportIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
+  };
+
+  const closeModal = () => {
+    if (importInterval.current) clearInterval(importInterval.current);
+    if (importTimeout.current) clearTimeout(importTimeout.current);
+    importInterval.current = null;
+    importTimeout.current = null;
+    setImporting(false);
+    setIsModalOpen(false);
+  };
+
+  const selectedCompany = companies.find(company => company.id === selectedCompanyId);
 
   return (
     <div className="space-y-6 pb-12">
@@ -191,6 +314,11 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
                             ? 'All Applications (Global Baseline)'
                             : targetApps.map(a => a.name).join(', ')}
                         </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span className="text-[#777777]">Company:</span>
+                        <span className="text-cyan-200">{customers.find(customer => customer.id === policy.tenantId)?.name || (policy.tenantId ? 'Company unavailable' : 'Global baseline')}</span>
+                        {policy.description.startsWith('TEST DATA ·') && <span className="rounded border border-amber-300/20 bg-amber-300/10 px-1.5 py-0.5 font-bold tracking-wide text-amber-200">TEST POLICY · REVIEW REQUIRED</span>}
                       </div>
                     </div>
                   </div>
@@ -298,9 +426,9 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
               <div className="pt-2 border-t border-[#222222] flex items-center justify-between text-[10px] font-mono text-[#888888]">
                 <span>Max Context: <strong className="text-white">{(policy.rules.maxContextTokens / 1024).toFixed(0)}K</strong></span>
                 <span>Max Output: <strong className="text-white">{(policy.rules.maxResponseTokens / 1024).toFixed(0)}K</strong></span>
-                <span className="text-green-400 font-mono text-[10px] flex items-center gap-1">
+                <span className={`${policy.status === 'active' ? 'text-green-400' : policy.status === 'draft' ? 'text-amber-300' : 'text-slate-500'} font-mono text-[10px] flex items-center gap-1`}>
                   <span>●</span>
-                  <span>ENFORCING</span>
+                  <span>{policy.status === 'active' ? 'ENFORCING' : policy.status.toUpperCase()}</span>
                 </span>
               </div>
             </div>
@@ -317,7 +445,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
                 {editingPolicy ? 'Configure AI Policy' : 'Create AI Governance Policy'}
               </h3>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeModal}
                 className="p-1 rounded text-[#888888] hover:text-white hover:bg-[#1a1a1a]"
               >
                 <X className="w-4 h-4" />
@@ -325,6 +453,32 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+              {!editingPolicy && (
+                <section className="space-y-3 rounded border border-cyan-500/20 bg-cyan-950/20 p-3">
+                  <div>
+                    <label htmlFor="policy-company" className="block text-[#b7c4d8] font-semibold mb-1 font-mono text-[11px]">Company this policy set belongs to</label>
+                    <select id="policy-company" required value={selectedCompanyId} onChange={event => { setSelectedCompanyId(event.target.value); setShowImportReview(false); }} className="w-full rounded bg-[#0a0a0a] border border-[#26364a] px-3 py-2 text-white focus:outline-none focus:border-cyan-400">
+                      <option value="">Select a company</option>
+                      {companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}
+                    </select>
+                    {!companies.length && <p className="mt-1 text-[10px] text-amber-200">Create or select a company before adding company policies.</p>}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-cyan-100/10 pt-3">
+                    <div className="min-w-0"><p className="font-semibold text-white">Import confidentiality and data-security policies</p><p className="mt-1 text-[10px] leading-4 text-slate-400">Preview a synthetic policy checklist for {selectedCompany?.name || 'the selected company'}. No company documents are read in this test flow.</p></div>
+                    <button type="button" disabled={!selectedCompanyId || importing} onClick={startPolicyImport} className="inline-flex shrink-0 items-center gap-2 rounded bg-cyan-300 px-3 py-2 font-bold text-slate-950 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"><FileCheck className="h-3.5 w-3.5" />{importing ? 'Preparing policy list…' : 'Import policies'}</button>
+                  </div>
+
+                  {importing && <div role="status" aria-live="polite" className="rounded border border-cyan-300/20 bg-black/20 p-3"><div className="mb-2 flex items-center justify-between text-[10px] text-cyan-100"><span className="inline-flex items-center gap-2"><Sparkles className="h-3.5 w-3.5 animate-pulse" />Preparing test policies for {selectedCompany?.name}</span><span>{importProgress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label="Preparing company policy list" aria-valuemin={0} aria-valuemax={100} aria-valuenow={importProgress}><div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-300 transition-[width] duration-100" style={{ width: `${importProgress}%` }} /></div><p className="mt-2 text-[10px] text-slate-500">Checking confidentiality and data-security policy categories…</p></div>}
+
+                  {showImportReview && <div className="space-y-3 rounded border border-amber-300/20 bg-amber-950/10 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold text-amber-100">Test policy set · {selectedCompany?.name}</p><p className="mt-1 text-[10px] text-slate-400">Synthetic examples only. Selected items will be added as company-scoped drafts for review, not activated.</p></div><span className="rounded-full border border-amber-200/20 px-2 py-1 text-[9px] font-bold tracking-wider text-amber-200">TEST DATA</span></div>
+                    <div className="max-h-64 space-y-3 overflow-y-auto pr-1">{(['Confidentiality', 'Data security'] as const).map(category => <div key={category}><h4 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200">{category}</h4><div className="space-y-1.5">{TEST_POLICY_LIBRARY.filter(template => template.category === category).map(template => { const alreadyAdded = policies.some(policy => policy.tenantId === selectedCompanyId && policy.name === template.name); const checked = selectedImportIds.includes(template.id); return <label key={template.id} className={`flex gap-2 rounded border p-2 ${alreadyAdded ? 'border-emerald-200/10 bg-emerald-200/[.03] opacity-70' : 'border-white/5 bg-black/20'}`}><input type="checkbox" checked={alreadyAdded || checked} disabled={alreadyAdded} onChange={() => toggleImportedPolicy(template.id)} className="mt-0.5 accent-cyan-300"/><span className="min-w-0"><span className="block font-semibold text-slate-200">{template.name}{alreadyAdded && <span className="ml-2 text-[9px] text-emerald-300">Already added</span>}</span><span className="mt-0.5 block text-[10px] leading-4 text-slate-400">{template.summary}</span></span></label>; })}</div></div>)}</div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3"><span className="text-[10px] text-slate-400">{selectedImportIds.length} selected · duplicates are skipped</span><button type="button" disabled={!selectedImportIds.length} onClick={() => void importSelectedPolicies()} className="rounded bg-emerald-400 px-3 py-2 font-bold text-emerald-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50">Add selected as company drafts</button></div>
+                  </div>}
+                </section>
+              )}
+
               <div>
                 <label className="block text-[#888888] font-semibold mb-1 font-mono text-[11px]">
                   Policy Name
@@ -493,7 +647,7 @@ export const PoliciesView: React.FC<PoliciesViewProps> = ({
               <div className="pt-3 border-t border-[#222222] flex justify-end space-x-2">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeModal}
                   className="px-3 py-1.5 rounded bg-[#1a1a1a] hover:bg-[#222222] text-[#888888] font-medium border border-[#222222]"
                 >
                   Cancel

@@ -1,468 +1,73 @@
-import { InfoButton } from './InfoButton';
-import React, { useState } from 'react';
-import { Customer, Application, ApiKey } from '../types';
-import { AltilLogo } from './AltilLogo';
-import {
-  Building2,
-  Users,
-  ShieldCheck,
-  Server,
-  Plus,
-  ChevronRight,
-  TrendingUp,
-  Layers,
-  Network,
-  Globe,
-  Award,
-  DollarSign,
-  Key
-} from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Building2, ChevronRight, LoaderCircle, Users } from 'lucide-react';
+import { apiFetch } from '../utils/apiFetch';
+import type { Application, ApiKey, Customer } from '../types';
 
-interface OrgHierarchyViewProps {
-  customers: Customer[];
-  applications: Application[];
-  apiKeys: ApiKey[];
-  onSelectCustomer?: (customerId: string) => void;
+interface CommercialOrganization {
+  id: string;
+  canonical_key: string | null;
+  name: string;
+  organization_type: 'INTROSOFT' | 'SUBSIDIARY' | 'PARTNER' | 'RESELLER';
+  status: string;
 }
+interface CommercialEdge { id: string; parent_organization_id: string; child_organization_id: string; relationship_type: string; }
+interface CommercialCustomer { id: string; customer_type: 'INDIVIDUAL' | 'COMPANY'; display_name: string; status: string; organization_id: string; relationship_type: string; }
+interface CommercialTechnicalScope { id: string; organization_id: string; tenant_id: string; tenant_name: string; scope_link_type: string; status: string; effective_from: string; effective_to: string | null; }
+interface CommercialHierarchyResponse { organizations: CommercialOrganization[]; relationships: CommercialEdge[]; customers: CommercialCustomer[]; technicalScopes: CommercialTechnicalScope[]; }
 
-export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = ({
-  customers,
-  applications,
-  apiKeys,
-  onSelectCustomer
-}) => {
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'tree' | 'bento' | 'table'>('tree');
+interface OrgHierarchyViewProps { customers?: Customer[]; applications?: Application[]; apiKeys?: ApiKey[]; }
 
-  // Identify Parent Owner (Introsoft)
-  const parentOwner = customers.find(c => c.orgRole === 'parent_owner') || customers[0];
-  const subsidiaries = customers.filter(c => c.orgRole === 'subsidiary' || (!c.orgRole && c.id !== parentOwner?.id));
-  const partners = customers.filter(c => c.orgRole === 'partner_reseller');
-  const clients = customers.filter(c => c.orgRole === 'direct_client');
+export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = () => {
+  const [data, setData] = useState<CommercialHierarchyResponse | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
-  const totalHierarchySpend = customers.reduce((sum, c) => sum + (c.currentSpendUsd || 0), 0);
-  const totalHierarchyBudget = customers.reduce((sum, c) => sum + (c.monthlyBudgetUsd || 0), 0);
-  const totalUsers = customers.reduce((sum, c) => sum + (c.users?.length || 0), 0);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    apiFetch(`${import.meta.env.BASE_URL}api/v1/commercial/organizations`)
+      .then(async response => {
+        if (!response.ok) throw new Error(response.status === 403 ? 'You are not authorized to read commercial organization data in this scope.' : 'Commercial organization data could not be loaded.');
+        return response.json() as Promise<CommercialHierarchyResponse>;
+      })
+      .then(result => { if (active) { setData(result); setError(''); } })
+      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : 'Commercial organization data could not be loaded.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
-  const selectedNode = customers.find(c => c.id === selectedNodeId) || parentOwner;
+  const root = data?.organizations.find(item => item.canonical_key === 'INTROSOFT_ROOT') || null;
+  const orgById = useMemo(() => new Map((data?.organizations || []).map(item => [item.id, item])), [data]);
+  const childrenOf = (id: string) => (data?.relationships || []).filter(edge => edge.parent_organization_id === id)
+    .map(edge => orgById.get(edge.child_organization_id)).filter((item): item is CommercialOrganization => Boolean(item));
+  const customersOf = (id: string) => (data?.customers || []).filter(customer => customer.organization_id === id);
+  const scopesOf = (id: string) => (data?.technicalScopes || []).filter(scope => scope.organization_id === id);
 
-  return (
-    <div className="space-y-6 pb-12 animate-in fade-in duration-200">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#222222]">
-        <div className="flex items-center gap-3.5">
-          <AltilLogo size="lg" />
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white"><InfoButton />
-                Enterprise Multi-Tenant Hierarchy & Org Governance
-              </h1>
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                Parent-Subsidiary-Partner Ecosystem
-              </span>
-            </div>
-            <p className="text-xs text-[#888888] mt-0.5">
-              Governing Introsoft Corporation, its regional subsidiaries, authorized resellers, and direct client tenants.
-            </p>
-          </div>
-        </div>
+  const renderOrganization = (organization: CommercialOrganization, depth = 0, seen = new Set<string>()): React.ReactNode => {
+    if (seen.has(organization.id)) return null;
+    const lineage = new Set(seen).add(organization.id);
+    return <section key={organization.id} className="rounded-xl border border-[#2a2a2a] bg-[#121212]" style={{ marginLeft: depth ? Math.min(depth * 18, 72) : 0 }}>
+      <button type="button" onClick={() => setSelectedId(organization.id)} className="flex w-full items-center gap-3 p-4 text-left hover:bg-white/[.03]">
+        <span className="rounded-lg border border-cyan-500/25 bg-cyan-500/10 p-2 text-cyan-300"><Building2 size={17}/></span>
+        <span className="min-w-0 flex-1"><strong className="block text-sm text-white">{organization.name}</strong><small className="text-[10px] uppercase tracking-wide text-slate-400">{organization.organization_type} · {organization.status}</small></span>
+        <span className="text-xs text-slate-500">{customersOf(organization.id).length} customer{customersOf(organization.id).length === 1 ? '' : 's'}</span>
+      </button>
+      {selectedId === organization.id && <div className="border-t border-white/5 px-4 py-3 text-xs text-slate-400"><p>Commercial organization record · {organization.id}</p><p className="mt-3 font-medium text-slate-300">Explicit technical scopes</p>{scopesOf(organization.id).length ? <ul className="mt-1 space-y-1">{scopesOf(organization.id).map(scope => <li key={scope.id}>{scope.tenant_name} · {scope.scope_link_type} · {scope.status} · tenant {scope.tenant_id}</li>)}</ul> : <p className="mt-1">No technical tenant scope is linked to this organization.</p>}</div>}
+      {customersOf(organization.id).map(customer => <button key={customer.id} type="button" onClick={() => setSelectedCustomerId(customer.id)} className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3 text-left hover:bg-emerald-500/[.04]" style={{ paddingLeft: `${Math.min(24 + depth * 18, 96)}px` }}>
+        <Users size={15} className="text-emerald-300"/><span className="flex-1"><strong className="block text-xs text-slate-200">{customer.display_name}</strong><small className="text-[10px] uppercase text-slate-500">{customer.customer_type} · {customer.relationship_type}</small></span><ChevronRight size={14} className="text-slate-500"/>
+      </button>)}
+      <div className="space-y-2 p-2">{childrenOf(organization.id).map(child => renderOrganization(child, depth + 1, lineage))}</div>
+    </section>;
+  };
 
-        <div className="flex items-center gap-2">
-          <div className="flex bg-[#161616] p-1 rounded border border-[#222222] text-xs font-medium">
-            <button
-              onClick={() => setViewMode('tree')}
-              className={`px-3 py-1.5 rounded transition-colors ${
-                viewMode === 'tree' ? 'bg-cyan-600 text-white font-semibold' : 'text-[#888888] hover:text-white'
-              }`}
-            >
-              Graphical Tree
-            </button>
-            <button
-              onClick={() => setViewMode('bento')}
-              className={`px-3 py-1.5 rounded transition-colors ${
-                viewMode === 'bento' ? 'bg-cyan-600 text-white font-semibold' : 'text-[#888888] hover:text-white'
-              }`}
-            >
-              Bento Grid
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded transition-colors ${
-                viewMode === 'table' ? 'bg-cyan-600 text-white font-semibold' : 'text-[#888888] hover:text-white'
-              }`}
-            >
-              Ledger Table
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Top Summary Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="bg-[#121212] border border-[#222222] rounded-lg p-4 space-y-1">
-          <div className="text-xs text-[#888888] flex items-center justify-between">
-            <span>Apex Parent Group</span>
-            <Building2 className="w-4 h-4 text-cyan-400" />
-          </div>
-          <div className="text-lg font-bold text-white">Introsoft Corp</div>
-          <div className="text-[11px] text-cyan-400 font-mono">Root Tenant Controller</div>
-        </div>
-
-        <div className="bg-[#121212] border border-[#222222] rounded-lg p-4 space-y-1">
-          <div className="text-xs text-[#888888] flex items-center justify-between">
-            <span>Active Subsidiaries</span>
-            <Layers className="w-4 h-4 text-blue-400" />
-          </div>
-          <div className="text-lg font-bold text-white font-mono">{subsidiaries.length + 1} Orgs</div>
-          <div className="text-[11px] text-blue-400 font-mono">Global Regional Entities</div>
-        </div>
-
-        <div className="bg-[#121212] border border-[#222222] rounded-lg p-4 space-y-1">
-          <div className="text-xs text-[#888888] flex items-center justify-between">
-            <span>Ecosystem Spend / Budget</span>
-            <DollarSign className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-lg font-bold text-white font-mono">${totalHierarchySpend.toLocaleString()} / ${totalHierarchyBudget.toLocaleString()}</div>
-          <div className="text-[11px] text-emerald-400 font-mono">Consolidated Ingress Ledger</div>
-        </div>
-
-        <div className="bg-[#121212] border border-[#222222] rounded-lg p-4 space-y-1">
-          <div className="text-xs text-[#888888] flex items-center justify-between">
-            <span>Total Tenant Users</span>
-            <Users className="w-4 h-4 text-purple-400" />
-          </div>
-          <div className="text-lg font-bold text-white font-mono">{totalUsers} Users</div>
-          <div className="text-[11px] text-purple-400 font-mono">RBAC & MFA Secured</div>
-        </div>
-      </div>
-
-      {/* Global Hierarchical View Scope Section */}
-      <div className="bg-[#12141c] border border-[#222636] rounded-xl p-5 shadow-xl space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#222636]">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-600 to-blue-700 flex items-center justify-center text-white shadow-md shadow-cyan-600/30 shrink-0">
-              <Network className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                  Global Hierarchical View Scope
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                  {selectedNodeId ? `FOCUS: ${selectedNode?.name}` : 'GLOBAL HIERARCHY SCOPE'}
-                </span>
-              </div>
-              <h2 className="text-sm font-bold text-white mt-0.5"><InfoButton />
-                Organizational Hierarchy Active Scope: {selectedNode?.name || 'Introsoft Corporation (Apex Root)'}
-              </h2>
-            </div>
-          </div>
-
-          {/* Scope Node Quick Select */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-mono text-[#8890a6] uppercase">Focus Node:</span>
-            <select
-              value={selectedNodeId || parentOwner?.id || ''}
-              onChange={e => setSelectedNodeId(e.target.value)}
-              className="bg-[#181c2b] border border-[#283046] px-3 py-1.5 rounded-lg text-xs font-semibold text-white focus:outline-none cursor-pointer"
-            >
-              <option value={parentOwner?.id}>{parentOwner?.name} (Parent Owner)</option>
-              {subsidiaries.map(s => (
-                <option key={s.id} value={s.id}>{s.name} (Subsidiary)</option>
-              ))}
-              {partners.map(p => (
-                <option key={p.id} value={p.id}>{p.name} (Partner/Reseller)</option>
-              ))}
-              {clients.map(c => (
-                <option key={c.id} value={c.id}>{c.name} (Direct Client)</option>
-              ))}
-            </select>
-
-            {selectedNodeId && onSelectCustomer && (
-              <button
-                onClick={() => onSelectCustomer(selectedNode?.id)}
-                className="px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-medium rounded-lg flex items-center gap-1.5 transition-colors"
-              >
-                <span>Manage Tenant</span>
-                <ChevronRight className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Hierarchical Breadcrumb & Node Details */}
-        <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-mono pt-1">
-          <div className="flex items-center gap-2 text-[#8890a6] flex-wrap">
-            <span className="text-white font-bold">Scope Lineage:</span>
-            <span className="text-cyan-400 font-bold">Introsoft Corp [Root Level 0]</span>
-            <ChevronRight className="w-3.5 h-3.5 text-[#555e78]" />
-            <span className={selectedNode?.id !== parentOwner?.id ? 'text-emerald-400 font-bold' : 'text-[#666666]'}>
-              {selectedNode?.id !== parentOwner?.id ? `${selectedNode?.name} [${selectedNode?.orgRole || 'Subsidiary'}]` : 'Consolidated Fleet'}
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 text-[#555e78]" />
-            <span className="text-purple-400 font-bold">
-              {applications.filter(a => selectedNode?.id === parentOwner?.id || a.customerId === selectedNode?.id).length} Connected Apps
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4 text-[11px]">
-            <div>
-              <span className="text-[#666666]">Node Spend: </span>
-              <span className="text-white font-bold">${selectedNode?.currentSpendUsd?.toLocaleString() || '0'}</span>
-            </div>
-            <div>
-              <span className="text-[#666666]">Budget Cap: </span>
-              <span className="text-blue-400 font-bold">${selectedNode?.monthlyBudgetUsd?.toLocaleString() || '15,000'}</span>
-            </div>
-            <div>
-              <span className="text-[#666666]">SLA Tier: </span>
-              <span className="text-emerald-400 font-bold uppercase">{selectedNode?.slaTier || 'Mission Critical'}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Graphical Tree View */}
-      {viewMode === 'tree' && (
-        <div className="bg-[#121212] border border-[#222222] rounded-lg p-6 space-y-8">
-          <div className="flex items-center justify-between border-b border-[#222222] pb-4">
-            <div>
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider"><InfoButton />Organizational Ecosystem Topology</h2>
-              <p className="text-xs text-[#888888]">Hierarchical lineage from Introsoft Parent Corporation down to subsidiaries, reseller partners, and clients.</p>
-            </div>
-            <div className="flex items-center gap-3 text-xs text-[#888888]">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-500"></span> Parent Owner</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Subsidiary</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Partner / Reseller</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Direct Client</span>
-            </div>
-          </div>
-
-          {/* Graphical Tree Rendering */}
-          <div className="space-y-6">
-            {/* Level 0: Parent Root */}
-            {parentOwner && (
-              <div className="flex flex-col items-center">
-                <div
-                  onClick={() => setSelectedNodeId(parentOwner.id)}
-                  className={`w-full max-w-xl bg-gradient-to-r from-cyan-950/40 to-[#181818] border-2 ${
-                    selectedNode?.id === parentOwner.id ? 'border-cyan-500 shadow-lg shadow-cyan-500/20' : 'border-cyan-500/40'
-                  } rounded-xl p-4 cursor-pointer hover:border-cyan-400 transition-all`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-bold">
-                        <Building2 className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-white">{parentOwner.name}</span>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 uppercase">
-                            Parent Owner (Root)
-                          </span>
-                        </div>
-                        <div className="text-xs text-[#888888] mt-0.5">
-                          {parentOwner.country} • {parentOwner.industry} • Budget: ${(parentOwner.monthlyBudgetUsd || 0).toLocaleString()} USD/mo
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right font-mono text-xs">
-                      <div className="text-emerald-400 font-bold">${(parentOwner.currentSpendUsd || 0).toLocaleString()} Spend</div>
-                      <div className="text-[#888888]">{parentOwner.users?.length || 0} Users | {parentOwner.connectedAppIds.length} Apps</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Connector Line */}
-                <div className="w-0.5 h-8 bg-gradient-to-b from-cyan-500/50 to-blue-500/50 my-2"></div>
-              </div>
-            )}
-
-            {/* Level 1: Subsidiaries */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
-              {subsidiaries.map(sub => {
-                const subPartners = partners.filter(p => p.parentId === sub.id || p.industry.includes(sub.industry));
-                return (
-                  <div
-                    key={sub.id}
-                    onClick={() => setSelectedNodeId(sub.id)}
-                    className={`bg-[#161616] border ${
-                      selectedNode?.id === sub.id ? 'border-blue-500 shadow-md shadow-blue-500/20' : 'border-[#262626]'
-                    } rounded-lg p-4 cursor-pointer hover:border-blue-400 transition-all space-y-3`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
-                          <Layers className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h3 className="text-xs font-bold text-white"><InfoButton />{sub.name}</h3>
-                          <span className="text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                            Subsidiary Entity
-                          </span>
-                        </div>
-                      </div>
-                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase ${
-                        sub.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400'
-                      }`}>
-                        {sub.status}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1.5 text-xs font-mono text-[#888888] border-t border-[#222222] pt-2">
-                      <div className="flex justify-between">
-                        <span>Jurisdiction:</span>
-                        <span className="text-white">{sub.country}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Monthly Budget:</span>
-                        <span className="text-white">${(sub.monthlyBudgetUsd || 0).toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Current Spend:</span>
-                        <span className="text-emerald-400">${(sub.currentSpendUsd || 0).toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Child Partners/Clients:</span>
-                        <span className="text-cyan-400">{subPartners.length + 2} Orgs</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bento Grid View */}
-      {viewMode === 'bento' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {customers.map(cust => (
-            <div
-              key={cust.id}
-              onClick={() => setSelectedNodeId(cust.id)}
-              className="bg-[#121212] border border-[#222222] hover:border-[#333333] rounded-lg p-5 space-y-4 cursor-pointer transition-all"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase ${
-                    cust.orgRole === 'parent_owner' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' :
-                    cust.orgRole === 'subsidiary' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
-                    cust.orgRole === 'partner_reseller' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
-                    'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  }`}>
-                    {cust.orgRole?.replace('_', ' ') || 'Direct Tenant'}
-                  </span>
-                  <h3 className="text-sm font-bold text-white mt-2"><InfoButton />{cust.name}</h3>
-                  <p className="text-xs text-[#888888]">{cust.industry} • {cust.country}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 bg-[#181818] p-3 rounded border border-[#222222] text-xs font-mono">
-                <div>
-                  <span className="text-[#888888] block text-[10px]">Budget</span>
-                  <span className="text-white font-bold">${(cust.monthlyBudgetUsd || 0).toLocaleString()}</span>
-                </div>
-                <div>
-                  <span className="text-[#888888] block text-[10px]">Spend</span>
-                  <span className="text-emerald-400 font-bold">${(cust.currentSpendUsd || 0).toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Table Ledger View */}
-      {viewMode === 'table' && (
-        <div className="bg-[#121212] border border-[#222222] rounded-lg overflow-hidden">
-          <table className="w-full text-left text-xs font-mono">
-            <thead>
-              <tr className="bg-[#181818] border-b border-[#222222] text-[#888888] uppercase text-[10px]">
-                <th className="p-4">Organization Name</th>
-                <th className="p-4">Role / Hierarchy</th>
-                <th className="p-4">Jurisdiction</th>
-                <th className="p-4">Tier / Status</th>
-                <th className="p-4 text-right">Budget (USD)</th>
-                <th className="p-4 text-right">Current Spend</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1e1e1e]">
-              {customers.map(cust => (
-                <tr key={cust.id} className="hover:bg-[#161616]">
-                  <td className="p-4 text-white font-sans font-bold">{cust.name}</td>
-                  <td className="p-4">
-                    <span className="px-2 py-0.5 rounded text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase">
-                      {cust.orgRole || 'direct_client'}
-                    </span>
-                  </td>
-                  <td className="p-4 text-[#888888]">{cust.country}</td>
-                  <td className="p-4">
-                    <span className="text-emerald-400 font-bold">{cust.tier}</span> / {cust.status}
-                  </td>
-                  <td className="p-4 text-right font-mono">${(cust.monthlyBudgetUsd || 0).toLocaleString()}</td>
-                  <td className="p-4 text-right font-mono text-emerald-400">${(cust.currentSpendUsd || 0).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Selected Node Inspection Drawer */}
-      {selectedNode && (
-        <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-[#222222] pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 font-bold">
-                <Building2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white"><InfoButton />{selectedNode.name}</h3>
-                <p className="text-xs text-[#888888]">ID: {selectedNode.id} • {selectedNode.legalName || selectedNode.name}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded text-xs font-mono bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 uppercase">
-                {selectedNode.orgRole || 'Tenant'}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-3 bg-[#181818] p-4 rounded-lg border border-[#222222]">
-              <h4 className="text-xs font-bold uppercase text-white font-mono">Primary Contact & Governance</h4>
-              <div className="text-xs space-y-1 text-[#aaaaaa]">
-                <div><strong className="text-white">Name:</strong> {selectedNode.primaryContact?.name || 'Primary Admin'}</div>
-                <div><strong className="text-white">Email:</strong> {selectedNode.primaryContact?.email || 'admin@enterprise.com'}</div>
-                <div><strong className="text-white">Phone:</strong> {selectedNode.primaryContact?.phone || 'N/A'}</div>
-                <div><strong className="text-white">Jurisdiction:</strong> {selectedNode.country}</div>
-              </div>
-            </div>
-
-            <div className="space-y-3 bg-[#181818] p-4 rounded-lg border border-[#222222]">
-              <h4 className="text-xs font-bold uppercase text-white font-mono">Quotas & Financial Ledger</h4>
-              <div className="text-xs space-y-1 text-[#aaaaaa]">
-                <div><strong className="text-white">Monthly Budget:</strong> ${(selectedNode.monthlyBudgetUsd || 0).toLocaleString()} USD</div>
-                <div><strong className="text-white">Current Spend:</strong> ${(selectedNode.currentSpendUsd || 0).toLocaleString()} USD</div>
-                <div><strong className="text-white">Rate Limit:</strong> {selectedNode.rateLimitRpm || 600} RPM</div>
-                <div><strong className="text-white">Credit Balance:</strong> ${selectedNode.billingConfig?.creditBalanceUsd || 1500} USD</div>
-              </div>
-            </div>
-
-            <div className="space-y-3 bg-[#181818] p-4 rounded-lg border border-[#222222]">
-              <h4 className="text-xs font-bold uppercase text-white font-mono">Statutory Officers (POPIA / GDPR)</h4>
-              <div className="text-xs space-y-1 text-[#aaaaaa]">
-                <div><strong className="text-white">Info Officer:</strong> {selectedNode.statutoryOfficers?.informationOfficer?.name || 'Nominated'}</div>
-                <div><strong className="text-white">Reg ID:</strong> {selectedNode.statutoryOfficers?.informationOfficer?.registrationNumber || 'Pending'}</div>
-                <div><strong className="text-white">DPO:</strong> {selectedNode.statutoryOfficers?.dataProtectionOfficer?.name || 'Internal'}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <main className="space-y-5 pb-12">
+    <header className="border-b border-[#222] pb-4"><p className="text-[10px] uppercase tracking-[.2em] text-cyan-300">Commercial organization structure</p><h1 className="mt-1 text-xl font-semibold text-white">Organizations and customers</h1><p className="mt-1 max-w-3xl text-xs text-slate-400">The tree uses persisted commercial relationships. Technical tenants, customer names, metadata, and industry are never used to infer commercial ownership.</p></header>
+    {loading && <div className="flex items-center gap-2 text-sm text-slate-400"><LoaderCircle className="animate-spin" size={16}/>Loading authorized commercial records…</div>}
+    {error && <div role="alert" className="flex gap-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100"><AlertTriangle size={17}/>{error}</div>}
+    {!loading && !error && (!data?.organizations.length || !root) && <div role="status" className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">No authorized commercial hierarchy is available. No technical tenant or customer record has been converted into a commercial organization.</div>}
+    {!loading && !error && root && <div className="space-y-2">{renderOrganization(root)}{data!.organizations.filter(item => item.id !== root.id && !data!.relationships.some(edge => edge.child_organization_id === item.id)).map(item => <div key={item.id} className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-100">Unlinked commercial organization: {item.name}. No parent relationship is inferred.</div>)}</div>}
+    {selectedCustomerId && data?.customers.some(customer => customer.id === selectedCustomerId) && <section className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-4 text-sm"><p className="text-[10px] uppercase tracking-wider text-emerald-300">Selected commercial customer</p><strong className="mt-1 block text-white">{data.customers.find(customer => customer.id === selectedCustomerId)?.display_name}</strong><p className="mt-1 text-xs text-slate-400">This is a commercial customer record. The current technical tenant workspace is separate and will not be opened using this customer ID.</p></section>}
+  </main>;
 };

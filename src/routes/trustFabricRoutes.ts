@@ -11,7 +11,7 @@ import {
   TrustRelationship,
   EvidenceEvent
 } from '../types';
-import { AuthenticatedRequest, requireAuthentication } from '../middleware/authMiddleware';
+import { AuthenticatedRequest, requireAuthentication, requireRole } from '../middleware/authMiddleware';
 
 export const trustFabricRouter = Router();
 
@@ -73,11 +73,11 @@ let evidenceLedger: EvidenceEvent[] = [
 ];
 
 // Tenants CRUD
-trustFabricRouter.get('/tenants', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/tenants', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(tenants);
 });
 
-trustFabricRouter.post('/tenants', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/tenants', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { name, domain, planId } = req.body;
   if (!name) return res.status(400).json({ error: 'Tenant name is required' });
   const newTenant: Tenant = {
@@ -93,11 +93,11 @@ trustFabricRouter.post('/tenants', requireAuthentication, (req: AuthenticatedReq
 });
 
 // Principals CRUD
-trustFabricRouter.get('/principals', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/principals', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(principals);
 });
 
-trustFabricRouter.post('/principals', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/principals', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { tenantId, principalType, displayName } = req.body;
   if (!tenantId || !displayName) return res.status(400).json({ error: 'tenantId and displayName are required' });
   const newPrincipal: Principal = {
@@ -112,11 +112,11 @@ trustFabricRouter.post('/principals', requireAuthentication, (req: Authenticated
 });
 
 // Identities CRUD
-trustFabricRouter.get('/identities', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/identities', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(identities);
 });
 
-trustFabricRouter.post('/identities', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/identities', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { principalId, altilId } = req.body;
   if (!principalId) return res.status(400).json({ error: 'principalId is required' });
   const newIdentity: Identity = {
@@ -130,11 +130,11 @@ trustFabricRouter.post('/identities', requireAuthentication, (req: Authenticated
 });
 
 // Devices CRUD
-trustFabricRouter.get('/devices', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/devices', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(devices);
 });
 
-trustFabricRouter.post('/devices', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/devices', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { identityId, deviceFingerprintHash, trustLevel } = req.body;
   if (!identityId) return res.status(400).json({ error: 'identityId is required' });
   const newDevice: Device = {
@@ -150,11 +150,11 @@ trustFabricRouter.post('/devices', requireAuthentication, (req: AuthenticatedReq
 });
 
 // Credentials CRUD
-trustFabricRouter.get('/credentials', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/credentials', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(credentials);
 });
 
-trustFabricRouter.post('/credentials', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/credentials', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { tenantId, principalId, credentialType, scopes } = req.body;
   if (!tenantId || !principalId) return res.status(400).json({ error: 'tenantId and principalId are required' });
   const randomSuffix = crypto.randomBytes(16).toString('hex');
@@ -178,11 +178,11 @@ trustFabricRouter.post('/credentials', requireAuthentication, (req: Authenticate
 });
 
 // Contracts CRUD
-trustFabricRouter.get('/contracts', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/contracts', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(contracts);
 });
 
-trustFabricRouter.post('/contracts', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/contracts', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { tenantId, contractType, version, termsReference, acceptingIdentityId } = req.body;
   if (!tenantId || !contractType) return res.status(400).json({ error: 'tenantId and contractType are required' });
   const newContract: Contract = {
@@ -202,11 +202,11 @@ trustFabricRouter.post('/contracts', requireAuthentication, (req: AuthenticatedR
 });
 
 // Consent CRUD
-trustFabricRouter.get('/consent', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/consent', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(consents);
 });
 
-trustFabricRouter.post('/consent', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/consent', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { principalId, tenantId, purpose, scope } = req.body;
   if (!principalId || !tenantId || !purpose) return res.status(400).json({ error: 'principalId, tenantId, and purpose are required' });
   const newConsent: Consent = {
@@ -225,11 +225,11 @@ trustFabricRouter.post('/consent', requireAuthentication, (req: AuthenticatedReq
 });
 
 // Trust Relationships
-trustFabricRouter.get('/relationships', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/relationships', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(relationships);
 });
 
-trustFabricRouter.post('/relationships', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/relationships', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { sourceIdentityId, targetIdentityId, relationshipType, scope } = req.body;
   if (!sourceIdentityId || !targetIdentityId) return res.status(400).json({ error: 'sourceIdentityId and targetIdentityId are required' });
   const newRel: TrustRelationship = {
@@ -247,11 +247,11 @@ trustFabricRouter.post('/relationships', requireAuthentication, (req: Authentica
 });
 
 // Evidence Ledger
-trustFabricRouter.get('/evidence', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.get('/evidence', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   res.json(evidenceLedger);
 });
 
-trustFabricRouter.post('/evidence', requireAuthentication, (req: AuthenticatedRequest, res: Response) => {
+trustFabricRouter.post('/evidence', requireAuthentication, requireRole(['SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
   const { eventType, tenantId, principalId, identityId, action, metadata } = req.body;
   const prevHash = evidenceLedger.length > 0 ? evidenceLedger[0].eventHash : '00000000000000000000000000000000';
   const payload = JSON.stringify({ eventType, tenantId, principalId, identityId, action, metadata, prevHash });

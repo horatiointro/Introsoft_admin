@@ -23,6 +23,7 @@ import {
   Cpu
 } from 'lucide-react';
 import { Incident } from '../types';
+import { apiFetch } from '../utils/apiFetch';
 
 interface Incident360DiagnosticModalProps {
   incident: Incident | null;
@@ -58,7 +59,7 @@ export const Incident360DiagnosticModal: React.FC<Incident360DiagnosticModalProp
     setRagResponse(null);
 
     try {
-      const res = await fetch('/api/v1/rag/incident-diagnostics', {
+      const res = await apiFetch('/api/v1/rag/incident-diagnostics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

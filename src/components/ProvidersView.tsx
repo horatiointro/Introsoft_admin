@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { InfoButton } from './InfoButton';
 import React, { useEffect, useState } from 'react';
 import {
@@ -46,9 +47,9 @@ const ProviderAccountsPanel: React.FC<{ providers: AIProvider[] }> = ({ provider
   const [accounts, setAccounts] = useState<ProviderAccountRow[]>([]);
   const [label, setLabel] = useState(''); const [apiKey, setApiKey] = useState(''); const [providerId, setProviderId] = useState(providers.find(p => p.type === 'openrouter')?.id || providers[0]?.id || '');
   const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('');
-  const load = async () => { const response = await fetch('/api/v1/provider-accounts'); if (response.ok) setAccounts(await response.json()); };
+  const load = async () => { const response = await apiFetch('/api/v1/provider-accounts'); if (response.ok) setAccounts(await response.json()); };
   useEffect(() => { void load(); }, []);
-  const request = async (url: string, method = 'POST', body?: unknown) => { setBusy(true); setNotice(''); try { const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Provider account action failed.'); setNotice(result.message || 'Account updated.'); await load(); return result; } catch (error) { setNotice(error instanceof Error ? error.message : 'Provider account action failed.'); } finally { setBusy(false); } };
+  const request = async (url: string, method = 'POST', body?: unknown) => { setBusy(true); setNotice(''); try { const response = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Provider account action failed.'); setNotice(result.message || 'Account updated.'); await load(); return result; } catch (error) { setNotice(error instanceof Error ? error.message : 'Provider account action failed.'); } finally { setBusy(false); } };
   const add = async (event: React.FormEvent) => { event.preventDefault(); const result = await request('/api/v1/provider-accounts', 'POST', { providerId, label, apiKey }); if (result?.id || result?.encryptedKey === undefined) { setApiKey(''); setLabel(''); if (result?.id) await request(`/api/v1/provider-accounts/${result.id}/test`); } };
   return <section className="space-y-5">
     <div className="grid gap-4 xl:grid-cols-[.8fr_1.2fr]">

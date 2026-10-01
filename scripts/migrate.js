@@ -15,6 +15,13 @@ function getSslConfig() {
 }
 
 function getDatabaseConfig() {
+  if (process.env.ALTIL_LOCAL_E2E === 'true') {
+    const host = process.env.MARIADB_HOST || '';
+    const database = process.env.MARIADB_DATABASE || '';
+    if (process.env.DATABASE_URL?.trim() || host !== '127.0.0.1' || database !== 'altil_e2e_test' || process.env.ALTIL_LOCAL_E2E_DATABASE !== 'altil_e2e_test') {
+      throw new Error('LOCAL E2E migration target refused; only loopback altil_e2e_test is allowed.');
+    }
+  }
   const ssl = getSslConfig();
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     try {

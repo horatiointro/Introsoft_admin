@@ -3,9 +3,12 @@ import { ComplianceRepository } from '../db/complianceRepository';
 import {
   requireAuthentication,
   requireRole,
+  requirePermission,
   requireTenantAccess,
   AuthenticatedRequest
 } from '../middleware/authMiddleware';
+import { authorizeInContext } from '../security/authorizationContext';
+import { resolveAuthorizedTenantTarget } from '../security/tenantTarget';
 
 export const complianceRouter = express.Router();
 
@@ -48,10 +51,11 @@ complianceRouter.put(
  */
 const getDsarHandler = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
-    const tenantFilter = isSuperAdmin
-      ? ((req.query.tenantId as string) || undefined)
-      : (req.user?.tenantId || undefined);
+    const tenantFilter = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: req.query.tenantId as string | undefined, allowGlobalList: true });
+    const globalDsrGrant = req.user?.authorization?.grants.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL' && grant.permissions.includes('compliance.dsr')) === true;
+    if (!tenantFilter || (tenantFilter !== 'all' && !authorizeInContext(req.user?.authorization, tenantFilter, 'compliance.dsr')) || (tenantFilter === 'all' && !globalDsrGrant)) {
+      return res.status(403).json({ error: 'Data-subject request scope is not authorized.' });
+    }
 
     const requests = await ComplianceRepository.getDsarRequests(tenantFilter);
     res.json(requests);
@@ -60,8 +64,8 @@ const getDsarHandler = async (req: AuthenticatedRequest, res: express.Response) 
   }
 };
 
-complianceRouter.get('/dsar', requireAuthentication, getDsarHandler);
-complianceRouter.get('/dsr', requireAuthentication, getDsarHandler);
+complianceRouter.get('/dsar', requireAuthentication, requireRole(['SUPER_ADMIN', 'AUDITOR', 'COMPLIANCE_OFFICER', 'TENANT_ADMIN']), requirePermission('compliance.dsr'), getDsarHandler);
+complianceRouter.get('/dsr', requireAuthentication, requireRole(['SUPER_ADMIN', 'AUDITOR', 'COMPLIANCE_OFFICER', 'TENANT_ADMIN']), requirePermission('compliance.dsr'), getDsarHandler);
 
 /**
  * POST /api/v1/compliance/dsar & POST /api/v1/compliance/dsr
@@ -73,11 +77,9 @@ const createDsarHandler = async (req: AuthenticatedRequest, res: express.Respons
       body.id = `DSR-${body.framework === 'GDPR' ? 'EU' : 'ZA'}-${Date.now().toString(36).toUpperCase()}`;
     }
 
-    // Tenant isolation: non-super-admins cannot submit DSAR on behalf of another tenant
-    const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN');
-    if (!isSuperAdmin && req.user?.tenantId) {
-      body.tenantId = req.user.tenantId;
-    }
+    const tenantId = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: body.tenantId });
+    if (!tenantId || !authorizeInContext(req.user?.authorization, tenantId, 'compliance.dsr')) return res.status(403).json({ error: 'Data-subject request tenant is outside the authorized scope.' });
+    body.tenantId = tenantId;
 
     const saved = await ComplianceRepository.saveDsarRequest(body);
     res.status(201).json(saved);
@@ -90,12 +92,14 @@ complianceRouter.post(
   '/dsar',
   requireAuthentication,
   requireRole(['SUPER_ADMIN', 'COMPLIANCE_OFFICER', 'TENANT_ADMIN']),
+  requirePermission('compliance.dsr'),
   createDsarHandler
 );
 complianceRouter.post(
   '/dsr',
   requireAuthentication,
   requireRole(['SUPER_ADMIN', 'COMPLIANCE_OFFICER', 'TENANT_ADMIN']),
+  requirePermission('compliance.dsr'),
   createDsarHandler
 );
 
@@ -104,7 +108,10 @@ complianceRouter.post(
  */
 const updateDsarHandler = async (req: AuthenticatedRequest, res: express.Response) => {
   try {
-    const body = { ...req.body, id: req.params.id };
+    const globalDsrGrant = req.user?.authorization?.grants.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL' && grant.permissions.includes('compliance.dsr')) === true;
+    const existing = (await ComplianceRepository.getDsarRequests(globalDsrGrant ? 'all' : req.user?.tenantId || undefined)).find(item => item.id === req.params.id);
+    if (!existing || !authorizeInContext(req.user?.authorization, existing.tenantId || '', 'compliance.dsr')) return res.status(404).json({ error: 'Data-subject request not found.' });
+    const body = { ...req.body, id: req.params.id, tenantId: existing.tenantId };
     const saved = await ComplianceRepository.saveDsarRequest(body);
     res.json(saved);
   } catch (err: any) {
@@ -116,12 +123,14 @@ complianceRouter.put(
   '/dsar/:id',
   requireAuthentication,
   requireRole(['SUPER_ADMIN', 'COMPLIANCE_OFFICER', 'TENANT_ADMIN']),
+  requirePermission('compliance.dsr'),
   updateDsarHandler
 );
 complianceRouter.put(
   '/dsr/:id',
   requireAuthentication,
   requireRole(['SUPER_ADMIN', 'COMPLIANCE_OFFICER', 'TENANT_ADMIN']),
+  requirePermission('compliance.dsr'),
   updateDsarHandler
 );
 
@@ -246,9 +255,12 @@ complianceRouter.post(
 complianceRouter.get(
   '/simulated-logs',
   requireAuthentication,
+  requirePermission('compliance.dsr'),
   async (req: AuthenticatedRequest, res) => {
     try {
-      const tenantId = req.query.tenantId as string;
+      const tenantId = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: req.query.tenantId as string | undefined, allowGlobalList: true });
+      const globalDsrGrant = req.user?.authorization?.grants.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL' && grant.permissions.includes('compliance.dsr')) === true;
+      if (!tenantId || (tenantId === 'all' && !globalDsrGrant) || (tenantId !== 'all' && !authorizeInContext(req.user?.authorization, tenantId, 'compliance.dsr'))) return res.status(403).json({ error: 'Simulation log scope is not authorized.' });
       const packets = await ComplianceRepository.getSimulationPackets(tenantId);
       res.json(packets);
     } catch (err: any) {
@@ -264,6 +276,8 @@ complianceRouter.get(
 complianceRouter.delete(
   '/simulated-logs',
   requireAuthentication,
+  requireRole(['SUPER_ADMIN']),
+  requirePermission('compliance.dsr'),
   async (_req: AuthenticatedRequest, res) => {
     try {
       await ComplianceRepository.clearSimulationLogs();
@@ -281,6 +295,8 @@ complianceRouter.delete(
 complianceRouter.get(
   '/token-vault',
   requireAuthentication,
+  requireRole(['SUPER_ADMIN']),
+  requirePermission('compliance.dsr'),
   async (_req: AuthenticatedRequest, res) => {
     try {
       const tokens = await ComplianceRepository.getTokenVaultRecords();

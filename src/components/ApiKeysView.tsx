@@ -42,7 +42,7 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
     rateLimitRpm: 120,
     expiresInDays: 365,
     ipWhitelistRaw: '',
-    scopes: ['read:inference', 'read:models']
+    scopes: ['read:inference']
   });
 
   const handleCopy = (keyString: string, id: string) => {
@@ -78,9 +78,6 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
 
   const availableScopes = [
     { id: 'read:inference', label: 'Inference Access (ALTIL API)' },
-    { id: 'read:models', label: 'Models Discovery & Status' },
-    { id: 'read:capabilities', label: 'Capabilities Catalog Query' },
-    { id: 'write:telemetry', label: 'Telemetry & Logging Egress' }
   ];
 
   const toggleScope = (scopeId: string) => {
@@ -381,6 +378,7 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
                       );
                     })}
                   </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-[#9298a6]">Only inference access is currently enforced. Model discovery, capability catalog, and telemetry scopes are unavailable and cannot be granted.</p>
                 </div>
 
                 <div className="pt-3 border-t border-[#222222] flex justify-end space-x-2">

@@ -14,6 +14,7 @@ import {
   INITIAL_PROVIDERS,
   INITIAL_AUDIT_LOGS
 } from '../data/initialState';
+import type { OrganizationNode, OrganizationRelationship } from '../security/organizationScope';
 import {
   INITIAL_LICENSING_PLANS,
   INITIAL_TENANT_LICENSES,
@@ -22,6 +23,19 @@ import {
 
 // Configurable MariaDB connection pool parameters
 function getDatabaseConfig(): mysql.PoolOptions {
+  if (process.env.ALTIL_LOCAL_E2E === 'true') {
+    const host = process.env.MARIADB_HOST || '';
+    const database = process.env.MARIADB_DATABASE || '';
+    if (process.env.DATABASE_URL?.trim()) throw new Error('LOCAL E2E refuses DATABASE_URL; use the explicit test database settings.');
+    if (host !== '127.0.0.1') throw new Error('LOCAL E2E database host must be exactly 127.0.0.1.');
+    if (database !== 'altil_e2e_test') throw new Error('LOCAL E2E database must be exactly altil_e2e_test.');
+    if (process.env.ALTIL_LOCAL_E2E_DATABASE !== 'altil_e2e_test') throw new Error('LOCAL E2E database must be explicitly allowlisted as altil_e2e_test.');
+    return {
+      host, port: Number(process.env.MARIADB_PORT || 3306), user: process.env.MARIADB_USER || 'altil_user',
+      password: process.env.MARIADB_PASSWORD || '', database, waitForConnections: true,
+      connectionLimit: 10, queueLimit: 0, connectTimeout: 4000,
+    };
+  }
   const ssl = process.env.MARIADB_SSL?.toLowerCase() === 'true'
     ? {
         rejectUnauthorized: true,
@@ -103,11 +117,19 @@ export async function executeQuery<T = any>(sql: string, params: any[] = []): Pr
 
 /** Run a small, parameterized set of accounting writes atomically. */
 export async function executeTransaction(statements: Array<{ sql: string; params?: any[] }>): Promise<void> {
+  await withMariaDbTransaction(async connection => {
+    for (const statement of statements) await connection.execute(statement.sql, statement.params || []);
+  });
+}
+
+/** Execute parameterized work on one connection and commit/rollback the complete unit. */
+export async function withMariaDbTransaction<T>(work: (connection: mysql.PoolConnection) => Promise<T>): Promise<T> {
   const connection = await getMariaDbPool().getConnection();
   try {
     await connection.beginTransaction();
-    for (const statement of statements) await connection.execute(statement.sql, statement.params || []);
+    const result = await work(connection);
     await connection.commit();
+    return result;
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -123,6 +145,11 @@ export async function testAndInitMariaDb(): Promise<{ connected: boolean; versio
     const version = rows[0]?.version || 'MariaDB 10.11.18';
     const tableCheck = await executeQuery("SHOW TABLES LIKE 'tenants'");
     if (tableCheck.length === 0) {
+      if (process.env.ALTIL_LOCAL_E2E === 'true') {
+        isDbConnected = false;
+        dbStatusMessage = 'LOCAL E2E database has not been prepared; run the explicit test database setup first.';
+        return { connected: false, version, message: dbStatusMessage };
+      }
       if (process.env.NODE_ENV === 'production') {
         isDbConnected = false;
         dbStatusMessage = `MariaDB is reachable, but the ALTIL schema is missing from '${dbConfig.database}'. Run 'npm run db:migrate' before starting the production server.`;
@@ -139,6 +166,13 @@ export async function testAndInitMariaDb(): Promise<{ connected: boolean; versio
         console.warn('[MariaDB] Schema check notice:', schemaErr);
       }
     } else {
+      if (process.env.ALTIL_LOCAL_E2E === 'true') {
+        const migrationTable = await executeQuery("SHOW TABLES LIKE 'schema_migrations'");
+        if (!migrationTable.length) throw new Error('LOCAL E2E migration history is missing.');
+        const expected = await executeQuery<{ count: number }>('SELECT COUNT(*) AS count FROM schema_migrations');
+        const latest = await executeQuery<{ version: string }>('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1');
+        if (!expected[0]?.count || !latest[0]?.version) throw new Error('LOCAL E2E migrations have not been applied.');
+      }
       if (process.env.NODE_ENV === 'production') {
         const requiredTables = await Promise.all([
           executeQuery("SHOW TABLES LIKE 'iam_users'"),
@@ -173,6 +207,7 @@ export async function testAndInitMariaDb(): Promise<{ connected: boolean; versio
  * Execute schema creation script from scripts/init_mariadb.sql
  */
 export async function runSchemaMigrationScript(): Promise<{ success: boolean; message: string }> {
+  if (process.env.ALTIL_LOCAL_E2E === 'true') return { success: false, message: 'LOCAL E2E startup cannot run schema bootstrap or migrations.' };
   try {
     const scriptPath = path.join(process.cwd(), 'scripts', 'init_mariadb.sql');
     if (!fs.existsSync(scriptPath)) {
@@ -251,6 +286,43 @@ export async function getMariaDbHealth() {
 // ----------------------------------------------------------------------------
 
 export const dbRepository = {
+  /** Load the current organization graph from the existing tenant metadata source. */
+  async getOrganizationGraph(): Promise<{ nodes: OrganizationNode[]; relationships: OrganizationRelationship[] }> {
+    let records: Array<Pick<Customer, 'id' | 'parentId' | 'orgRole'>> = [...INITIAL_CUSTOMERS];
+    if (isDbConnected) {
+      const rows = await executeQuery<{ id: string; parent_id: string | null; org_role: Customer['orgRole'] | null }>(
+        `SELECT id,
+                NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metadata_json, '$.parentId')), 'null') AS parent_id,
+                JSON_UNQUOTE(JSON_EXTRACT(metadata_json, '$.orgRole')) AS org_role
+         FROM tenants ORDER BY id`
+      );
+      records = rows.map(row => ({ id: row.id, parentId: row.parent_id, orgRole: row.org_role || undefined }));
+    }
+
+    const nodes: OrganizationNode[] = records.map(record => ({ id: record.id, parentId: record.parentId || null }));
+    const nodeIds = new Set(nodes.map(node => node.id));
+    const roleTypes: Record<string, OrganizationRelationship['relationshipType']> = {
+      parent_owner: 'OTHER',
+      subsidiary: 'SUBSIDIARY',
+      partner_reseller: 'PARTNER',
+      direct_client: 'DIRECT_CLIENT',
+    };
+    const relationships: OrganizationRelationship[] = records.flatMap(record => {
+      const parentOrganizationId = record.parentId;
+      const relationshipType = roleTypes[String(record.orgRole || '')];
+      if (!parentOrganizationId || !relationshipType || parentOrganizationId === record.id || !nodeIds.has(parentOrganizationId)) return [];
+      return [{
+        parentOrganizationId,
+        childOrganizationId: record.id,
+        relationshipType,
+        status: 'ACTIVE' as const,
+        effectiveFrom: undefined,
+        effectiveTo: null,
+      }];
+    });
+    return { nodes, relationships };
+  },
+
   // TENANTS / CUSTOMERS CRUD
   async getTenants(): Promise<Customer[]> {
     if (isDbConnected) {
@@ -278,6 +350,29 @@ export const dbRepository = {
       }
     }
     return INITIAL_CUSTOMERS;
+  },
+
+  /** Query only tenant rows inside the organization IDs already authorized by middleware. */
+  async getTenantsInScope(organizationIds: readonly string[]): Promise<Customer[]> {
+    const ids = [...new Set(organizationIds.filter(Boolean))];
+    if (!ids.length) return [];
+    if (!isDbConnected) return INITIAL_CUSTOMERS.filter(customer => ids.includes(customer.id));
+    const rows = await executeQuery<any>(`SELECT id, name, status, max_rpm, max_tpm, created_at, updated_at FROM tenants WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at DESC`, ids);
+    return rows.map((row: any) => {
+      const base = INITIAL_CUSTOMERS.find(customer => customer.id === row.id) || INITIAL_CUSTOMERS[0];
+      return {
+        ...base,
+        id: row.id,
+        name: row.name,
+        status: row.status === 'grace_period' ? 'restricted' : row.status === 'auto_suspended' ? 'suspended' : row.status,
+        monthlyBudgetUsd: Number(row.max_rpm || 5000) * 2,
+        currentSpendUsd: base.currentSpendUsd,
+        rateLimitRpm: Number(row.max_rpm || 5000),
+        rateLimitTpm: Number(row.max_tpm || 2000000),
+        createdAt: row.created_at ? String(row.created_at).split('T')[0] : base.createdAt,
+        updatedAt: row.updated_at ? String(row.updated_at).split('T')[0] : base.updatedAt,
+      };
+    });
   },
 
   async createTenant(tenant: Partial<Customer>): Promise<void> {
@@ -339,6 +434,43 @@ export const dbRepository = {
     return INITIAL_LICENSING_PLANS;
   },
 
+  /** Public signup must use the persisted catalogue, never demo/in-memory plans. */
+  async getPublishedLicensingPlans(): Promise<LicensingPlanTemplate[]> {
+    if (!isDbConnected) throw new Error('The persisted package catalogue is unavailable.');
+    const rows = await executeQuery<any>("SELECT * FROM licensing_plans WHERE is_active=1 ORDER BY name, id");
+    return rows.flatMap((row: any) => {
+      let metadata: Partial<LicensingPlanTemplate> = {};
+      try {
+        metadata = row.metadata_json
+          ? (typeof row.metadata_json === 'string' ? JSON.parse(row.metadata_json) : Buffer.isBuffer(row.metadata_json) ? JSON.parse(row.metadata_json.toString('utf8')) : typeof row.metadata_json === 'object' ? row.metadata_json : {})
+          : {};
+      } catch {
+        // Invalid metadata is not allowed to make an unverified plan selectable.
+        return [];
+      }
+      const plan: LicensingPlanTemplate = {
+        ...metadata,
+        id: row.id,
+        name: row.name,
+        applicationId: metadata.applicationId || 'all',
+        applicationName: metadata.applicationName || 'All ALTIL applications',
+        pricingType: row.pricing_model || metadata.pricingType || 'per_transaction',
+        currency: row.currency || metadata.currency || 'USD',
+        basePrice: Number(row.base_price ?? metadata.basePrice ?? 0),
+        billingCycle: metadata.billingCycle || String(row.billing_cycle || 'monthly').toLowerCase() as LicensingPlanTemplate['billingCycle'],
+        includedTransactions: Number(row.included_transactions_quota ?? metadata.includedTransactions ?? 0),
+        overagePricePerTransaction: Number(metadata.overagePricePerTransaction ?? row.overage_rate_per_1k ?? 0),
+        gracePeriodDays: Number(row.grace_period_days ?? metadata.gracePeriodDays ?? 0),
+        autoEnforcementAction: row.enforcement_rule || metadata.autoEnforcementAction || 'soft_warning',
+        autoEnforceOnUnpaid: metadata.autoEnforceOnUnpaid ?? true,
+        features: metadata.features || [],
+        isPublished: metadata.isPublished === true,
+        createdDate: metadata.createdDate || (row.created_at ? String(row.created_at).slice(0, 10) : ''),
+      };
+      return plan.isPublished ? [plan] : [];
+    });
+  },
+
   async saveLicensingPlan(plan: LicensingPlanTemplate): Promise<void> {
     if (isDbConnected) {
       await executeQuery(
@@ -396,7 +528,7 @@ export const dbRepository = {
             currentAccruedBillUsd: Number(r.current_accrued_bill_usd || 4500),
             autoEnforceOnUnpaid: true,
             graceDaysRemaining: Number(r.grace_period_days_remaining || 14),
-            activeEnforcement: r.active_enforcement || null,
+            activeEnforcement: !r.active_enforcement || r.active_enforcement === 'none' ? null : r.active_enforcement,
             billingContactEmail: 'billing@tenant.com',
             ...(r.metadata_json ? JSON.parse(typeof r.metadata_json === 'string' ? r.metadata_json : r.metadata_json.toString()) : {})
           }));
@@ -427,7 +559,7 @@ export const dbRepository = {
           lic.paymentStatus,
           lic.contractStartDate || '2026-01-01',
           lic.contractEndDate || '2026-09-01',
-          lic.activeEnforcement || null,
+          lic.activeEnforcement || 'none',
           lic.currentAccruedBillUsd || 0,
           lic.graceDaysRemaining || 14,
           lic.lastPaymentDate || '2026-08-01',

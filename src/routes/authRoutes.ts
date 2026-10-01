@@ -1,23 +1,20 @@
 import express, { Response } from 'express';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { IamRepository } from '../db/iamRepository';
+import { executeQuery, isDatabaseConnected, withMariaDbTransaction } from '../db/mariadb';
 import {
   requireAuthentication,
   requireRole,
   requireTenantAccess,
+  requirePermission,
   extractSessionToken,
   AuthenticatedRequest
 } from '../middleware/authMiddleware';
+import { authorizeInContext } from '../security/authorizationContext';
+import { isSuperAdminQuickAccessEnabled } from '../security/superAdminQuickAccess';
+import { verifyMfaCode } from '../security/mfaVerification';
 
 export const authRouter = express.Router();
-
-function isLoopbackRequest(req: express.Request): boolean {
-  const remoteAddress = req.socket.remoteAddress || '';
-  return remoteAddress === '::1' || remoteAddress === '127.0.0.1' || remoteAddress.startsWith('127.') || remoteAddress.startsWith('::ffff:127.');
-}
-
-function quickAccessEnabled(req: express.Request): boolean {
-  return process.env.NODE_ENV !== 'production' && isLoopbackRequest(req);
-}
 
 /**
  * Helper to set secure session cookie
@@ -36,13 +33,13 @@ function setSessionCookie(res: Response, token: string) {
   });
 }
 
-/** Local Super Admin access is limited to non-production loopback requests. */
-authRouter.get('/super-admin-access/availability', (req, res) => {
-  res.json({ available: quickAccessEnabled(req) });
+/** Enabled only by explicit deployment configuration; keep the flag unset in production. */
+authRouter.get('/super-admin-access/availability', (_req, res) => {
+  res.json({ available: isSuperAdminQuickAccessEnabled() });
 });
 
 authRouter.post('/super-admin-access', async (req, res) => {
-  if (!quickAccessEnabled(req)) return res.status(404).json({ error: 'Not found' });
+  if (!isSuperAdminQuickAccessEnabled()) return res.status(404).json({ error: 'Not found' });
 
   const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
   if (!email) return res.status(400).json({ error: 'Enter the Super Admin account email.' });
@@ -53,13 +50,14 @@ authRouter.post('/super-admin-access', async (req, res) => {
       return res.status(403).json({ error: 'That account is not an active Super Admin account.' });
     }
 
-    const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    // Do not trust client-supplied X-Forwarded-For for quick-access session/audit metadata.
+    const ipAddress = req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'ALTIL Control Console';
     const token = IamRepository.generateSessionToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const session = await IamRepository.createSession(user.id, token, ipAddress, userAgent, expiresAt);
     setSessionCookie(res, token);
-    await IamRepository.logLoginEvent(email, 'SUCCESS', user.id, user.tenant_id, ipAddress, userAgent, 'Super Admin quick access session issued from loopback.');
+    await IamRepository.logLoginEvent(email, 'SUCCESS', user.id, user.tenant_id, ipAddress, userAgent, 'Super Admin quick access session issued while explicitly enabled by deployment configuration.');
 
     const { roles, permissions, tenantId } = await IamRepository.getUserRolesAndPermissions(user.id);
     return res.json({
@@ -203,6 +201,17 @@ authRouter.get('/me', requireAuthentication, async (req: AuthenticatedRequest, r
         roles: req.user.roles,
         role: req.user.roles[0] || 'User',
         permissions: req.user.permissions,
+        authorization: req.user.authorization ? {
+          organizationId: req.user.authorization.organizationId,
+          permissions: [...req.user.authorization.permissions],
+          visibleOrganizationIds: [...req.user.authorization.visibleOrganizationIds],
+          scopes: req.user.authorization.grants.map(grant => ({
+            role: grant.role,
+            organizationId: grant.organizationId,
+            visibility: grant.visibility,
+            permissions: [...grant.permissions],
+          })),
+        } : null,
         mfaEnabled: user.mfa_enabled,
         lastLoginAt: user.last_login_at
       }
@@ -236,7 +245,7 @@ authRouter.get('/sessions', requireAuthentication, async (req: AuthenticatedRequ
 const revokeSessionHandler = async (req: AuthenticatedRequest, res: express.Response) => {
   const sessionId = req.params.id;
   try {
-    await IamRepository.revokeSessionById(sessionId);
+    await IamRepository.revokeSessionById(sessionId, req.user!.id);
     return res.json({ status: 'revoked', sessionId });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to revoke session', details: err.message });
@@ -252,15 +261,11 @@ authRouter.post('/sessions/:id/revoke', requireAuthentication, revokeSessionHand
  */
 authRouter.post('/mfa/verify', requireAuthentication, async (req: AuthenticatedRequest, res) => {
   const { code } = req.body;
-  if (!code || code.length < 6) {
-    return res.status(400).json({ error: 'Invalid MFA verification token format' });
-  }
-
-  // Accepts standard test token or non-empty 6-digit PIN
-  return res.json({
-    status: 'verified',
-    message: 'Hardware Authenticator Token Verified & Synced with FIPS 140-3 HSM Vault.'
-  });
+  const result = await verifyMfaCode(req.user!.id, typeof code === 'string' ? code : undefined);
+  if (result === 'DISABLED') return res.json({ status: 'disabled', mfaEnabled: false });
+  if (result === 'UNAVAILABLE') return res.status(503).json({ error: 'MFA verification is unavailable.' });
+  if (result !== 'VERIFIED') return res.status(401).json({ error: 'MFA verification failed.' });
+  return res.json({ status: 'verified' });
 });
 
 /**
@@ -304,26 +309,156 @@ authRouter.post('/reauthenticate', requireAuthentication, async (req: Authentica
  * GET /api/v1/iam/users
  * Returns list of enterprise IAM users (requires User Admin or Super Admin)
  */
-authRouter.get('/users', requireAuthentication, requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'TENANT_ADMIN']), async (req: AuthenticatedRequest, res) => {
+authRouter.get('/users', requireAuthentication, requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'TENANT_ADMIN']), requirePermission('user.read'), async (req: AuthenticatedRequest, res) => {
   try {
-    const tenantFilter = req.user?.roles.includes('SUPER_ADMIN') ? (req.query.tenantId as string) : req.user?.tenantId || undefined;
-    const users = await IamRepository.getUsers(tenantFilter);
+    const requestedOrganization = String(req.query.tenantId || req.query.organizationId || '').trim();
+    const globalGrant = req.user?.authorization?.grants.some(grant => grant.visibility === 'GLOBAL') === true;
+    const visibleIds = requestedOrganization
+      ? (req.user?.authorization?.visibleOrganizationIds.has(requestedOrganization) ? [requestedOrganization] : [])
+      : [...(req.user?.authorization?.visibleOrganizationIds || [])];
+    if (requestedOrganization && !visibleIds.length) return res.status(404).json({ error: 'Organization not found.' });
+    const users = await IamRepository.getUsersInScope(visibleIds, globalGrant && !requestedOrganization);
     return res.json(users);
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to fetch IAM users', details: err.message });
   }
 });
 
-/**
- * POST /api/v1/iam/users
- * Creates or updates an enterprise IAM user
- */
-authRouter.post('/users', requireAuthentication, requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN']), async (req: AuthenticatedRequest, res) => {
+/** Return database-backed roles the actor may assign inside the target tenant. */
+authRouter.get('/users/assignable-roles', requireAuthentication, requirePermission('user.create'), async (req: AuthenticatedRequest, res) => {
+  const tenantId = String(req.query.tenantId || '').trim();
+  if (!tenantId || !req.user?.authorization?.visibleOrganizationIds.has(tenantId)) return res.status(404).json({ error: 'Organization not found.' });
+  const actorGrant = req.user.authorization.grants.find(grant => grant.visibleOrganizationIds.has(tenantId) && grant.permissions.includes('user.create'));
+  if (!actorGrant) return res.status(403).json({ error: 'User creation is not authorized in this organization.' });
+  if (!isDatabaseConnected()) return res.status(503).json({ error: 'Assignable roles require the durable IAM database.' });
   try {
-    const user = await IamRepository.upsertUser(req.body);
-    return res.status(201).json({ status: 'saved', user, ...user });
-  } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to save IAM user', details: err.message });
+    const rows = await executeQuery<any>(`SELECT r.id,r.role_code,r.name,r.tenant_id,p.permission_code
+      FROM iam_roles r LEFT JOIN iam_role_permissions rp ON rp.role_id=r.id
+      LEFT JOIN iam_permissions p ON p.id=rp.permission_id
+      WHERE r.tenant_id IS NULL OR r.tenant_id=? ORDER BY r.name`, [tenantId]);
+    const grouped = new Map<string, any>();
+    for (const row of rows) {
+      if (row.role_code === 'SUPER_ADMIN') continue;
+      let role = grouped.get(row.id);
+      if (!role) { role = { id: row.id, code: row.role_code, name: row.name, tenantId: row.tenant_id, permissions: [] as string[] }; grouped.set(row.id, role); }
+      if (row.permission_code) role.permissions.push(row.permission_code);
+    }
+    const allowed = [...grouped.values()].filter(role =>
+      (!role.tenantId || role.tenantId === tenantId)
+      && role.permissions.length > 0
+      && role.permissions.every((permission: string) => actorGrant.permissions.includes('*') || actorGrant.permissions.includes(permission))
+    ).map(({ id, code, name }: any) => ({ id, code, name }));
+    return res.json({ roles: allowed });
+  } catch {
+    return res.status(503).json({ error: 'Assignable roles are unavailable.' });
+  }
+});
+
+/** Create an inactive account and role assignment atomically; activation is one-time. */
+authRouter.post('/users', requireAuthentication, requireTenantAccess('tenantId'), async (req: AuthenticatedRequest, res) => {
+  const tenantId = String(req.body?.tenantId || req.body?.tenant_id || '').trim();
+  const existingId = String(req.body?.id || '').trim();
+  if (existingId) {
+    if (!authorizeInContext(req.user?.authorization, tenantId, 'user.update')) return res.status(403).json({ error: 'User updates are not authorized in this organization.' });
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const firstName = String(req.body?.first_name || '').trim();
+    const lastName = String(req.body?.last_name || '').trim();
+    const status = String(req.body?.status || 'ACTIVE').toUpperCase();
+    if (!isDatabaseConnected()) return res.status(503).json({ error: 'User updates require the durable IAM database.' });
+    if (!/^\S+@\S+\.\S+$/.test(email) || !firstName || !lastName || !['ACTIVE','INACTIVE','LOCKED','SUSPENDED','OFFBOARDED'].includes(status)) return res.status(400).json({ error: 'Provide valid user details and status.' });
+    try {
+      const updated = await withMariaDbTransaction(async connection => {
+        const [rows] = await connection.execute<any[]>('SELECT id FROM iam_users WHERE id=? AND tenant_id=? FOR UPDATE', [existingId, tenantId]);
+        if (!rows.length) return false;
+        await connection.execute('UPDATE iam_users SET email=?,first_name=?,last_name=?,title=?,department=?,status=?,mfa_enabled=?,updated_at=NOW() WHERE id=? AND tenant_id=?', [email, firstName, lastName, req.body?.title || null, req.body?.department || null, status, req.body?.mfa_enabled ? 1 : 0, existingId, tenantId]);
+        await connection.execute('INSERT INTO audit_logs (id,timestamp,tenant_id,user_email,action_type,category,severity,request_payload) VALUES (?,?,?,?,?,?,?,?)', [`audit-${randomUUID()}`, new Date(), tenantId, req.user!.email, 'IAM_USER_UPDATED', 'IAM', 'INFO', JSON.stringify({ userId: existingId, tenantId, status })]);
+        return true;
+      });
+      if (!updated) return res.status(404).json({ error: 'User not found in this organization.' });
+      return res.json({ status: 'updated', id: existingId, email, first_name: firstName, last_name: lastName, tenant_id: tenantId });
+    } catch (error: any) {
+      if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Another account already uses this email.' });
+      return res.status(503).json({ error: 'The user could not be updated.' });
+    }
+  }
+  if (!authorizeInContext(req.user?.authorization, tenantId, 'user.create')) return res.status(403).json({ error: 'User creation is not authorized in this organization.' });
+  const roleId = String(req.body?.roleId || '').trim();
+  const firstName = String(req.body?.firstName || req.body?.first_name || '').trim();
+  const lastName = String(req.body?.lastName || req.body?.last_name || '').trim();
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const department = String(req.body?.department || '').trim().slice(0, 128) || null;
+  const title = String(req.body?.title || '').trim().slice(0, 128) || null;
+  if (!tenantId || !roleId || firstName.length < 1 || firstName.length > 128 || lastName.length < 1 || lastName.length > 128 || email.length > 255 || !/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ error: 'Provide first name, last name, valid email, tenant scope, and an assignable role.' });
+  }
+  const actor = req.user;
+  const actorGrant = actor?.authorization?.grants.find(grant => grant.visibleOrganizationIds.has(tenantId) && grant.permissions.includes('user.create'));
+  if (!actor || !actorGrant) return res.status(403).json({ error: 'User creation is not authorized in this organization.' });
+  if (!isDatabaseConnected()) return res.status(503).json({ error: 'User invitations require the durable IAM database.' });
+
+  const userId = `user-${randomUUID()}`;
+  const invitationId = `invite-${randomUUID()}`;
+  const invitationToken = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(invitationToken).digest('hex');
+  const unusedPassword = randomBytes(48).toString('base64url');
+  const passwordHash = await IamRepository.hashPassword(unusedPassword);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 7 * 86400000);
+  try {
+    let assignedRole: { id: string; role_code: string; name: string } | undefined;
+    await withMariaDbTransaction(async connection => {
+      const [roles] = await connection.execute<any[]>(`SELECT r.id,r.role_code,r.name,r.tenant_id,p.permission_code
+        FROM iam_roles r LEFT JOIN iam_role_permissions rp ON rp.role_id=r.id
+        LEFT JOIN iam_permissions p ON p.id=rp.permission_id
+        WHERE r.id=? AND (r.tenant_id IS NULL OR r.tenant_id=?) FOR UPDATE`, [roleId, tenantId]);
+      if (!roles.length) throw new Error('ROLE_NOT_ASSIGNABLE');
+      const requested = new Set(roles.map(row => row.permission_code).filter(Boolean));
+      if (roles[0].role_code === 'SUPER_ADMIN' || roles[0].role_code === 'CUSTOMER_ACCOUNT_USER' || requested.size === 0 || [...requested].some(permission => !actorGrant.permissions.includes('*') && !actorGrant.permissions.includes(permission))) throw new Error('ROLE_NOT_ASSIGNABLE');
+      assignedRole = { id: roles[0].id, role_code: roles[0].role_code, name: roles[0].name };
+      const [existing] = await connection.execute<any[]>('SELECT id FROM iam_users WHERE LOWER(email)=? LIMIT 1 FOR UPDATE', [email]);
+      if (existing.length) throw new Error('EMAIL_EXISTS');
+      await connection.execute(`INSERT INTO iam_users
+        (id,tenant_id,email,password_hash,first_name,last_name,title,department,status,mfa_enabled,mfa_enforced,force_password_change,created_by)
+        VALUES (?,?,?,?,?,?,?,?, 'INACTIVE',0,0,1,?)`, [userId, tenantId, email, passwordHash, firstName, lastName, title, department, actor.id]);
+      await connection.execute(`INSERT INTO iam_user_roles (id,user_id,role_id,tenant_id,assigned_by,access_scope)
+        VALUES (?,?,?, ?,?,'ORGANISATION')`, [`ur-${randomUUID()}`, userId, roleId, tenantId, actor.id]);
+      await connection.execute('INSERT INTO iam_user_invitations (id,user_id,token_hash,expires_at,created_by) VALUES (?,?,?,?,?)', [invitationId, userId, tokenHash, expiresAt, actor.id]);
+      await connection.execute('INSERT INTO audit_logs (id,timestamp,tenant_id,user_email,action_type,category,severity,request_payload) VALUES (?,?,?,?,?,?,?,?)', [`audit-${randomUUID()}`, now, tenantId, actor.email, 'IAM_USER_INVITED', 'IAM', 'INFO', JSON.stringify({ userId, email, roleCode: assignedRole.role_code, tenantId, invitationId })]);
+    });
+    return res.status(201).json({ status: 'invited', user: { id: userId, email, firstName, lastName, department, title, tenantId, role: assignedRole?.role_code, roleName: assignedRole?.name, status: 'INACTIVE' }, activationPath: `/activate-account#${invitationToken}`, expiresAt: expiresAt.toISOString(), delivery: 'No email was sent. Share this one-time activation link through an approved channel.' });
+  } catch (error: any) {
+    if (error?.message === 'EMAIL_EXISTS' || error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'An account already exists for this email.' });
+    if (error?.message === 'ROLE_NOT_ASSIGNABLE') return res.status(403).json({ error: 'That role is outside your authority or tenant scope.' });
+    console.error('[IAM invitation] Creation failed:', { code: error?.code || 'UNKNOWN' });
+    return res.status(503).json({ error: 'The user invitation could not be created. The transaction was rolled back.' });
+  }
+});
+
+/** Public one-time activation; the URL token is supplied in the fragment and posted in the body. */
+authRouter.post('/users/activate', async (req, res) => {
+  const token = String(req.body?.token || '');
+  const password = String(req.body?.password || '');
+  if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return res.status(400).json({ error: 'A valid activation token is required.' });
+  const policy = IamRepository.validatePasswordPolicy(password);
+  if (!policy.valid) return res.status(400).json({ error: policy.error || 'Password does not meet policy.' });
+  if (!isDatabaseConnected()) return res.status(503).json({ error: 'Account activation requires the durable IAM database.' });
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const passwordHash = await IamRepository.hashPassword(password);
+  try {
+    await withMariaDbTransaction(async connection => {
+      const [rows] = await connection.execute<any[]>(`SELECT i.id,i.user_id,u.tenant_id,u.email FROM iam_user_invitations i
+        JOIN iam_users u ON u.id=i.user_id WHERE i.token_hash=? AND i.accepted_at IS NULL AND i.expires_at>NOW(3) AND u.status='INACTIVE' FOR UPDATE`, [tokenHash]);
+      const invitation = rows[0];
+      if (!invitation) throw new Error('INVITATION_INVALID');
+      await connection.execute("UPDATE iam_users SET password_hash=?,status='ACTIVE',password_changed_at=NOW(),force_password_change=0,updated_at=NOW() WHERE id=? AND status='INACTIVE'", [passwordHash, invitation.user_id]);
+      await connection.execute('UPDATE iam_user_invitations SET accepted_at=NOW(3) WHERE id=? AND accepted_at IS NULL', [invitation.id]);
+      await connection.execute('INSERT INTO audit_logs (id,timestamp,tenant_id,user_email,action_type,category,severity,request_payload) VALUES (?,?,?,?,?,?,?,?)', [`audit-${randomUUID()}`, new Date(), invitation.tenant_id, invitation.email, 'IAM_USER_ACTIVATED', 'IAM', 'INFO', JSON.stringify({ userId: invitation.user_id, invitationId: invitation.id })]);
+    });
+    return res.json({ status: 'activated', message: 'Your account is active. You can now sign in.' });
+  } catch (error: any) {
+    if (error?.message === 'INVITATION_INVALID') return res.status(400).json({ error: 'Activation link is invalid, expired, or already used.' });
+    console.error('[IAM activation] Request failed:', { code: error?.code || 'UNKNOWN' });
+    return res.status(503).json({ error: 'Account activation could not be completed.' });
   }
 });
 
@@ -331,7 +466,7 @@ authRouter.post('/users', requireAuthentication, requireRole(['SUPER_ADMIN', 'SE
  * POST /api/v1/iam/users/:id/reset-password
  * Resets a user's password administratively
  */
-authRouter.post('/users/:id/reset-password', requireAuthentication, requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'TENANT_ADMIN']), async (req: AuthenticatedRequest, res) => {
+authRouter.post('/users/:id/reset-password', requireAuthentication, requirePermission('user.update'), async (req: AuthenticatedRequest, res) => {
   const userId = req.params.id;
   const { newPassword, forceReset } = req.body;
 
@@ -340,6 +475,10 @@ authRouter.post('/users/:id/reset-password', requireAuthentication, requireRole(
   }
 
   try {
+    const targetUser = await IamRepository.getUserById(userId);
+    if (!targetUser || !targetUser.tenant_id || !authorizeInContext(req.user?.authorization, targetUser.tenant_id, 'user.update')) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
     await IamRepository.administrativelyResetPassword(userId, newPassword, forceReset ?? true);
     return res.json({ status: 'reset', message: 'User password reset successfully and force-password-change policy enacted.' });
   } catch (err: any) {

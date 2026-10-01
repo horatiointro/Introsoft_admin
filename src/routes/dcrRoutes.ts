@@ -7,6 +7,7 @@ import {
 import { DcrEngine } from '../utils/dcrEngine';
 import { DcrRepository } from '../db/dcrRepository';
 import { TransformationKeyService } from '../utils/dcrKeyService';
+import { resolveAuthorizedTenantTarget } from '../security/tenantTarget';
 
 export const dcrRouter = express.Router();
 
@@ -45,7 +46,8 @@ dcrRouter.post(
         return res.status(400).json({ error: 'Text payload is required' });
       }
 
-      const activeTenant = tenantId || req.user?.tenantId || 'tenant-global';
+      const activeTenant = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: tenantId });
+      if (!activeTenant) return res.status(403).json({ error: 'DCR tenant is outside the authenticated scope.' });
       const result = await DcrEngine.cloakPayload(text, {
         tenantId: activeTenant,
         forcedStrategy: strategy,
@@ -79,7 +81,8 @@ dcrRouter.post(
         return res.status(400).json({ error: 'Response text is required' });
       }
 
-      const activeTenant = tenantId || req.user?.tenantId || 'all';
+      const activeTenant = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: tenantId });
+      if (!activeTenant) return res.status(403).json({ error: 'DCR tenant is outside the authenticated scope.' });
       const result = await DcrEngine.reconstructResponse(responseText, {
         tenantId: activeTenant,
         requestId
@@ -111,7 +114,8 @@ dcrRouter.post(
         return res.status(400).json({ error: 'Prompt is required for DCR pipeline' });
       }
 
-      const activeTenant = tenantId || req.user?.tenantId || 'cust-enterprise';
+      const activeTenant = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: tenantId });
+      if (!activeTenant) return res.status(403).json({ error: 'DCR tenant is outside the authenticated scope.' });
       const result = await DcrEngine.runFullPipeline(prompt, {
         tenantId: activeTenant,
         preferredStrategy,
@@ -134,10 +138,8 @@ dcrRouter.get(
   requireAuthentication,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const isSuperAdmin = req.user?.roles.includes('SUPER_ADMIN') || req.user?.roles.includes('AUDITOR');
-      const tenantFilter = isSuperAdmin
-        ? ((req.query.tenantId as string) || undefined)
-        : (req.user?.tenantId || undefined);
+      const tenantFilter = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: req.query.tenantId as string | undefined, allowGlobalList: true });
+      if (!tenantFilter) return res.status(403).json({ error: 'DCR tenant scope is required.' });
 
       const records = await DcrRepository.getTransformationRecords(tenantFilter);
       res.json(records);
@@ -162,7 +164,8 @@ dcrRouter.post(
         return res.status(400).json({ error: 'Record ID is required' });
       }
 
-      const records = await DcrRepository.getTransformationRecords();
+      const isGlobal = req.user?.authorization?.grants.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL') === true;
+      const records = await DcrRepository.getTransformationRecords(isGlobal ? 'all' : req.user?.tenantId || undefined);
       const record = records.find(r => r.id === recordId);
       if (!record) {
         return res.status(404).json({ error: 'Transformation record not found in vault' });
@@ -217,7 +220,8 @@ dcrRouter.get(
   requireAuthentication,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const tenantFilter = req.query.tenantId as string;
+      const tenantFilter = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: req.query.tenantId as string | undefined, allowGlobalList: true });
+      if (!tenantFilter) return res.status(403).json({ error: 'DCR tenant scope is required.' });
       const policies = await DcrRepository.getDcrPolicyRules(tenantFilter);
       res.json(policies);
     } catch (err: any) {
@@ -236,7 +240,9 @@ dcrRouter.post(
   requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'COMPLIANCE_OFFICER']),
   async (req: AuthenticatedRequest, res) => {
     try {
-      const saved = await DcrRepository.saveDcrPolicyRule(req.body);
+      const tenantId = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: req.body?.tenantId });
+      if (!tenantId) return res.status(403).json({ error: 'DCR policy tenant is outside the authenticated scope.' });
+      const saved = await DcrRepository.saveDcrPolicyRule({ ...req.body, tenantId });
       res.json(saved);
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to save DCR policy rule', details: err.message });
@@ -253,7 +259,8 @@ dcrRouter.get(
   requireAuthentication,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const tenantId = req.query.tenantId as string;
+      const tenantId = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: req.query.tenantId as string | undefined });
+      if (!tenantId) return res.status(403).json({ error: 'DCR tenant scope is required.' });
       const requestId = req.query.requestId as string;
       const limit = parseInt(req.query.limit as string, 10) || 50;
 
@@ -293,7 +300,8 @@ dcrRouter.post(
   requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN']),
   async (req: AuthenticatedRequest, res) => {
     try {
-      const tenantId = req.body.tenantId || 'tenant-global';
+      const tenantId = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: req.body.tenantId });
+      if (!tenantId) return res.status(403).json({ error: 'DCR tenant is outside the authenticated scope.' });
       const rotatedKey = TransformationKeyService.rotateKey(tenantId);
       res.json({ success: true, message: `Key rotated for tenant ${tenantId}`, key: rotatedKey });
     } catch (err: any) {

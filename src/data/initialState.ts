@@ -20,8 +20,8 @@ export const INITIAL_PROVIDERS: AIProvider[] = [
     name: 'OpenAI Direct Gateway',
     type: 'openai',
     endpoint: 'https://api.openai.com/v1',
-    apiKey: 'sk-proj-altil_live_4918f8e02914ba82c91028',
-    keyPrefix: 'sk-proj-...82c9',
+    apiKey: '',
+    keyPrefix: 'Not configured',
     organizationId: 'org-introsoft-eu',
     enabled: true,
     status: 'offline',
@@ -47,8 +47,8 @@ export const INITIAL_PROVIDERS: AIProvider[] = [
     name: 'Groq Cloud LPU',
     type: 'groq',
     endpoint: 'https://api.groq.com/openai/v1',
-    apiKey: 'gsk_99a84f39c09d8174e921',
-    keyPrefix: 'gsk_...e921',
+    apiKey: '',
+    keyPrefix: 'Not configured',
     enabled: true,
     status: 'offline',
     latencyMs: 84,
@@ -74,7 +74,7 @@ export const INITIAL_PROVIDERS: AIProvider[] = [
     type: 'ollama',
     endpoint: 'http://192.168.1.100:11434',
     apiKey: '',
-    keyPrefix: 'Excluded',
+    keyPrefix: 'Not configured',
     enabled: false,
     status: 'offline',
     latencyMs: 0,
@@ -98,8 +98,8 @@ export const INITIAL_PROVIDERS: AIProvider[] = [
     name: 'Google Gemini Cloud',
     type: 'gemini',
     endpoint: 'https://generativelanguage.googleapis.com',
-    apiKey: 'AIzaSy_altil_gemini_prod_key',
-    keyPrefix: 'AIzaSy_...prod',
+    apiKey: '',
+    keyPrefix: 'Not configured',
     enabled: true,
     status: 'offline',
     latencyMs: 310,
@@ -123,8 +123,8 @@ export const INITIAL_PROVIDERS: AIProvider[] = [
     name: 'OpenRouter Multi-Cloud Aggregator',
     type: 'openrouter',
     endpoint: 'https://openrouter.ai/api/v1',
-    apiKey: 'sk-or-v1-99824cde871a2b',
-    keyPrefix: 'sk-or-v1-...1a2b',
+    apiKey: '',
+    keyPrefix: 'Not configured',
     customHeaders: { 'HTTP-Referer': 'https://introsoft.internal', 'X-Title': 'Introsoft ALTIL' },
     enabled: true,
     status: 'offline',
@@ -149,8 +149,8 @@ export const INITIAL_PROVIDERS: AIProvider[] = [
     name: 'Anthropic Claude Direct',
     type: 'anthropic',
     endpoint: 'https://api.anthropic.com/v1',
-    apiKey: 'sk-ant-api03-altil_direct_key_9921',
-    keyPrefix: 'sk-ant-...9921',
+    apiKey: '',
+    keyPrefix: 'Not configured',
     enabled: true,
     status: 'offline',
     latencyMs: 340,
@@ -174,8 +174,8 @@ export const INITIAL_PROVIDERS: AIProvider[] = [
     name: 'DeepSeek Official API',
     type: 'deepseek',
     endpoint: 'https://api.deepseek.com/v1',
-    apiKey: 'sk-ds-99218ab4401c29e',
-    keyPrefix: 'sk-ds-...c29e',
+    apiKey: '',
+    keyPrefix: 'Not configured',
     enabled: true,
     status: 'offline',
     latencyMs: 290,
@@ -199,8 +199,8 @@ export const INITIAL_PROVIDERS: AIProvider[] = [
     name: 'MVI Dedicated Neural Server',
     type: 'openai_compatible',
     endpoint: 'https://ai-node.mvisecure.internal:8080/v1',
-    apiKey: 'mvi_sec_tok_991823',
-    keyPrefix: 'mvi_sec_...1823',
+    apiKey: '',
+    keyPrefix: 'Not configured',
     enabled: false,
     status: 'offline',
     latencyMs: 0,
@@ -1758,10 +1758,8 @@ export const initialRoutingRules = INITIAL_ROUTING_RULES;
 export const initialPolicies = INITIAL_POLICIES;
 export const initialGlobalComplianceConfig = INITIAL_GLOBAL_COMPLIANCE_CONFIG;
 export const initialDataSubjectRequests = INITIAL_DATA_SUBJECT_REQUESTS;
-export const initialAuditLogs = INITIAL_AUDIT_LOGS.map(log => ({
-  ...log,
-  tokensConsumed: log.tokensConsumed ?? ((log.inputTokens || 0) + (log.outputTokens || 0))
-}));
+// Audit views start empty and are populated only from persisted event sources.
+export const initialAuditLogs: AuditLog[] = [];
 export const initialSystemHealth = INITIAL_SYSTEM_HEALTH;
 
 export const initialUsageMetrics = [

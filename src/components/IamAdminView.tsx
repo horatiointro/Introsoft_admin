@@ -1,5 +1,6 @@
+import { apiFetch } from '../utils/apiFetch';
 import { InfoButton } from './InfoButton';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Users,
   ShieldCheck,
@@ -106,11 +107,15 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
 
   // Form States for Provision User
   const [newUserName, setNewUserName] = useState('');
+  const [assignableRoles, setAssignableRoles] = useState<Array<{ id: string; code: string; name: string }>>([]);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+  const [activationLink, setActivationLink] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserDept, setNewUserDept] = useState('AI Platform Engineering');
   const [newUserDesignation, setNewUserDesignation] = useState('Senior Platform Specialist');
-  const [newUserTenantId, setNewUserTenantId] = useState('system');
-  const [newUserRoleId, setNewUserRoleId] = useState(roles[0]?.id || 'role-plat-admin');
+  const [newUserTenantId, setNewUserTenantId] = useState(customers[0]?.id || '');
+  const [newUserRoleId, setNewUserRoleId] = useState('');
   const [newUserAuthMethod, setNewUserAuthMethod] = useState<'sso_saml' | 'oauth_google' | 'mfa_password' | 'fido2_webauthn'>('sso_saml');
   const [newUserMfaEnabled, setNewUserMfaEnabled] = useState(true);
   const [newUserIpWhitelist, setNewUserIpWhitelist] = useState('');
@@ -149,7 +154,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
     setIsResettingPassword(true);
 
     try {
-      const res = await fetch(`/api/v1/iam/users/${resetPasswordUser.id}/reset-password`, {
+      const res = await apiFetch(`/api/v1/iam/users/${resetPasswordUser.id}/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -207,37 +212,50 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
   const systemUsersCount = users.filter(u => !u.tenantId).length;
   const tenantUsersCount = users.filter(u => u.tenantId).length;
 
-  // Handle Provisioning New User
-  const handleProvisionSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!provisionModalOpen || !newUserTenantId) return;
+    let active = true;
+    setAssignableRoles([]); setNewUserRoleId(''); setInviteError(''); setActivationLink('');
+    const query = new URLSearchParams({ tenantId: newUserTenantId });
+    apiFetch(`/api/v1/iam/users/assignable-roles?${query}`).then(async response => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not load roles authorized for this organization.');
+      if (!active) return;
+      const next = Array.isArray(data.roles) ? data.roles : [];
+      setAssignableRoles(next); setNewUserRoleId(next[0]?.id || '');
+    }).catch(error => { if (active) setInviteError(error.message || 'Assignable roles are unavailable.'); });
+    return () => { active = false; };
+  }, [provisionModalOpen, newUserTenantId]);
+
+  // User invitations are persisted by the API; the browser never invents a user or role.
+  const handleProvisionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName || !newUserEmail) return;
-
-    const tenantObj = customers.find(c => c.id === newUserTenantId);
-    const roleObj = roles.find(r => r.id === newUserRoleId);
-
-    const userObj: IamUser = {
-      id: `usr-${Date.now().toString(36)}`,
-      name: newUserName,
-      email: newUserEmail,
-      department: newUserDept,
-      designation: newUserDesignation,
-      roleId: newUserRoleId,
-      roleName: roleObj ? roleObj.name : 'Custom Role',
-      tenantId: newUserTenantId === 'system' ? undefined : newUserTenantId,
-      tenantName: newUserTenantId === 'system' ? 'System Administrator Level' : tenantObj?.name,
-      status: 'active',
-      mfaEnabled: newUserMfaEnabled,
-      authMethod: newUserAuthMethod,
-      lastLogin: 'Never (Pending First Login)',
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      ipWhitelist: newUserIpWhitelist ? newUserIpWhitelist.split(',').map(s => s.trim()) : undefined
-    };
-
-    if (onAddUser) onAddUser(userObj);
-
-    setProvisionModalOpen(false);
-    setNewUserName('');
-    setNewUserEmail('');
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserTenantId || !newUserRoleId) return;
+    setInviteBusy(true); setInviteError(''); setActivationLink('');
+    try {
+      const names = newUserName.trim().split(/\s+/);
+      const response = await apiFetch('/api/v1/iam/users', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName: names[0], lastName: names.slice(1).join(' ') || names[0], email: newUserEmail.trim(), department: newUserDept, title: newUserDesignation, tenantId: newUserTenantId, roleId: newUserRoleId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'The user invitation could not be created.');
+      const selectedRole = assignableRoles.find(role => role.id === newUserRoleId);
+      const tenantObj = customers.find(customer => customer.id === newUserTenantId);
+      const userObj: IamUser = {
+        id: data.user.id, name: `${data.user.firstName} ${data.user.lastName}`, email: data.user.email,
+        department: data.user.department || '', designation: data.user.title || '', roleId: newUserRoleId,
+        roleName: selectedRole?.name || data.user.roleName, tenantId: newUserTenantId, tenantName: tenantObj?.name,
+        status: 'inactive', mfaEnabled: false, authMethod: 'mfa_password', lastLogin: 'Never (Invitation pending)', createdAt: new Date().toISOString(),
+      };
+      onAddUser?.(userObj);
+      const activationPath = String(data.activationPath || '');
+      const [path, token] = activationPath.split('#');
+      const safePath = path.replace(/^\/+/, '');
+      setActivationLink(`${window.location.origin}${import.meta.env.BASE_URL}${safePath}#${token}`);
+      setNewUserName(''); setNewUserEmail('');
+    } catch (error: any) { setInviteError(error.message || 'The user invitation could not be created.'); }
+    finally { setInviteBusy(false); }
   };
 
   // Handle Save Role
@@ -1041,7 +1059,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
               <div className="flex items-center space-x-2">
                 <UserPlus className="w-5 h-5 text-blue-400" />
-                <h3 className="text-base font-bold text-white"><InfoButton />Provision New IAM User</h3>
+                <h3 className="text-base font-bold text-white"><InfoButton />Create New User</h3>
               </div>
               <button type="button" onClick={() => setProvisionModalOpen(false)} className="text-[#777777] hover:text-white">
                 <X className="w-5 h-5" />
@@ -1049,7 +1067,8 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              {inviteError && <div role="alert" className="rounded border border-red-800/60 bg-red-950/30 p-3 text-red-200">{inviteError}</div>}
+              {activationLink ? <div className="space-y-3 rounded border border-emerald-800/60 bg-emerald-950/20 p-4"><b className="text-emerald-200">Invitation created</b><p className="text-[#aaa]">The user remains inactive until they open this one-time link and set a password. No email was sent.</p><input readOnly value={activationLink} className="w-full rounded bg-[#101010] p-2 text-[11px] text-white"/><button type="button" onClick={()=>void navigator.clipboard.writeText(activationLink)} className="rounded bg-emerald-700 px-3 py-2 text-white">Copy activation link</button></div> : <><div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[#aaaaaa] font-semibold mb-1">Full Name *</label>
                   <input
@@ -1099,13 +1118,12 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#aaaaaa] font-semibold mb-1">Tenant Jurisdiction</label>
+                  <label className="block text-[#aaaaaa] font-semibold mb-1">Customer / tenant scope *</label>
                   <select
                     value={newUserTenantId}
                     onChange={e => setNewUserTenantId(e.target.value)}
                     className="w-full bg-[#181818] border border-[#2a2a2a] rounded p-2 text-white outline-none cursor-pointer"
                   >
-                    <option value="system">System Platform Level</option>
                     {customers.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
@@ -1113,61 +1131,34 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[#aaaaaa] font-semibold mb-1">Assigned Role</label>
+                  <label className="block text-[#aaaaaa] font-semibold mb-1">Authorized role *</label>
                   <select
                     value={newUserRoleId}
                     onChange={e => setNewUserRoleId(e.target.value)}
                     className="w-full bg-[#181818] border border-[#2a2a2a] rounded p-2 text-white outline-none cursor-pointer"
                   >
-                    {roles.map(r => (
-                      <option key={r.id} value={r.id}>{r.name}</option>
-                    ))}
+                    {assignableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[#aaaaaa] font-semibold mb-1">Auth Strategy</label>
-                  <select
-                    value={newUserAuthMethod}
-                    onChange={e => setNewUserAuthMethod(e.target.value as any)}
-                    className="w-full bg-[#181818] border border-[#2a2a2a] rounded p-2 text-white outline-none"
-                  >
-                    <option value="sso_saml">SSO SAML 2.0 (Okta/Entra)</option>
-                    <option value="oauth_google">Google Workspace OAuth</option>
-                    <option value="mfa_password">MFA Password Credentials</option>
-                    <option value="fido2_webauthn">FIDO2 Hardware YubiKey</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center pt-5">
-                  <label className="flex items-center space-x-2 text-white cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newUserMfaEnabled}
-                      onChange={e => setNewUserMfaEnabled(e.target.checked)}
-                      className="rounded border-[#333333] bg-[#111111] text-emerald-500 focus:ring-0"
-                    />
-                    <span className="font-semibold">Enforce MFA on First Login</span>
-                  </label>
-                </div>
-              </div>
+              </>}
             </div>
 
             <div className="flex justify-end space-x-2 pt-3 border-t border-[#222222]">
               <button
                 type="button"
-                onClick={() => setProvisionModalOpen(false)}
+                onClick={() => { setProvisionModalOpen(false); setActivationLink(''); setInviteError(''); }}
                 className="px-4 py-2 bg-[#1a1a1a] text-[#888888] hover:text-white rounded font-semibold text-xs"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition-colors"
+                disabled={inviteBusy || !assignableRoles.length || !newUserRoleId || Boolean(activationLink)}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition-colors disabled:opacity-50"
               >
-                Provision User
+                {inviteBusy ? 'Creating invitation…' : activationLink ? 'Invitation created' : 'Create User'}
               </button>
             </div>
           </form>

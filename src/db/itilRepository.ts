@@ -1,10 +1,12 @@
-import { executeQuery, isDatabaseConnected } from './mariadb';
+import { randomUUID } from 'crypto';
+import { executeQuery, executeTransaction, isDatabaseConnected } from './mariadb';
 import { Incident, IncidentStatus, MultiChannelAlert, RagKnowledgeArticle } from '../types';
 import { INITIAL_INCIDENTS_LIST, INITIAL_ALERTS_LIST, INITIAL_RAG_KNOWLEDGE_BASE } from '../data/incidentData';
 
 let inMemoryIncidents: Incident[] = [...INITIAL_INCIDENTS_LIST];
 let inMemoryAlerts: MultiChannelAlert[] = [...INITIAL_ALERTS_LIST];
 let inMemoryRagArticles: RagKnowledgeArticle[] = [...INITIAL_RAG_KNOWLEDGE_BASE];
+const inMemoryIncidentEvents: Array<{ id: string; incidentId: string; actor: string; type: string; tenantId: string; createdAt: string }> = [];
 
 export const ItilOperationsRepository = {
   /**
@@ -16,7 +18,7 @@ export const ItilOperationsRepository = {
         let sql = `SELECT * FROM operations_incidents`;
         const params: any[] = [];
         if (tenantId && tenantId !== 'all') {
-          sql += ` WHERE tenant_id = ? OR tenant_id IS NULL`;
+          sql += ` WHERE tenant_id = ?`;
           params.push(tenantId);
         }
         sql += ` ORDER BY created_at DESC`;
@@ -48,13 +50,14 @@ export const ItilOperationsRepository = {
         console.warn('[ItilOperationsRepository] DB query failed, falling back to in-memory store:', err);
       }
     }
+    if (tenantId && tenantId !== 'all') return inMemoryIncidents.filter(incident => incident.affectedTenantIds?.includes(tenantId));
     return inMemoryIncidents;
   },
 
   /**
    * Create or update incident
    */
-  async saveIncident(incident: any): Promise<Incident> {
+  async saveIncident(incident: any, audit?: { actor: string; eventType: string; tenantId: string; requestId?: string; priorState?: unknown; newState?: unknown }): Promise<Incident> {
     const completeIncident: Incident = {
       id: incident.id,
       title: incident.title || 'New Incident',
@@ -63,9 +66,9 @@ export const ItilOperationsRepository = {
       commander: incident.commander || 'NOC Commander',
       assignedTeam: incident.assignedTeam || 'NOC',
       assignedEngineer: incident.assignedEngineer || 'Tebogo Molefe',
-      affectedTenantIds: incident.affectedTenantIds || (incident.tenantId ? [incident.tenantId] : ['cust-1']),
+      affectedTenantIds: incident.affectedTenantIds || (incident.tenantId ? [incident.tenantId] : []),
       affectedTenantNames: incident.affectedTenantNames || ['Enterprise Tenant'],
-      affectedAppIds: incident.affectedAppIds || ['app-01'],
+      affectedAppIds: incident.affectedAppIds || [],
       affectedAppNames: incident.affectedAppNames || ['Enterprise AI App'],
       affectedServiceIds: incident.affectedServiceIds || ['srv-01'],
       startTime: incident.startTime || new Date().toISOString().replace('T', ' ').slice(0, 19),
@@ -81,16 +84,9 @@ export const ItilOperationsRepository = {
       ]
     };
 
-    const idx = inMemoryIncidents.findIndex(i => i.id === completeIncident.id);
-    if (idx >= 0) {
-      inMemoryIncidents[idx] = completeIncident;
-    } else {
-      inMemoryIncidents.unshift(completeIncident);
-    }
-
     if (isDatabaseConnected()) {
       try {
-        const tenantCandidate = completeIncident.affectedTenantIds[0];
+        const tenantCandidate = audit?.tenantId || completeIncident.affectedTenantIds[0];
         const validTenant = tenantCandidate ? await executeQuery<any>('SELECT id FROM tenants WHERE id=? LIMIT 1', [tenantCandidate]) : [];
         const sql = `
           INSERT INTO operations_incidents (
@@ -108,7 +104,7 @@ export const ItilOperationsRepository = {
             sla_breached = VALUES(sla_breached),
             updated_at = NOW()
         `;
-        await executeQuery(sql, [
+        const params = [
           completeIncident.id,
           completeIncident.id,
           validTenant.length ? tenantCandidate : null,
@@ -125,11 +121,20 @@ export const ItilOperationsRepository = {
           completeIncident.slaImpacted ? 1 : 0,
           completeIncident.startTime,
           completeIncident.startTime
-        ]);
+        ];
+        const statements = [{ sql, params }];
+        if (audit) statements.push({ sql: 'INSERT INTO incident_events (id, incident_id, actor_email, event_type, description, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())', params: [`evt-${randomUUID()}`, completeIncident.id, audit.actor, audit.eventType, `Incident ${audit.eventType.toLowerCase()} by authenticated operator.`, JSON.stringify({ tenantId: audit.tenantId, requestId: audit.requestId || null, priorState: audit.priorState ?? null, newState: audit.newState ?? null })] });
+        await executeTransaction(statements);
       } catch (err) {
-        console.warn('[ItilOperationsRepository] Failed to persist incident in MariaDB:', err);
+        throw err;
       }
     }
+
+    const idx = inMemoryIncidents.findIndex(i => i.id === completeIncident.id);
+    if (idx >= 0) inMemoryIncidents[idx] = completeIncident;
+    else inMemoryIncidents.unshift(completeIncident);
+
+    if (audit) inMemoryIncidentEvents.unshift({ id: `evt-${randomUUID()}`, incidentId: completeIncident.id, actor: audit.actor, type: audit.eventType, tenantId: audit.tenantId, createdAt: new Date().toISOString() });
 
     return completeIncident;
   },
@@ -137,53 +142,52 @@ export const ItilOperationsRepository = {
   /**
    * Update incident status
    */
-  async updateIncidentStatus(incidentId: string, status: IncidentStatus, mitigationAction?: string): Promise<boolean> {
-    const inc = inMemoryIncidents.find(i => i.id === incidentId);
-    if (inc) {
-      inc.status = status;
-    }
+  async updateIncidentStatus(incidentId: string, tenantId: string, status: IncidentStatus, mitigationAction?: string, audit?: { actor: string; requestId?: string; priorStatus?: string }): Promise<boolean> {
+    const inc = inMemoryIncidents.find(i => i.id === incidentId && i.affectedTenantIds?.includes(tenantId));
 
     if (isDatabaseConnected()) {
       try {
-        await executeQuery(
-          `UPDATE operations_incidents SET status = ?, resolution_summary = COALESCE(?, resolution_summary), updated_at = NOW() WHERE id = ?`,
-          [status, mitigationAction || null, incidentId]
-        );
+        const statements = [{ sql: 'UPDATE operations_incidents SET status = ?, resolution_summary = COALESCE(?, resolution_summary), updated_at = NOW() WHERE id = ? AND tenant_id = ?', params: [status, mitigationAction || null, incidentId, tenantId] }];
+        if (audit) statements.push({ sql: 'INSERT INTO incident_events (id, incident_id, actor_email, event_type, description, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())', params: [`evt-${randomUUID()}`, incidentId, audit.actor, 'STATUS_CHANGE', `Incident status changed to ${status}.`, JSON.stringify({ tenantId, requestId: audit.requestId || null, priorStatus: audit.priorStatus || null, newStatus: status })] });
+        await executeTransaction(statements);
       } catch (err) {
-        console.warn('[ItilOperationsRepository] DB update failed:', err);
+        throw err;
       }
     }
+    if (inc) inc.status = status;
+    if (audit) inMemoryIncidentEvents.unshift({ id: `evt-${randomUUID()}`, incidentId, actor: audit.actor, type: 'STATUS_CHANGE', tenantId, createdAt: new Date().toISOString() });
     return true;
   },
+
+  getIncidentAuditEvents() { return [...inMemoryIncidentEvents]; },
 
   /**
    * Dispatch and store multi-channel alert
    */
-  async saveAlert(alert: MultiChannelAlert): Promise<MultiChannelAlert> {
-    inMemoryAlerts.unshift(alert);
+  async saveAlert(alert: MultiChannelAlert, audit?: { actor: string; tenantId: string; requestId?: string }): Promise<MultiChannelAlert> {
     if (isDatabaseConnected()) {
-      try {
-        const sql = `
+      const sql = `
           INSERT INTO alert_notifications (
             id, incident_id, severity, channel, recipient, message, status
           ) VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
-        for (const ch of alert.channels) {
-          const rec = ch === 'sms' ? alert.recipientPhone : alert.recipientEmail;
-          await executeQuery(sql, [
+      const statements = alert.channels.map(ch => {
+        const rec = ch === 'sms' ? alert.recipientPhone : ch === 'email' ? alert.recipientEmail : null;
+        return { sql, params: [
             `${alert.id}-${ch}`,
             alert.incidentId,
             alert.severity,
             ch,
-            rec || 'admin@altil.com',
+            rec,
             alert.message,
-            'DELIVERED'
-          ]);
-        }
-      } catch (err) {
-        console.warn('[ItilOperationsRepository] Alert DB save warning:', err);
-      }
+            'QUEUED'
+          ] };
+      });
+      if (audit) statements.push({ sql: 'INSERT INTO incident_events (id, incident_id, actor_email, event_type, description, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())', params: [`evt-${randomUUID()}`, alert.incidentId, audit.actor, 'ALERT_QUEUED', 'An incident alert was queued by an authorized operator.', JSON.stringify({ tenantId: audit.tenantId, requestId: audit.requestId || null, alertId: alert.id, channels: alert.channels })] });
+      await executeTransaction(statements);
     }
+    inMemoryAlerts.unshift(alert);
+    if (audit) inMemoryIncidentEvents.unshift({ id: `evt-${randomUUID()}`, incidentId: alert.incidentId, actor: audit.actor, type: 'ALERT_QUEUED', tenantId: audit.tenantId, createdAt: new Date().toISOString() });
     return alert;
   },
 

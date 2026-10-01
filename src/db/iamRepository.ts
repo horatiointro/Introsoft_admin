@@ -1,6 +1,12 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { executeQuery, isDatabaseConnected } from './mariadb';
+import { isMissingAuthorizationScopeColumn, normalizeLegacyIamAssignments } from '../security/legacyIamAssignments';
+import type { AuthorizationAssignment } from '../security/authorizationContext';
+import { expandLegacyPermissionCodes } from '../security/permissionImplications';
+import { emitAltilEvent } from '../logging/eventLogger';
+import { allowsInMemoryIamFallback, persistAuthenticationSession, resolveAuthenticationRecord, resolveAuthenticationSession } from '../security/authenticationBoundary';
+import { verifyMfaRequirement } from '../security/mfaVerification';
 
 export interface IamUserRecord {
   id: string;
@@ -44,6 +50,8 @@ export interface IamPermissionRecord {
   name: string;
   description: string | null;
 }
+
+export interface IamAuthorizationAssignment extends AuthorizationAssignment {}
 
 export interface IamSessionRecord {
   id: string;
@@ -113,7 +121,7 @@ const inMemoryUsers: IamUserRecord[] = [
   },
   {
     id: 'user_tenant_admin_002',
-    tenant_id: 'cust-1', // ACME Financial Holdings (TENANT_A)
+    tenant_id: 'cust-acme-fintech',
     email: 'sarah.j@acme-corp.co.za',
     password_hash: bcrypt.hashSync('TenantAdmin2026!', 10),
     first_name: 'Sarah',
@@ -134,7 +142,7 @@ const inMemoryUsers: IamUserRecord[] = [
   },
   {
     id: 'user_tenant_b_admin_004',
-    tenant_id: 'cust-2', // Global FinTech Nexus (TENANT_B)
+    tenant_id: 'cust-safecircle',
     email: 'tenant_b_admin@global-bank.com',
     password_hash: bcrypt.hashSync('TenantAdmin2026!', 10),
     first_name: 'David',
@@ -155,7 +163,7 @@ const inMemoryUsers: IamUserRecord[] = [
   },
   {
     id: 'user_tenant_b_admin_008',
-    tenant_id: 'cust-2', // Capitec Bank (cust-2)
+    tenant_id: 'cust-cashcreators',
     email: 'tenant.admin@capitec.bank',
     password_hash: bcrypt.hashSync('TenantPassword123!', 10),
     first_name: 'Capitec',
@@ -218,7 +226,7 @@ const inMemoryUsers: IamUserRecord[] = [
   },
   {
     id: 'user_engineer_010',
-    tenant_id: 'cust-1',
+    tenant_id: 'cust-acme-fintech',
     email: 'engineer@altil.security',
     password_hash: bcrypt.hashSync('EngineerPassword123!', 10),
     first_name: 'AI',
@@ -239,7 +247,7 @@ const inMemoryUsers: IamUserRecord[] = [
   },
   {
     id: 'user_locked_005',
-    tenant_id: 'cust-1',
+    tenant_id: 'cust-acme-fintech',
     email: 'locked.user@acme-corp.co.za',
     password_hash: bcrypt.hashSync('Password123!', 10),
     first_name: 'Locked',
@@ -260,7 +268,7 @@ const inMemoryUsers: IamUserRecord[] = [
   },
   {
     id: 'user_disabled_006',
-    tenant_id: 'cust-1',
+    tenant_id: 'cust-acme-fintech',
     email: 'disabled.user@acme-corp.co.za',
     password_hash: bcrypt.hashSync('Password123!', 10),
     first_name: 'Disabled',
@@ -281,7 +289,7 @@ const inMemoryUsers: IamUserRecord[] = [
   },
   {
     id: 'user_no_role_007',
-    tenant_id: 'cust-1',
+    tenant_id: 'cust-acme-fintech',
     email: 'norole.user@acme-corp.co.za',
     password_hash: bcrypt.hashSync('Password123!', 10),
     first_name: 'Guest',
@@ -337,6 +345,87 @@ const inMemoryLoginAuditLogs: Array<{
 }> = [];
 
 export class IamRepository {
+  /** Returns permissions and scope bound to each persisted role assignment. */
+  public static async getAuthorizationAssignments(userId: string): Promise<IamAuthorizationAssignment[]> {
+    if (isDatabaseConnected()) {
+      try {
+        const rows = await executeQuery<{
+          assignment_id: string;
+          role_code: string;
+          tenant_id: string | null;
+          access_scope: IamAuthorizationAssignment['visibility'];
+          permission_code: string | null;
+        }>(
+          `SELECT ur.id AS assignment_id, r.role_code, ur.tenant_id, ur.access_scope, p.permission_code
+           FROM iam_user_roles ur
+           JOIN iam_roles r ON r.id = ur.role_id
+           LEFT JOIN iam_role_permissions rp ON rp.role_id = r.id
+           LEFT JOIN iam_permissions p ON p.id = rp.permission_id
+           WHERE ur.user_id = ?
+           ORDER BY ur.assigned_at, ur.id`,
+          [userId]
+        );
+        const assignments = new Map<string, Omit<IamAuthorizationAssignment, 'permissions'> & { permissions: string[] }>();
+        for (const row of rows) {
+          let assignment = assignments.get(row.assignment_id);
+          if (!assignment) {
+            assignment = {
+              assignmentId: row.assignment_id,
+              role: row.role_code,
+              organizationId: row.tenant_id,
+              visibility: row.access_scope,
+              permissions: [],
+            };
+            assignments.set(row.assignment_id, assignment);
+          }
+          if (row.permission_code && !assignment.permissions.includes(row.permission_code)) assignment.permissions.push(row.permission_code);
+        }
+        return [...assignments.values()].map(assignment => ({ ...assignment, permissions: expandLegacyPermissionCodes(assignment.permissions) }));
+      } catch (error) {
+        // A pre-scope schema can safely preserve tenant-bound access, but cannot prove
+        // global access. Do not use this fallback for connectivity or unrelated SQL errors.
+        if (isMissingAuthorizationScopeColumn(error)) {
+          try {
+            const legacyRows = await executeQuery<{
+              assignment_id: string;
+              role_code: string;
+              tenant_id: string | null;
+              permission_code: string | null;
+            }>(
+              `SELECT ur.id AS assignment_id, r.role_code, ur.tenant_id, p.permission_code
+               FROM iam_user_roles ur
+               JOIN iam_roles r ON r.id = ur.role_id
+               LEFT JOIN iam_role_permissions rp ON rp.role_id = r.id
+               LEFT JOIN iam_permissions p ON p.id = rp.permission_id
+               WHERE ur.user_id = ?
+               ORDER BY ur.assigned_at, ur.id`,
+              [userId]
+            );
+            return normalizeLegacyIamAssignments(legacyRows).map(assignment => ({ ...assignment, permissions: expandLegacyPermissionCodes(assignment.permissions) }));
+          } catch (legacyError) {
+            console.error('[IAM Repository] Legacy authorization assignments unavailable; access will fail closed.', legacyError);
+            return [];
+          }
+        }
+        // Other schema/query errors must not fall back to memory identities or wider access.
+        console.error('[IAM Repository] Authorization assignments unavailable; access will fail closed.', error);
+        return [];
+      }
+    }
+
+    if (!allowsInMemoryIamFallback()) return [];
+    const identity = inMemoryUsers.find(user => user.id === userId);
+    if (!identity || identity.status !== 'ACTIVE') return [];
+    const { roles, permissions, tenantId } = await this.getUserRolesAndPermissions(userId);
+    return roles.map(role => ({
+      assignmentId: `${userId}:${role}`,
+      role,
+      organizationId: role === 'SUPER_ADMIN' ? null : (identity.tenant_id || tenantId),
+      visibility: role === 'SUPER_ADMIN' && identity.tenant_id === null ? 'GLOBAL' : identity.tenant_id ? 'ORGANISATION' : 'SELF',
+      permissions: [...permissions],
+    }));
+  }
+
   /**
    * Hashes plaintext password with bcrypt (cost factor 10)
    */
@@ -369,42 +458,39 @@ export class IamRepository {
    */
   public static async getUserByEmail(email: string): Promise<IamUserRecord | null> {
     const normalizedEmail = email.trim().toLowerCase();
-    if (isDatabaseConnected()) {
-      try {
+    return resolveAuthenticationRecord({
+      databaseAvailable: isDatabaseConnected(),
+      databaseLookup: async () => {
         const rows = await executeQuery<IamUserRecord>(
           'SELECT * FROM iam_users WHERE LOWER(email) = ? LIMIT 1',
           [normalizedEmail]
         );
         return rows[0] || null;
-      } catch (err) {
-        console.warn('[IAM Repository] Database query failed, falling back to memory store:', err);
-      }
-    }
-    const found = inMemoryUsers.find(u => u.email.toLowerCase() === normalizedEmail);
-    return found || null;
+      },
+      memoryLookup: () => inMemoryUsers.find(u => u.email.toLowerCase() === normalizedEmail) || null,
+    });
   }
 
   /**
    * Retrieves a user by their unique ID
    */
   public static async getUserById(id: string): Promise<IamUserRecord | null> {
-    if (isDatabaseConnected()) {
-      try {
+    return resolveAuthenticationRecord({
+      databaseAvailable: isDatabaseConnected(),
+      databaseLookup: async () => {
         const rows = await executeQuery<IamUserRecord>(
           'SELECT * FROM iam_users WHERE id = ? LIMIT 1',
           [id]
         );
         return rows[0] || null;
-      } catch (err) {
-        console.warn('[IAM Repository] Database query failed, falling back to memory store:', err);
-      }
-    }
-    return inMemoryUsers.find(u => u.id === id) || null;
+      },
+      memoryLookup: () => inMemoryUsers.find(u => u.id === id) || null,
+    });
   }
 
   /**
-   * Local recovery path for the Super Admin quick-access button.
-   * It never grants access to suspended or offboarded identities.
+   * Quick-access path for an already-active Super Admin identity.
+   * It never unlocks or otherwise changes an inactive identity.
    */
   public static async prepareSuperAdminQuickAccess(email: string): Promise<IamUserRecord | null> {
     const user = await this.getUserByEmail(email);
@@ -412,23 +498,7 @@ export class IamRepository {
 
     const { roles } = await this.getUserRolesAndPermissions(user.id);
     if (!roles.some(role => role.toUpperCase() === 'SUPER_ADMIN')) return null;
-    if (user.status !== 'ACTIVE' && user.status !== 'LOCKED') return null;
-
-    if (isDatabaseConnected()) {
-      try {
-        await executeQuery(
-          "UPDATE iam_users SET status = 'ACTIVE', failed_login_attempts = 0, lockout_until = NULL WHERE id = ?",
-          [user.id]
-        );
-      } catch (err) {
-        console.warn('[IAM Repository] Could not clear Super Admin lockout for quick access:', err);
-        return null;
-      }
-    }
-
-    user.status = 'ACTIVE';
-    user.failed_login_attempts = 0;
-    user.lockout_until = null;
+    if (user.status !== 'ACTIVE') return null;
     return user;
   }
 
@@ -462,13 +532,18 @@ export class IamRepository {
         if (roleRows.length > 0) {
           return {
             roles: roleRows.map(r => r.role_code),
-            permissions: permRows.map(p => p.permission_code),
+            permissions: expandLegacyPermissionCodes(permRows.map(p => p.permission_code)),
             tenantId: roleRows[0]?.tenant_id || null,
           };
         }
+        // A completed database miss is authoritative even in development/test.
+        return { roles: [], permissions: [], tenantId: null };
       } catch (err) {
         console.warn('[IAM Repository] Error fetching user roles/permissions from DB:', err);
+        if (!allowsInMemoryIamFallback()) return { roles: [], permissions: [], tenantId: null };
       }
+    } else if (!allowsInMemoryIamFallback()) {
+      return { roles: [], permissions: [], tenantId: null };
     }
 
     // In-memory fallback roles
@@ -476,7 +551,7 @@ export class IamRepository {
       return {
         roles: ['SUPER_ADMIN'],
         permissions: [
-          'tenant.read', 'tenant.create', 'tenant.update', 'tenant.delete',
+          'tenant.read', 'tenant.create', 'tenant.update', 'tenant.delete', 'tenant.write',
           'user.read', 'user.create', 'user.update', 'user.disable',
           'role.read', 'role.assign', 'role.modify',
           'provider.read', 'provider.configure', 'provider.disable',
@@ -508,23 +583,23 @@ export class IamRepository {
       return {
         roles: ['TENANT_ADMIN'],
         permissions: [
-          'tenant.read', 'tenant.update',
+          'tenant.read', 'tenant.update', 'apikeys.create', 'apikeys.revoke', 'iam.users.write',
           'user.read', 'user.create', 'user.update', 'user.disable',
           'incident.read', 'incident.create', 'incident.update',
           'dsar.read', 'dsar.create', 'dsar.update'
         ],
-        tenantId: 'cust-1',
+        tenantId: 'cust-acme-fintech',
       };
     } else if (userId === 'user_tenant_b_admin_004' || userId === 'user_tenant_b_admin_008') {
       return {
         roles: ['TENANT_ADMIN'],
         permissions: [
-          'tenant.read', 'tenant.update',
+          'tenant.read', 'tenant.update', 'apikeys.create', 'apikeys.revoke', 'iam.users.write',
           'user.read', 'user.create', 'user.update', 'user.disable',
           'incident.read', 'incident.create', 'incident.update',
           'dsar.read', 'dsar.create', 'dsar.update'
         ],
-        tenantId: 'cust-2',
+        tenantId: userId === 'user_tenant_b_admin_004' ? 'cust-safecircle' : 'cust-cashcreators',
       };
     } else if (userId === 'user_auditor_003' || userId === 'user_auditor_009') {
       return {
@@ -543,7 +618,7 @@ export class IamRepository {
           'model.read', 'model.configure',
           'routing.read', 'routing.modify'
         ],
-        tenantId: 'cust-1',
+        tenantId: 'cust-acme-fintech',
       };
     }
 
@@ -625,6 +700,31 @@ export class IamRepository {
       };
     }
 
+    const authorization = await this.getUserRolesAndPermissions(user.id);
+    if (authorization.roles.length === 0) {
+      await this.logLoginEvent(email, 'MFA_FAILED', user.id, user.tenant_id, ip, ua, 'Authentication authorization profile unavailable.');
+      return {
+        success: false,
+        error: 'AUTHORIZATION_PROFILE_UNAVAILABLE',
+        message: 'Authentication could not be completed. Please try again later.'
+      };
+    }
+
+  const mfaValid = await verifyMfaRequirement({
+      userId: user.id,
+      mfaEnabled: user.mfa_enabled,
+      mfaEnforced: user.mfa_enforced,
+      roles: authorization.roles,
+    }, meta.mfaCode);
+    if (!mfaValid) {
+      await this.logLoginEvent(email, 'MFA_FAILED', user.id, user.tenant_id, ip, ua, 'MFA verification failed.');
+      return {
+        success: false,
+        error: 'MFA_REQUIRED_OR_INVALID',
+        message: 'A valid multi-factor authentication code is required.'
+      };
+    }
+
     // 4. Successful credentials verification: check password age and force-reset requirements
     const passwordAgeDays = (Date.now() - new Date(user.password_changed_at).getTime()) / (1000 * 60 * 60 * 24);
     const MAX_PASSWORD_AGE_DAYS = 90;
@@ -663,9 +763,7 @@ export class IamRepository {
     };
   }
 
-  /**
-   * Creates an active session in MariaDB / Memory
-   */
+  /** Creates an active session in MariaDB, or memory only in explicitly permitted non-production modes. */
   public static async createSession(
     userId: string,
     token: string,
@@ -685,8 +783,9 @@ export class IamRepository {
       created_at: new Date(),
     };
 
-    if (isDatabaseConnected()) {
-      try {
+    await persistAuthenticationSession({
+      databaseAvailable: isDatabaseConnected(),
+      persist: async () => {
         await executeQuery(
           `INSERT INTO iam_user_sessions 
            (id, user_id, session_token, ip_address, user_agent, is_active, expires_at, created_at) 
@@ -702,12 +801,12 @@ export class IamRepository {
             session.created_at,
           ]
         );
-      } catch (err) {
-        console.warn('[IAM Repository] Failed to persist session to DB, using in-memory store:', err);
-      }
-    }
-
-    inMemorySessions.set(token, session);
+      },
+      memoryPersist: () => {
+        inMemorySessions.set(token, session);
+        return session;
+      },
+    });
     return session;
   }
 
@@ -717,29 +816,28 @@ export class IamRepository {
   public static async getSession(token: string): Promise<IamSessionRecord | null> {
     if (!token) return null;
 
-    if (isDatabaseConnected()) {
-      try {
+    return resolveAuthenticationSession({
+      databaseAvailable: isDatabaseConnected(),
+      databaseLookup: async () => {
         const rows = await executeQuery<IamSessionRecord>(
           'SELECT * FROM iam_user_sessions WHERE session_token = ? AND is_active = 1 AND expires_at > NOW() LIMIT 1',
           [token]
         );
-        if (rows[0]) return rows[0];
-      } catch (err) {
-        console.warn('[IAM Repository] Error retrieving session from DB:', err);
-      }
-    }
-
-    const memSession = inMemorySessions.get(token);
-    if (memSession && memSession.is_active && new Date(memSession.expires_at) > new Date()) {
-      return memSession;
-    }
-    return null;
+        return rows[0] || null;
+      },
+      memoryLookup: () => {
+        const memSession = inMemorySessions.get(token);
+        return memSession && memSession.is_active && new Date(memSession.expires_at) > new Date() ? memSession : null;
+      },
+    });
   }
 
   /**
    * Revokes a session token
    */
   public static async revokeSession(token: string, reason: string = 'LOGOUT'): Promise<void> {
+    const production = process.env.NODE_ENV?.trim().toLowerCase() === 'production';
+    if (production && !isDatabaseConnected()) throw new Error('Authentication session storage is unavailable.');
     if (isDatabaseConnected()) {
       try {
         await executeQuery(
@@ -747,10 +845,12 @@ export class IamRepository {
           [reason, token]
         );
       } catch (err) {
+        if (production) throw new Error('Authentication session storage is unavailable.', { cause: err });
         console.warn('[IAM Repository] Error revoking session in DB:', err);
       }
     }
 
+    if (production) return;
     const sess = inMemorySessions.get(token);
     if (sess) {
       sess.is_active = false;
@@ -760,20 +860,24 @@ export class IamRepository {
   /**
    * Revokes a session by session ID
    */
-  public static async revokeSessionById(sessionId: string): Promise<void> {
+  public static async revokeSessionById(sessionId: string, ownerUserId: string): Promise<void> {
+    const production = process.env.NODE_ENV?.trim().toLowerCase() === 'production';
+    if (production && !isDatabaseConnected()) throw new Error('Authentication session storage is unavailable.');
     if (isDatabaseConnected()) {
       try {
         await executeQuery(
-          'UPDATE iam_user_sessions SET is_active = 0, revoked_at = NOW(), revoked_reason = ? WHERE id = ? OR session_token = ?',
-          ['ADMIN_REVOKED', sessionId, sessionId]
+          'UPDATE iam_user_sessions SET is_active = 0, revoked_at = NOW(), revoked_reason = ? WHERE (id = ? OR session_token = ?) AND user_id = ?',
+          ['USER_REVOKED', sessionId, sessionId, ownerUserId]
         );
       } catch (err) {
+        if (production) throw new Error('Authentication session storage is unavailable.', { cause: err });
         console.warn('[IAM Repository] Error revoking session in DB:', err);
       }
     }
 
+    if (production) return;
     for (const [, sess] of inMemorySessions.entries()) {
-      if (sess.id === sessionId || sess.session_token === sessionId) {
+      if (sess.user_id === ownerUserId && (sess.id === sessionId || sess.session_token === sessionId)) {
         sess.is_active = false;
       }
     }
@@ -783,6 +887,8 @@ export class IamRepository {
    * Retrieves active sessions for a user
    */
   public static async getUserSessions(userId: string): Promise<IamSessionRecord[]> {
+    const production = process.env.NODE_ENV?.trim().toLowerCase() === 'production';
+    if (production && !isDatabaseConnected()) throw new Error('Authentication session storage is unavailable.');
     if (isDatabaseConnected()) {
       try {
         const rows = await executeQuery<IamSessionRecord>(
@@ -791,10 +897,12 @@ export class IamRepository {
         );
         return rows;
       } catch (err) {
+        if (production) throw new Error('Authentication session storage is unavailable.', { cause: err });
         console.warn('[IAM Repository] Error fetching user sessions:', err);
       }
     }
 
+    if (production) return [];
     return Array.from(inMemorySessions.values()).filter(
       s => s.user_id === userId && s.is_active && new Date(s.expires_at) > new Date()
     );
@@ -839,6 +947,14 @@ export class IamRepository {
         console.warn('[IAM Repository] Error logging login event to DB:', err);
       }
     }
+    try {
+      await emitAltilEvent({
+        category: 'SECURITY_EVENT', action: 'auth.login', actorId: userId || undefined, actorEmail: email,
+        tenantId: tenantId || undefined, organizationId: tenantId || undefined,
+        outcome: outcome === 'SUCCESS' ? 'SUCCESS' : 'DENIED', statusCode: outcome === 'SUCCESS' ? 200 : 401,
+        reason: outcome === 'SUCCESS' ? undefined : outcome,
+      });
+    } catch { /* The existing IAM login ledger remains authoritative if the shared event sink is unavailable. */ }
   }
 
   /**
@@ -949,6 +1065,51 @@ export class IamRepository {
       password_changed_at: u.password_changed_at,
       force_password_change: u.force_password_change || false
     }));
+  }
+
+  /** List users only from the organization IDs already resolved by authorization middleware. */
+  public static async getUsersInScope(organizationIds: readonly string[], includePlatformUsers = false): Promise<Partial<IamUserRecord>[]> {
+    const ids = [...new Set(organizationIds.filter(Boolean))];
+    if (!ids.length && !includePlatformUsers) return [];
+    const placeholders = ids.map(() => '?').join(',');
+    const where: string[] = [];
+    const params: string[] = [];
+    if (ids.length) {
+      where.push(`tenant_id IN (${placeholders})`);
+      params.push(...ids);
+    }
+    if (includePlatformUsers) where.push('tenant_id IS NULL');
+    const sqlWhere = where.length ? ` WHERE (${where.join(' OR ')})` : '';
+
+    if (isDatabaseConnected()) {
+      try {
+        const rows = await executeQuery<any>(
+          `SELECT id, tenant_id, email, first_name, last_name, title, department, status, failed_login_attempts, lockout_until, mfa_enabled, last_login_at, created_at, password_changed_at, force_password_change FROM iam_users${sqlWhere}`,
+          params
+        );
+        return rows.map(row => ({
+          id: row.id, tenant_id: row.tenant_id, email: row.email, first_name: row.first_name, last_name: row.last_name,
+          title: row.title, department: row.department, status: row.status, failed_login_attempts: row.failed_login_attempts,
+          lockout_until: row.lockout_until ? new Date(row.lockout_until) : null, mfa_enabled: Boolean(row.mfa_enabled),
+          last_login_at: row.last_login_at ? new Date(row.last_login_at) : null, created_at: new Date(row.created_at),
+          password_changed_at: row.password_changed_at ? new Date(row.password_changed_at) : new Date(),
+          force_password_change: Boolean(row.force_password_change),
+        }));
+      } catch (error) {
+        console.error('[IAM Repository] Scoped user list failed; refusing unscoped fallback.', error);
+        throw new Error('Scoped user directory is unavailable.');
+      }
+    }
+
+    return inMemoryUsers
+      .filter(user => (user.tenant_id !== null && ids.includes(user.tenant_id)) || (includePlatformUsers && user.tenant_id === null))
+      .map(user => ({
+        id: user.id, tenant_id: user.tenant_id, email: user.email, first_name: user.first_name, last_name: user.last_name,
+        title: user.title, department: user.department, status: user.status, failed_login_attempts: user.failed_login_attempts,
+        lockout_until: user.lockout_until, mfa_enabled: user.mfa_enabled, last_login_at: user.last_login_at,
+        created_at: user.created_at, password_changed_at: user.password_changed_at,
+        force_password_change: user.force_password_change || false,
+      }));
   }
 
   /**

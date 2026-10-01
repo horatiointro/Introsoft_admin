@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { InfoButton } from './InfoButton';
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -44,6 +45,8 @@ import {
   VaultTokenRecord
 } from '../utils/complianceSimulationEngine';
 
+const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
+
 export const TrafficComplianceSimulatorView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'live_inspector' | 'token_vault' | 'violations_ledger' | 'db_audit_log'>('live_inspector');
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>(COMPANY_TRAFFIC_SCENARIOS[0].id);
@@ -66,12 +69,8 @@ export const TrafficComplianceSimulatorView: React.FC = () => {
   const fetchLogsAndVault = async () => {
     try {
       const [logsRes, vaultRes] = await Promise.all([
-        fetch('/api/v1/compliance/simulated-logs', {
-          headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('altil_auth_token') || 'ALTIL_TOKEN') }
-        }),
-        fetch('/api/v1/compliance/token-vault', {
-          headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('altil_auth_token') || 'ALTIL_TOKEN') }
-        })
+        apiFetch(`${API_BASE}/compliance/simulated-logs`),
+        apiFetch(`${API_BASE}/compliance/token-vault`)
       ]);
 
       if (logsRes.ok) {
@@ -104,12 +103,9 @@ export const TrafficComplianceSimulatorView: React.FC = () => {
     setLoading(true);
     try {
       const targetId = scenarioId || selectedScenarioId;
-      const res = await fetch('/api/v1/compliance/simulate-traffic', {
+      const res = await apiFetch(`${API_BASE}/compliance/simulate-traffic`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + (localStorage.getItem('altil_auth_token') || 'ALTIL_TOKEN')
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scenarioId: targetId })
       });
 
@@ -135,12 +131,9 @@ export const TrafficComplianceSimulatorView: React.FC = () => {
   const handleSimulateAllCompanies = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/compliance/simulate-traffic', {
+      const res = await apiFetch(`${API_BASE}/compliance/simulate-traffic`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + (localStorage.getItem('altil_auth_token') || 'ALTIL_TOKEN')
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ runAll: true })
       });
 
@@ -165,11 +158,8 @@ export const TrafficComplianceSimulatorView: React.FC = () => {
       return;
     }
     try {
-      const res = await fetch('/api/v1/compliance/simulated-logs', {
+      const res = await apiFetch(`${API_BASE}/compliance/simulated-logs`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': 'Bearer ' + (localStorage.getItem('altil_auth_token') || 'ALTIL_TOKEN')
-        }
       });
       if (res.ok) {
         setRecentPackets([]);

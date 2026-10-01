@@ -34,6 +34,7 @@ import {
   OrchestrationResponse
 } from '../types';
 import { TrafficComplianceSimulatorView } from './TrafficComplianceSimulatorView';
+import { ApiPlayground } from './ApiPlayground';
 
 interface PlaygroundViewProps {
   applications: Application[];
@@ -56,7 +57,6 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   const [promptText, setPromptText] = useState(
     'Please summarize the quarterly operational milestones and prepare a customer greeting for Introsoft platform users.'
   );
-  const [simulateFailure, setSimulateFailure] = useState(false);
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<OrchestrationResponse | null>(null);
   const [copiedSnippet, setCopiedSnippet] = useState(false);
@@ -64,6 +64,10 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
 
   const selectedApp = applications.find(a => a.id === selectedAppId);
   const matchingKey = apiKeys.find(k => k.appId === selectedAppId && k.status === 'active') || apiKeys[0];
+  const responseSucceeded = response?.status === 'SUCCESS' || response?.status === 'FALLBACK_SUCCESS';
+  const pipelineEvidenceClass = responseSucceeded
+    ? 'bg-[#0a0a0a] border-green-500/30 text-green-300'
+    : 'bg-[#0a0a0a] border-[#222222] text-[#888888]';
 
   const samplePresets = [
     {
@@ -106,21 +110,20 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     try {
       const res = await onOrchestrate({
         appId: selectedAppId,
-        apiKey: matchingKey?.key || 'ALTIL-DEMO-SECRET-KEY',
         capability: selectedCapability,
-        prompt: promptText,
-        simulateProviderFailure: simulateFailure
+        prompt: promptText
       });
       setResponse(res);
     } catch (err: any) {
       setResponse({
-        id: `err-${Date.now()}`,
+        id: 'UNAVAILABLE',
         status: 'ERROR',
         capability: selectedCapability,
-        executedModel: 'None',
-        executedProvider: 'None',
-        durationSeconds: 0.1,
+        executedModel: 'UNAVAILABLE',
+        executedProvider: 'UNAVAILABLE',
+        durationSeconds: 0,
         tokensConsumed: 0,
+        metricsAvailable: false,
         output: `Error during orchestration: ${err.message || 'Internal connection error'}`,
         timestamp: new Date().toISOString()
       });
@@ -129,43 +132,44 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     }
   };
 
-  const curlSnippet = `curl -X POST https://api.altil.internal/v1/orchestrate \\
-  -H "Authorization: Bearer ${matchingKey?.key || 'ALTIL-DEMO-KEY'}" \\
+  const curlSnippet = `curl -X POST https://api.introsoft.com/v1/orchestrate \\
+  -H "x-api-key: \${ALTIL_API_KEY}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "capability": "${selectedCapability}",
     "prompt": "${promptText.replace(/\n/g, ' ')}"
   }'`;
 
-  const nodeSnippet = `import { AltilClient } from '@introsoft/altil-sdk';
-
-const altil = new AltilClient({
-  apiKey: process.env.ALTIL_API_KEY // "${matchingKey?.prefix || 'ALTIL-...'}"
+  const nodeSnippet = `const response = await fetch('https://api.introsoft.com/v1/orchestrate', {
+  method: 'POST',
+  headers: { 'x-api-key': process.env.ALTIL_API_KEY, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ capability: '${selectedCapability}', prompt: ${JSON.stringify(promptText)} })
 });
+const result = await response.json();
+console.log(result.output);`;
 
-const response = await altil.orchestrate({
-  capability: '${selectedCapability}',
-  prompt: \`${promptText}\`
-});
+  const pythonSnippet = `import os
+import requests
 
-console.log(response.output);`;
-
-  const pythonSnippet = `from altil import AltilClient
-
-client = AltilClient(api_key="${matchingKey?.prefix || 'ALTIL-...'}")
-
-response = client.orchestrate(
-    capability="${selectedCapability}",
-    prompt="""${promptText}"""
+response = requests.post(
+    'https://api.introsoft.com/v1/orchestrate',
+    headers={'x-api-key': os.environ['ALTIL_API_KEY']},
+    json={'capability': '${selectedCapability}', 'prompt': ${JSON.stringify(promptText)}}
 )
-
-print(response.output)`;
+print(response.json().get('output'))`;
 
   const copyCode = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedSnippet(true);
     setTimeout(() => setCopiedSnippet(false), 2000);
   };
+
+  if (activePlaygroundMode === 'tester') return (
+    <div className="space-y-4">
+      <button onClick={() => setActivePlaygroundMode('simulator')} className="rounded border border-[#333] px-3 py-2 text-xs text-slate-300 hover:text-white">← Back to traffic simulator</button>
+      <ApiPlayground applications={applications} apiKeys={apiKeys} />
+    </div>
+  );
 
   return (
     <div className="space-y-6 pb-12">
@@ -275,10 +279,9 @@ print(response.output)`;
                 <KeyRound className="w-3 h-3 text-blue-400" />
                 Token:
               </span>
-              <span className="text-blue-400">
-                {matchingKey?.prefix || 'ALTIL-LIVE-BEARER-KEY'}
-              </span>
+              <span className="text-blue-400">{matchingKey?.prefix || 'No active credential'}</span>
             </div>
+            <p className="-mt-2 text-[9px] text-slate-500">Only the credential prefix is shown. The secret is never inserted into a request example.</p>
 
             {/* Capability Hook */}
             <div>
@@ -316,20 +319,7 @@ print(response.output)`;
               />
             </div>
 
-            {/* Simulation Options */}
-            <div className="pt-2 border-t border-[#222222] space-y-2">
-              <label className="flex items-center space-x-2.5 cursor-pointer text-[#e5e5e5]">
-                <input
-                  type="checkbox"
-                  checked={simulateFailure}
-                  onChange={e => setSimulateFailure(e.target.checked)}
-                  className="w-4 h-4 rounded text-orange-500 bg-[#0a0a0a] border-[#222222]"
-                />
-                <span className="text-[11px] font-mono text-yellow-400">
-                  Simulate Primary Provider Failure (Triggers ALTIL Automatic Fallback)
-                </span>
-              </label>
-            </div>
+            <p className="border-t border-[#222222] pt-2 text-[10px] leading-4 text-amber-200/70">Requests use the current authenticated session and may invoke a configured provider, consume quota, or incur usage charges. Failure simulation is not sent by this API Explorer.</p>
 
             {/* Submit Button */}
             <button
@@ -422,7 +412,7 @@ print(response.output)`;
                   }`}
                 >
                   <span>●</span>
-                  <span>{response.status} ({response.durationSeconds}s)</span>
+                  <span>{response.status}{response.metricsAvailable ? ` (${response.durationSeconds}s)` : ' · metrics UNAVAILABLE'}</span>
                 </span>
               )}
             </div>
@@ -431,35 +421,35 @@ print(response.output)`;
             <div className="space-y-2 text-xs font-mono">
               {/* Step 1 */}
               <div className={`p-2 rounded border flex items-center justify-between ${
-                response ? 'bg-[#0a0a0a] border-green-500/30 text-green-300' : 'bg-[#0a0a0a] border-[#222222] text-[#666666]'
+                responseSucceeded ? pipelineEvidenceClass : 'bg-[#0a0a0a] border-[#222222] text-[#666666]'
               }`}>
                 <div className="flex items-center space-x-2.5">
                   <span className="w-4 h-4 rounded bg-[#1a1a1a] flex items-center justify-center text-[10px] font-bold text-[#888888]">1</span>
-                  <span><strong className="text-white font-sans">Auth & Identity:</strong> Verified app "{selectedApp?.name}"</span>
+                  <span><strong className="text-white font-sans">Auth & Identity:</strong> {responseSucceeded ? `Request accepted for app "${selectedApp?.name}"` : 'Result not confirmed by response'}</span>
                 </div>
-                {response && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                {responseSucceeded && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
               </div>
 
               {/* Step 2 */}
               <div className={`p-2 rounded border flex items-center justify-between ${
-                response ? 'bg-[#0a0a0a] border-green-500/30 text-green-300' : 'bg-[#0a0a0a] border-[#222222] text-[#666666]'
+                responseSucceeded ? pipelineEvidenceClass : 'bg-[#0a0a0a] border-[#222222] text-[#666666]'
               }`}>
                 <div className="flex items-center space-x-2.5">
                   <span className="w-4 h-4 rounded bg-[#1a1a1a] flex items-center justify-center text-[10px] font-bold text-[#888888]">2</span>
-                  <span><strong className="text-white font-sans">Policy Engine:</strong> PII scrubbing & financial protections evaluated</span>
+                  <span><strong className="text-white font-sans">Policy Engine:</strong> {responseSucceeded ? 'Request completed; individual policy decisions unavailable' : 'Policy result not confirmed'}</span>
                 </div>
-                {response && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                {responseSucceeded && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
               </div>
 
               {/* Step 3 */}
               <div className={`p-2 rounded border flex items-center justify-between ${
-                response ? 'bg-[#0a0a0a] border-green-500/30 text-green-300' : 'bg-[#0a0a0a] border-[#222222] text-[#666666]'
+                responseSucceeded ? pipelineEvidenceClass : 'bg-[#0a0a0a] border-[#222222] text-[#666666]'
               }`}>
                 <div className="flex items-center space-x-2.5">
                   <span className="w-4 h-4 rounded bg-[#1a1a1a] flex items-center justify-center text-[10px] font-bold text-[#888888]">3</span>
-                  <span><strong className="text-white font-sans">Capability Route Resolution:</strong> Hook "{selectedCapability}" resolved</span>
+                  <span><strong className="text-white font-sans">Capability Route Resolution:</strong> {responseSucceeded ? `Request completed for "${response.capability}"` : 'Route result not confirmed'}</span>
                 </div>
-                {response && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                {responseSucceeded && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
               </div>
 
               {/* Step 4 & 5 (Dispatch & Fallback) */}
@@ -467,13 +457,13 @@ print(response.output)`;
                 response
                   ? response.fallbackTriggered
                     ? 'bg-[#0a0a0a] border-blue-500/40 text-blue-300'
-                    : 'bg-[#0a0a0a] border-green-500/30 text-green-300'
+                    : responseSucceeded ? 'bg-[#0a0a0a] border-green-500/30 text-green-300' : 'bg-[#0a0a0a] border-[#222222] text-[#888888]'
                   : 'bg-[#0a0a0a] border-[#222222] text-[#666666]'
               }`}>
                 <div className="flex items-center space-x-2.5">
                   <span className="w-4 h-4 rounded bg-[#1a1a1a] flex items-center justify-center text-[10px] font-bold text-[#888888]">4</span>
                   <div>
-                    <span><strong className="text-white font-sans">Dispatch & Egress:</strong> {response ? `Executed on ${response.executedProvider} / ${response.executedModel}` : 'Awaiting dispatch'}</span>
+                    <span><strong className="text-white font-sans">Dispatch & Egress:</strong> {responseSucceeded ? `Executed on ${response.executedProvider} / ${response.executedModel}` : 'Dispatch result not confirmed'}</span>
                     {response?.fallbackTriggered && (
                       <div className="text-[10px] text-blue-400 mt-0.5">
                         ⚡ Primary Tier failed: Cascaded to Tier 2 ({response.executedModel})
@@ -481,7 +471,7 @@ print(response.output)`;
                     )}
                   </div>
                 </div>
-                {response && (
+                {response?.metricsAvailable && (
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#1a1a1a] text-white border border-[#333333]">
                     {response.tokensConsumed} tokens
                   </span>
@@ -490,13 +480,12 @@ print(response.output)`;
 
               {/* Step 6 & 7 */}
               <div className={`p-2 rounded border flex items-center justify-between ${
-                response ? 'bg-[#0a0a0a] border-green-500/30 text-green-300' : 'bg-[#0a0a0a] border-[#222222] text-[#666666]'
+                'bg-[#0a0a0a] border-[#222222] text-[#888888]'
               }`}>
                 <div className="flex items-center space-x-2.5">
                   <span className="w-4 h-4 rounded bg-[#1a1a1a] flex items-center justify-center text-[10px] font-bold text-[#888888]">5</span>
-                  <span><strong className="text-white font-sans">Audit Ledger:</strong> Recorded immutable transaction log</span>
+                  <span><strong className="text-white font-sans">Audit:</strong> Persistence outcome is not available in this response</span>
                 </div>
-                {response && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
               </div>
             </div>
 
@@ -504,14 +493,18 @@ print(response.output)`;
             <div className="pt-3 border-t border-[#222222]">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">
-                  Decoupled Model Output
+                  API Response
                 </span>
-                {response && (
+                {responseSucceeded && (
                   <span className="text-[10px] font-mono text-[#888888]">
                     Attributed: <strong className="text-blue-400">{response.executedProvider}</strong> ({response.executedModel})
                   </span>
                 )}
               </div>
+
+              {response && !responseSucceeded && (
+                <p className="mb-2 text-[10px] text-amber-300">The request did not complete successfully. Downstream provider execution and audit persistence are not confirmed.</p>
+              )}
 
               <div className="p-3 rounded bg-[#0a0a0a] border border-[#222222] text-xs text-[#e5e5e5] font-sans leading-relaxed min-h-[140px] max-h-80 overflow-y-auto whitespace-pre-wrap">
                 {loading ? (
