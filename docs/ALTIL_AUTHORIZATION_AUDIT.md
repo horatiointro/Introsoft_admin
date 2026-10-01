@@ -5,7 +5,7 @@
 
 ## AUTHORIZATION AUDIT
 
-- **Routes inspected:** 254 route/method declarations inventoried from `server.ts` and the mounted routers in `src/routes/authRoutes.ts`, `complianceRoutes.ts`, `dcrRoutes.ts`, `itilRoutes.ts`, and `trustFabricRoutes.ts`.
+- **Routes inventoried:** 273 route/method records currently cross-referenced to declarations in `server.ts` and mounted routers. `scripts/refreshRouteInventory.mjs --check` validates those source locations. This inventory is not a complete per-route authorization assessment.
 - **Authentication middleware observed:** 224 declarations have an authentication middleware; 14 are credential/challenge-flow routes; 9 are intentionally public/health/documentation endpoints; 6 audit mutation aliases always return 405; 1 route is unauthenticated and writes client error data (`POST /api/v1/client-error`). These are source observations, not proof that authentication is correct at every handler.
 - **Status totals in the machine-readable inventory:** 219 `NOT ASSESSED`, 9 `NOT APPLICABLE`, 6 `IMPLEMENTED` (write denied with 405), 20 `PARTIALLY IMPLEMENTED`, and 0 `MISSING`. The inventory deliberately does not label middleware presence as a complete security review. See [ALTIL_AUTHORIZATION_ROUTE_INVENTORY.json](ALTIL_AUTHORIZATION_ROUTE_INVENTORY.json).
 - Every inventory row includes route, method, module, source file/line, authentication chain, required permission, organization/tenant scope, ownership, parent/descendant relationship, global access, object authorization, audit, rate limit, input validation, sensitive exposure and status. Fields not verified at handler level remain `NOT ASSESSED`.
@@ -133,7 +133,7 @@ No destructive BOLA probes were run. Static defects were reviewed against the so
 
 This turn’s audit/correction changes, in addition to all pre-existing user changes that remain preserved:
 
-- `docs/ALTIL_AUTHORIZATION_ROUTE_INVENTORY.json` — 254-entry machine-readable route/method inventory; line locations refreshed; unreviewed whole-route status is explicitly `NOT ASSESSED`.
+- `docs/ALTIL_AUTHORIZATION_ROUTE_INVENTORY.json` — 273-entry machine-readable inventory; source paths and line locations are checked against current declarations; `accessClassification` describes the authentication boundary while the separate `status` remains `NOT ASSESSED` where substantive review is incomplete.
 - `docs/ALTIL_AUTHORIZATION_AUDIT.md` — this source-based audit, findings, corrected gaps, limits and next step.
 - `server.ts` — scoped permission checks in organization/billing/policy/data surfaces; explicit global auth for device-trust and provider diagnostics; scoped policy evidence; related API usage is documented above.
 - `src/routes/itilRoutes.ts`, `src/db/itilRepository.ts` — tenant-bound reads and ownership checks for incident update/status; no implicit null-tenant read for scoped ITIL list operations.
@@ -241,7 +241,7 @@ After route-level isolated test seams and audit persistence semantics are establ
 
 ## AUDIT LIMITS
 
-This is not a general security score, penetration test, deployment attestation or production evidence report. The 254-route inventory is exhaustive for direct Express declarations in the six listed source files, but many per-route fields are explicitly unassessed. No destructive tests, HTTP route probes, production SQL, migrations, provider calls or server startup were performed.
+This is not a general security score, penetration test, deployment attestation or production evidence report. The inventory currently has 273 records and still contains 219 `NOT ASSESSED` whole-route results; the refresh check verifies each listed source location but does not prove inventory completeness against every Express declaration. No destructive tests, production SQL, migrations, provider calls or server startup were performed as part of the original audit.
 
 ## Stage 5 — Application and Credential Security (2026-09-29)
 
