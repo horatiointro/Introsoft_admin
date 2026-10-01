@@ -77,6 +77,47 @@ function getDatabaseConfig(): mysql.PoolOptions {
   };
 }
 
+function parseJsonLikeObject<T extends object>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (Buffer.isBuffer(value)) return JSON.parse(value.toString('utf8')) as T;
+  if (typeof value === 'string') return JSON.parse(value) as T;
+  if (typeof value === 'object') return value as T;
+  return fallback;
+}
+
+type LicensingPlanRow = Record<string, any>;
+
+/** Converts driver-returned plan rows while retaining the historical safe fallback on malformed metadata. */
+export function deserializeLicensingPlanRows(
+  rows: LicensingPlanRow[],
+  onMalformed: (error: unknown) => void = error => console.warn('DB read plans fallback:', error)
+): LicensingPlanTemplate[] {
+  try {
+    return rows.map((r: LicensingPlanRow) => ({
+      id: r.id,
+      name: r.name,
+      applicationId: 'all',
+      applicationName: 'All AI Platform Applications',
+      pricingType: r.pricing_model || 'hybrid_base_metered',
+      currency: r.currency || 'USD',
+      basePrice: Number(r.base_price || 0),
+      billingCycle: r.billing_cycle === 'Annual' ? 'annual' : 'monthly',
+      includedTransactions: Number(r.included_transactions_quota || 100000),
+      overagePricePerTransaction: Number(r.overage_rate_per_1k || 0.005),
+      gracePeriodDays: Number(r.grace_period_days || 14),
+      autoEnforcementAction: r.enforcement_rule || 'hard_block_402',
+      autoEnforceOnUnpaid: true,
+      features: ['24/7 SLA Guarantee', 'POPIA Redactor', 'Multi-Model Fallback'],
+      isPublished: true,
+      createdDate: r.created_at ? String(r.created_at).split('T')[0] : '2026-01-01',
+      ...parseJsonLikeObject<Partial<LicensingPlanTemplate>>(r.metadata_json, {}),
+    }));
+  } catch (error) {
+    onMalformed(error);
+    return INITIAL_LICENSING_PLANS;
+  }
+}
+
 const dbConfig = getDatabaseConfig();
 
 let pool: mysql.Pool | null = null;
@@ -407,25 +448,7 @@ export const dbRepository = {
       try {
         const rows = await executeQuery('SELECT * FROM licensing_plans WHERE is_active=1 ORDER BY created_at DESC');
         if (rows.length > 0) {
-          return rows.map((r: any) => ({
-            id: r.id,
-            name: r.name,
-            applicationId: 'all',
-            applicationName: 'All AI Platform Applications',
-            pricingType: r.pricing_model || 'hybrid_base_metered',
-            currency: r.currency || 'USD',
-            basePrice: Number(r.base_price || 0),
-            billingCycle: r.billing_cycle === 'Annual' ? 'annual' : 'monthly',
-            includedTransactions: Number(r.included_transactions_quota || 100000),
-            overagePricePerTransaction: Number(r.overage_rate_per_1k || 0.005),
-            gracePeriodDays: Number(r.grace_period_days || 14),
-            autoEnforcementAction: r.enforcement_rule || 'hard_block_402',
-            autoEnforceOnUnpaid: true,
-            features: ['24/7 SLA Guarantee', 'POPIA Redactor', 'Multi-Model Fallback'],
-            isPublished: true,
-            createdDate: r.created_at ? String(r.created_at).split('T')[0] : '2026-01-01',
-            ...(r.metadata_json ? JSON.parse(typeof r.metadata_json === 'string' ? r.metadata_json : r.metadata_json.toString()) : {})
-          }));
+          return deserializeLicensingPlanRows(rows);
         }
       } catch (e) {
         console.warn('DB read plans fallback:', e);
@@ -441,9 +464,7 @@ export const dbRepository = {
     return rows.flatMap((row: any) => {
       let metadata: Partial<LicensingPlanTemplate> = {};
       try {
-        metadata = row.metadata_json
-          ? (typeof row.metadata_json === 'string' ? JSON.parse(row.metadata_json) : Buffer.isBuffer(row.metadata_json) ? JSON.parse(row.metadata_json.toString('utf8')) : typeof row.metadata_json === 'object' ? row.metadata_json : {})
-          : {};
+        metadata = parseJsonLikeObject<Partial<LicensingPlanTemplate>>(row.metadata_json, {});
       } catch {
         // Invalid metadata is not allowed to make an unverified plan selectable.
         return [];

@@ -18,6 +18,7 @@ export const safeTestFiles = Object.freeze([
   'src/middleware/authMiddleware.test.ts',
   'src/db/iamRepositoryQuickAccess.test.ts',
   'src/db/complianceSchemaRepair.test.ts',
+  'src/db/licensingPlanDeserialization.test.ts',
   'src/db/iamRepositoryAuthenticationSecurity.test.ts',
   'src/security/anonymousDiagnostic.test.ts',
   'src/security/apiKeyCredential.test.ts',
