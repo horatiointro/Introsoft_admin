@@ -8,8 +8,10 @@ info:
     enforcement, invoicing, governed AI inference and encrypted multi-channel communication.
     AI calls fail closed when tenant, application, key, billing or policy checks cannot pass.
 servers:
+  - url: /admin-test
+    description: Test deployment (same-origin API base)
   - url: https://api.introsoft.com
-    description: Production API gateway
+    description: Production API gateway (requires its DNS and TLS endpoint to be available)
   - url: http://localhost:3005
     description: Local development
 security:

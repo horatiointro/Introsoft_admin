@@ -132,7 +132,8 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     }
   };
 
-  const curlSnippet = `curl -X POST https://api.introsoft.com/v1/orchestrate \\
+  const gatewayBaseUrl = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}`;
+  const curlSnippet = `curl -X POST ${gatewayBaseUrl}/v1/orchestrate \\
   -H "x-api-key: \${ALTIL_API_KEY}" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -140,7 +141,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     "prompt": "${promptText.replace(/\n/g, ' ')}"
   }'`;
 
-  const nodeSnippet = `const response = await fetch('https://api.introsoft.com/v1/orchestrate', {
+  const nodeSnippet = `const response = await fetch('${gatewayBaseUrl}/v1/orchestrate', {
   method: 'POST',
   headers: { 'x-api-key': process.env.ALTIL_API_KEY, 'Content-Type': 'application/json' },
   body: JSON.stringify({ capability: '${selectedCapability}', prompt: ${JSON.stringify(promptText)} })
@@ -152,7 +153,7 @@ console.log(result.output);`;
 import requests
 
 response = requests.post(
-    'https://api.introsoft.com/v1/orchestrate',
+    '${gatewayBaseUrl}/v1/orchestrate',
     headers={'x-api-key': os.environ['ALTIL_API_KEY']},
     json={'capability': '${selectedCapability}', 'prompt': ${JSON.stringify(promptText)}}
 )
