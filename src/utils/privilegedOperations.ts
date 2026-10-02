@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Request } from 'express';
+import { canonicalClientIp } from '../security/clientIp';
 
 export type PrivilegedOperationType =
   | 'DATABASE_MIGRATION'
@@ -53,7 +54,7 @@ export class PrivilegedOperationsRegistry {
     req: Request
   ): PrivilegedOperation {
     const id = 'priv-op-' + crypto.randomBytes(8).toString('hex');
-    const originatingIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const originatingIp = canonicalClientIp(req);
     const userAgent = req.headers['user-agent'] || 'ALTIL Security Agent';
 
     const newOp: PrivilegedOperation = {

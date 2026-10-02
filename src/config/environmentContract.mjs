@@ -15,8 +15,8 @@ const DATABASE_ENV_NAMES = [
 export const ENVIRONMENT_VARIABLES = Object.freeze({
   profile: ['ALTIL_ENVIRONMENT', 'NODE_ENV'],
   database: DATABASE_ENV_NAMES,
-  application: ['PORT', 'HOST', 'APP_URL', 'ALTIL_PUBLIC_URL', 'BASE_URL', 'ALTIL_BASE_URL'],
-  authentication: ['ALTIL_MFA_ENABLED', 'ALTIL_ENABLE_SUPER_ADMIN_QUICK_ACCESS', 'ALTIL_ADMIN_EMAIL', 'ALTIL_ADMIN_PASSWORD', 'ALTIL_SUPER_ADMIN_BOOTSTRAP_PASSWORD', 'ALTIL_SUPER_ADMIN_BOOTSTRAP_CONFIRM_EMAIL', 'ALTIL_SUPER_ADMIN_BOOTSTRAP_CONFIRM_DATABASE', 'ALTIL_SUPER_ADMIN_BOOTSTRAP_CONFIRM_HOST', 'ALTIL_ENABLE_MIGRATIONS'],
+  application: ['PORT', 'HOST', 'APP_URL', 'ALTIL_PUBLIC_URL', 'BASE_URL', 'ALTIL_BASE_URL', 'ALTIL_SERVE_BUILT_ASSETS', 'ALTIL_TRUSTED_PROXY_CIDRS'],
+  authentication: ['ALTIL_MFA_ENABLED', 'ALTIL_ENABLE_SUPER_ADMIN_QUICK_ACCESS', 'ALTIL_ENABLE_TEST_SUPER_ADMINS', 'ALTIL_TEST_MFA_CODE', 'ALTIL_ADMIN_EMAIL', 'ALTIL_ADMIN_PASSWORD', 'ALTIL_SUPER_ADMIN_BOOTSTRAP_PASSWORD', 'ALTIL_SUPER_ADMIN_BOOTSTRAP_CONFIRM_EMAIL', 'ALTIL_SUPER_ADMIN_BOOTSTRAP_CONFIRM_DATABASE', 'ALTIL_SUPER_ADMIN_BOOTSTRAP_CONFIRM_HOST', 'ALTIL_ENABLE_MIGRATIONS'],
   encryption: ['ALTIL_KNOWLEDGE_ENCRYPTION_KEY', 'ALTIL_PROVIDER_VAULT_KEY', 'ALTIL_PROVIDER_VAULT_KEY_FILE', 'ALTIL_INTERNAL_AI_API_KEY', 'ALTIL_INTERNAL_AI_KEY_FILE'],
   ai: ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY', 'OPENROUTER_BASE_URL', 'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'MISTRAL_API_KEY', 'TOGETHER_API_KEY', 'ALTIL_API_KEY', 'ALTIL_MODEL_FLEET_STATE'],
   payments: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'ALTIL_PAYMENT_WEBHOOK_SECRET', 'PAYFAST_MERCHANT_ID', 'PAYFAST_MERCHANT_KEY', 'PAYFAST_PASSPHRASE', 'PAYFAST_SANDBOX', 'IKHOKHA_APP_ID', 'IKHOKHA_APP_SECRET', 'IKHOKHA_API_URL', 'IKHOKHA_MODE'],
@@ -62,6 +62,24 @@ function parseDatabaseUrl(value) {
     password: decodeURIComponent(url.password),
     database: decodeURIComponent(url.pathname.slice(1)),
   };
+}
+
+export function resolveTrustedProxyCidrs(env = process.env) {
+  const configured = String(env.ALTIL_TRUSTED_PROXY_CIDRS || '').trim();
+  if (!configured) return [];
+  const cidrs = configured.split(',').map(value => value.trim()).filter(Boolean);
+  for (const cidr of cidrs) {
+    const [address, prefix, ...extra] = cidr.split('/');
+    const family = isIP(address);
+    const prefixLength = prefix === undefined ? (family === 4 ? 32 : 128) : Number(prefix);
+    if (!family || extra.length || !Number.isInteger(prefixLength) || prefixLength < 0 || prefixLength > (family === 4 ? 32 : 128)) {
+      throw new Error('ALTIL_TRUSTED_PROXY_CIDRS must contain valid IP addresses or CIDRs.');
+    }
+    if ((family === 4 && prefixLength === 0) || (family === 6 && prefixLength === 0)) {
+      throw new Error('ALTIL_TRUSTED_PROXY_CIDRS must not trust every address.');
+    }
+  }
+  return [...new Set(cidrs)];
 }
 
 /** Resolve the only supported database configuration contract; never fall back after an invalid URL. */
@@ -113,16 +131,25 @@ export function resolveDatabaseConfig(env = process.env) {
   };
 }
 
-/** Validate the only active runtime profiles. This project currently has no staging or production profile. */
+/** Validate the explicit LOCAL E2E, development/test, and production profiles. */
 export function validateRuntimeEnvironment(env = process.env) {
   const errors = [];
   const isLocalE2E = env.ALTIL_LOCAL_E2E === 'true';
-  const expectedProfile = isLocalE2E ? 'local-test' : 'development-test';
+  const nodeEnvironment = String(env.NODE_ENV || 'development').toLowerCase();
+  const expectedProfile = isLocalE2E ? 'local-test' : nodeEnvironment === 'production' ? 'production' : 'development-test';
   if (env.ALTIL_ENVIRONMENT !== expectedProfile) errors.push(`ALTIL_ENVIRONMENT must be ${expectedProfile}.`);
-  if (String(env.NODE_ENV || 'development').toLowerCase() === 'production') errors.push('NODE_ENV=production is not a supported environment for this development/test deployment.');
+  if (!['development', 'test', 'production'].includes(nodeEnvironment)) errors.push('NODE_ENV must be development, test, or production.');
+  if (isLocalE2E && nodeEnvironment === 'production') errors.push('LOCAL E2E cannot run with NODE_ENV=production.');
   if (env.ALTIL_ENABLE_BACKGROUND_JOBS !== undefined && !['true', 'false'].includes(String(env.ALTIL_ENABLE_BACKGROUND_JOBS).toLowerCase())) errors.push('ALTIL_ENABLE_BACKGROUND_JOBS must be true or false.');
   if (env.ALTIL_ENABLE_PROVIDER_STARTUP_CHECKS !== undefined && !['true', 'false'].includes(String(env.ALTIL_ENABLE_PROVIDER_STARTUP_CHECKS).toLowerCase())) errors.push('ALTIL_ENABLE_PROVIDER_STARTUP_CHECKS must be true or false.');
+  if (env.ALTIL_SERVE_BUILT_ASSETS !== undefined && !['true', 'false'].includes(String(env.ALTIL_SERVE_BUILT_ASSETS).toLowerCase())) errors.push('ALTIL_SERVE_BUILT_ASSETS must be true or false.');
   if (env.ALTIL_MFA_ENABLED !== undefined && !['true', 'false'].includes(String(env.ALTIL_MFA_ENABLED).toLowerCase())) errors.push('ALTIL_MFA_ENABLED must be true or false.');
+  if (env.ALTIL_ENABLE_TEST_SUPER_ADMINS !== undefined && !['true', 'false'].includes(String(env.ALTIL_ENABLE_TEST_SUPER_ADMINS).toLowerCase())) errors.push('ALTIL_ENABLE_TEST_SUPER_ADMINS must be true or false.');
+  if (present(env.ALTIL_TEST_MFA_CODE) && !/^\d{6}$/.test(env.ALTIL_TEST_MFA_CODE)) errors.push('ALTIL_TEST_MFA_CODE must be a six-digit test code.');
+  if (env.ALTIL_ENABLE_TEST_SUPER_ADMINS === 'true' && (expectedProfile !== 'development-test' || nodeEnvironment === 'production')) errors.push('Test Super Admin fixtures are available only in the development-test profile.');
+  if (env.ALTIL_ENABLE_TEST_SUPER_ADMINS === 'true' && !/^\d{6}$/.test(env.ALTIL_TEST_MFA_CODE || '')) errors.push('Test Super Admin fixtures require an explicit six-digit ALTIL_TEST_MFA_CODE.');
+  if (env.ALTIL_ENABLE_TEST_SUPER_ADMINS === 'true' && env.ALTIL_ENABLE_SUPER_ADMIN_QUICK_ACCESS === 'true') errors.push('Test Super Admin accounts use normal authentication; quick access must remain disabled.');
+  if (expectedProfile === 'production' && (present(env.ALTIL_TEST_MFA_CODE) || present(env.ALTIL_ENABLE_TEST_SUPER_ADMINS))) errors.push('Test Super Admin fixture settings must not be configured in production.');
   if (env.PAYFAST_SANDBOX !== undefined && !['true', 'false'].includes(String(env.PAYFAST_SANDBOX).toLowerCase())) errors.push('PAYFAST_SANDBOX must be true or false.');
   if (present(env.PORT) && (!Number.isInteger(Number(env.PORT)) || Number(env.PORT) < 1 || Number(env.PORT) > 65535)) errors.push('PORT must be an integer from 1 through 65535.');
   if (present(env.OPENROUTER_BASE_URL)) {
@@ -141,6 +168,7 @@ export function validateRuntimeEnvironment(env = process.env) {
     if (!['test', 'sandbox'].includes(String(env.IKHOKHA_MODE || '').toLowerCase())) errors.push('Development/test requires IKHOKHA_MODE=test or sandbox, including when credentials are database-backed.');
   }
   try { resolveDatabaseConfig(env); } catch (error) { errors.push(error instanceof Error ? error.message : 'Database configuration is invalid.'); }
+  try { resolveTrustedProxyCidrs(env); } catch (error) { errors.push(error instanceof Error ? error.message : 'Trusted proxy configuration is invalid.'); }
   try { resolvePublicBaseUrl(env); } catch (error) { errors.push(error instanceof Error ? error.message : 'Public application URL is invalid.'); }
   if (isLocalE2E) {
     if (env.ALTIL_EVENT_ENVIRONMENT !== 'local-test') errors.push('ALTIL_EVENT_ENVIRONMENT must be local-test for LOCAL E2E.');

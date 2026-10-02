@@ -176,6 +176,7 @@ import { overviewAccess } from './src/security/overviewAccess';
 import { findApiKeyBySecret, hashApiKeySecret, storeIssuedApiKey as storeIssuedApiKeyRecord, validateRuntimeApiKey, type StoredApiKey } from './src/security/apiKeyCredential';
 import { createAnonymousDiagnosticRateLimiter, parseAnonymousDiagnostic } from './src/security/anonymousDiagnostic';
 import { configureMfaCodeVerifier, getMfaConfigurationStatus } from './src/security/mfaVerification';
+import { isTestSuperAdminMfaConfigured, verifyTestSuperAdminMfa } from './src/security/testSuperAdminMfa.mjs';
 const anonymousDiagnosticAllowed = createAnonymousDiagnosticRateLimiter();
 
 import { PrivilegedOperationsRegistry } from './src/utils/privilegedOperations';
@@ -183,7 +184,8 @@ import { PrivilegedOperationsRegistry } from './src/utils/privilegedOperations';
 import { PolicyEngine } from './src/utils/policyEngine';
 
 import { sendSmtpMail, testSmtpConnection } from './src/utils/smtpTransport';
-import { compareMigrationVersions, resolvePublicBaseUrl, runtimeSideEffectPolicy, validateRuntimeEnvironment } from './src/config/environmentContract.mjs';
+import { compareMigrationVersions, resolvePublicBaseUrl, resolveTrustedProxyCidrs, runtimeSideEffectPolicy, validateRuntimeEnvironment } from './src/config/environmentContract.mjs';
+import { canonicalClientIp } from './src/security/clientIp';
 
 import { getFirebaseAccessToken, sendFirebaseMessage } from './src/utils/firebaseTransport';
 
@@ -1968,11 +1970,16 @@ async function startServer() {
       throw new Error('LOCAL E2E startup requires local-test event identity, testRunId, and local log file.');
     }
   } else {
+    if (isTestSuperAdminMfaConfigured(process.env)) {
+      configureMfaCodeVerifier((userId, code) => verifyTestSuperAdminMfa(userId, code, process.env));
+    }
     await restoreModelFleetState();
     seedProviderAccounts();
   }
 
 const app = express();
+const trustedProxyCidrs = resolveTrustedProxyCidrs(process.env);
+if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
   const PORT = Number(process.env.PORT) || 3005;
 
@@ -2401,7 +2408,7 @@ const app = express();
 
   const blockAuditModification = (req: express.Request, res: express.Response): any => {
 
-    const clientIp = (req.headers['x-forwarded-for'] as string) || (req as any).socket?.remoteAddress || '127.0.0.1';
+    const clientIp = canonicalClientIp(req);
 
     console.error(`[Security Violation] Unauthorized attempt to modify audit logs from IP: ${clientIp}`);
 
@@ -2552,7 +2559,7 @@ const app = express();
 
     const startTime = Date.now();
 
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const clientIp = canonicalClientIp(req);
 
 
 
@@ -2770,7 +2777,7 @@ const app = express();
 
     const { id } = req.params;
 
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const clientIp = canonicalClientIp(req);
 
 
 
@@ -7945,7 +7952,8 @@ Provide a structured, highly actionable diagnostic breakdown formatted cleanly i
 
 
 
-  if (process.env.NODE_ENV !== 'production' && !localE2E) {
+  const serveBuiltAssets = process.env.NODE_ENV === 'production' || process.env.ALTIL_SERVE_BUILT_ASSETS === 'true';
+  if (!serveBuiltAssets && !localE2E) {
 
     const vite = await createViteServer({
 

@@ -9,6 +9,7 @@ export type DatabaseConfig = {
 };
 export const ENVIRONMENT_VARIABLES: Readonly<Record<string, readonly string[]>>;
 export function resolveDatabaseConfig(env?: NodeJS.ProcessEnv): DatabaseConfig;
+export function resolveTrustedProxyCidrs(env?: NodeJS.ProcessEnv): string[];
 export function resolvePublicBaseUrl(env?: NodeJS.ProcessEnv): string | null;
 export function validateRuntimeEnvironment(env?: NodeJS.ProcessEnv): { valid: boolean; errors: string[] };
 export function configurationStatuses(env?: NodeJS.ProcessEnv): Record<string, Record<string, 'CONFIGURED' | 'NOT CONFIGURED'>>;

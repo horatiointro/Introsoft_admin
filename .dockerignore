@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.env.*
+.altil-data
+node_modules
+dist
+coverage
+*.log
+*.zip
+*.sql.gz
+*.dump
+*.bak
+Thumbs.db
+desktop.ini

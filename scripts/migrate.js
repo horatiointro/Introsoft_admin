@@ -38,19 +38,24 @@ async function runMigrationsCLI() {
     const [ver] = await pool.query('SELECT VERSION() as v');
     console.log(`Connected to MariaDB: ${ver[0]?.v}`);
 
-    // Ensure schema_migrations table exists
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS schema_migrations (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        version VARCHAR(64) NOT NULL UNIQUE,
-        name VARCHAR(255) NOT NULL,
-        checksum VARCHAR(64) NOT NULL,
-        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    `);
+    const [trackingTables] = await pool.query("SHOW TABLES LIKE 'schema_migrations'");
+    const trackingTableExists = trackingTables.length > 0;
+    if (!isStatusOnly && !trackingTableExists) {
+      await pool.query(`
+        CREATE TABLE schema_migrations (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          version VARCHAR(64) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          checksum VARCHAR(64) NOT NULL,
+          applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+    }
 
-    // Fetch applied
-    const [appliedRows] = await pool.query('SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version ASC');
+    // Status mode must remain read-only even when the migration table is absent.
+    const [appliedRows] = trackingTableExists
+      ? await pool.query('SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version ASC')
+      : [[]];
     const appliedMap = new Map(appliedRows.map(r => [r.version, r]));
 
     const migrationsDir = path.join(process.cwd(), 'migrations');

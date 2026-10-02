@@ -34,7 +34,7 @@ npm ci
 npm run db:status
 npm run db:migrate
 npm run build
-NODE_ENV=production npm start
+ALTIL_ENVIRONMENT=production NODE_ENV=production npm start
 ```
 
 The migration command must complete successfully before starting the server. The

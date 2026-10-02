@@ -13,6 +13,7 @@ import {
 import { authorizeInContext } from '../security/authorizationContext';
 import { isSuperAdminQuickAccessEnabled } from '../security/superAdminQuickAccess';
 import { verifyMfaCode } from '../security/mfaVerification';
+import { canonicalClientIp } from '../security/clientIp';
 
 export const authRouter = express.Router();
 
@@ -50,8 +51,7 @@ authRouter.post('/super-admin-access', async (req, res) => {
       return res.status(403).json({ error: 'That account is not an active Super Admin account.' });
     }
 
-    // Do not trust client-supplied X-Forwarded-For for quick-access session/audit metadata.
-    const ipAddress = req.socket.remoteAddress || 'unknown';
+    const ipAddress = canonicalClientIp(req);
     const userAgent = req.headers['user-agent'] || 'ALTIL Control Console';
     const token = IamRepository.generateSessionToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -93,7 +93,7 @@ authRouter.post('/super-admin-access', async (req, res) => {
  */
 authRouter.post('/login', async (req, res) => {
   const { email, password, mfaCode, selectedTenant } = req.body;
-  const ipAddress = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+  const ipAddress = canonicalClientIp(req);
   const userAgent = req.headers['user-agent'] || 'ALTIL Control Console';
 
   if (!email || !password) {
@@ -499,7 +499,7 @@ authRouter.post('/change-password', async (req, res) => {
 
   try {
     const authResult = await IamRepository.authenticate(email, oldPassword, {
-      ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1',
+      ipAddress: canonicalClientIp(req),
       userAgent: req.headers['user-agent'] || 'ALTIL Control Console'
     });
 

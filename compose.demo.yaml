@@ -1,0 +1,118 @@
+name: ${COMPOSE_PROJECT_NAME:-altil-demo}
+
+services:
+  mariadb:
+    image: mariadb:10.11.18@sha256:8020e05c4c498d06c87f0a1db010eb79bd6f8fb30e9b763d4690c34ce1e61008
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${MARIADB_DATABASE:?Set MARIADB_DATABASE in .env.docker}
+      MARIADB_USER: ${MARIADB_USER:?Set MARIADB_USER in .env.docker}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Set MARIADB_PASSWORD in .env.docker}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env.docker}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  altil:
+    image: altil-local:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      ALTIL_ENVIRONMENT: development-test
+      NODE_ENV: development
+      PORT: "3005"
+      ALTIL_SERVE_BUILT_ASSETS: "true"
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: "3306"
+      MARIADB_USER: ${MARIADB_USER:?Set MARIADB_USER in .env.docker}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Set MARIADB_PASSWORD in .env.docker}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:?Set MARIADB_DATABASE in .env.docker}
+      MARIADB_SSL: "false"
+      PAYFAST_SANDBOX: "true"
+      IKHOKHA_MODE: test
+      ALTIL_ENABLE_BACKGROUND_JOBS: "false"
+      ALTIL_ENABLE_PROVIDER_STARTUP_CHECKS: "false"
+      ALTIL_ENABLE_TEST_SUPER_ADMINS: "true"
+      ALTIL_TEST_MFA_CODE: "000000"
+    ports:
+      - "127.0.0.1:${ALTIL_HOST_PORT:-3005}:3005"
+    volumes:
+      - altil_state:/app/.altil-data
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  migrate:
+    image: altil-local:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["operations"]
+    init: true
+    entrypoint: ["node", "scripts/migrate.js"]
+    environment:
+      ALTIL_ENVIRONMENT: development-test
+      NODE_ENV: development
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: "3306"
+      MARIADB_USER: ${MARIADB_USER:?Set MARIADB_USER in .env.docker}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Set MARIADB_PASSWORD in .env.docker}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:?Set MARIADB_DATABASE in .env.docker}
+      MARIADB_SSL: "false"
+    networks:
+      - backend
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  provision-test-super-admins:
+    image: altil-local:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["operations"]
+    init: true
+    entrypoint: ["node", "scripts/provisionTestSuperAdmins.mjs"]
+    environment:
+      ALTIL_ENVIRONMENT: development-test
+      NODE_ENV: development
+      ALTIL_ENABLE_TEST_SUPER_ADMINS: "true"
+      ALTIL_TEST_ADMIN_PROVISIONING: "true"
+      ALTIL_TEST_ADMIN_CONFIRM_DATABASE: ${ALTIL_TEST_ADMIN_CONFIRM_DATABASE:?Set explicit target database confirmation in .env.docker}
+      ALTIL_TEST_ADMIN_CONFIRM_HOST: ${ALTIL_TEST_ADMIN_CONFIRM_HOST:?Set explicit target host confirmation in .env.docker}
+      ALTIL_TEST_SUPER_ADMIN_001_PASSWORD: ${ALTIL_TEST_SUPER_ADMIN_001_PASSWORD:-}
+      ALTIL_TEST_SUPER_ADMIN_002_PASSWORD: ${ALTIL_TEST_SUPER_ADMIN_002_PASSWORD:-}
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: "3306"
+      MARIADB_USER: ${MARIADB_USER:?Set MARIADB_USER in .env.docker}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?Set MARIADB_PASSWORD in .env.docker}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:?Set MARIADB_DATABASE in .env.docker}
+      MARIADB_SSL: "false"
+    networks:
+      - backend
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+networks:
+  backend:
+    internal: true
+  frontend: {}
+
+volumes:
+  mariadb_data:
+  altil_state:

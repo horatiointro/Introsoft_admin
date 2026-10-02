@@ -1,6 +1,6 @@
 {
   "title": "ALTIL authorization route inventory",
-  "generatedAt": "2026-10-01T20:32:18.483Z",
+  "generatedAt": "2026-10-02T09:10:38.112Z",
   "sourceFiles": [
     "server.ts",
     "src/routes/applicationCredentialRoutes.ts",
@@ -22,7 +22,7 @@
       "domain": "admin",
       "source": {
         "file": "server.ts",
-        "line": 3195
+        "line": 3202
       },
       "authentication": {
         "required": "YES",
@@ -52,7 +52,7 @@
       "domain": "admin",
       "source": {
         "file": "server.ts",
-        "line": 3201
+        "line": 3208
       },
       "authentication": {
         "required": "YES",
@@ -82,7 +82,7 @@
       "domain": "admin",
       "source": {
         "file": "server.ts",
-        "line": 3197
+        "line": 3204
       },
       "authentication": {
         "required": "YES",
@@ -112,7 +112,7 @@
       "domain": "admin",
       "source": {
         "file": "server.ts",
-        "line": 3199
+        "line": 3206
       },
       "authentication": {
         "required": "YES",
@@ -142,7 +142,7 @@
       "domain": "admin",
       "source": {
         "file": "server.ts",
-        "line": 2094
+        "line": 2101
       },
       "authentication": {
         "required": "YES",
@@ -172,7 +172,7 @@
       "domain": "admin",
       "source": {
         "file": "server.ts",
-        "line": 2096
+        "line": 2103
       },
       "authentication": {
         "required": "YES",
@@ -202,7 +202,7 @@
       "domain": "api-keys",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 197
+        "line": 198
       },
       "authentication": {
         "required": "YES",
@@ -233,7 +233,7 @@
       "domain": "api-keys",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 207
+        "line": 208
       },
       "authentication": {
         "required": "YES",
@@ -265,7 +265,7 @@
       "domain": "api-keys",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 268
+        "line": 269
       },
       "authentication": {
         "required": "YES",
@@ -297,7 +297,7 @@
       "domain": "api-keys",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 245
+        "line": 246
       },
       "authentication": {
         "required": "YES",
@@ -329,7 +329,7 @@
       "domain": "applications",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 98
+        "line": 99
       },
       "authentication": {
         "required": "YES",
@@ -360,7 +360,7 @@
       "domain": "applications",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 105
+        "line": 106
       },
       "authentication": {
         "required": "YES",
@@ -392,7 +392,7 @@
       "domain": "applications",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 181
+        "line": 182
       },
       "authentication": {
         "required": "YES",
@@ -425,7 +425,7 @@
       "domain": "applications",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 162
+        "line": 163
       },
       "authentication": {
         "required": "YES",
@@ -457,7 +457,7 @@
       "domain": "audit*",
       "source": {
         "file": "server.ts",
-        "line": 2486
+        "line": 2493
       },
       "authentication": {
         "required": "NOT APPLICABLE (handler always returns 405)",
@@ -485,7 +485,7 @@
       "domain": "audit*",
       "source": {
         "file": "server.ts",
-        "line": 2484
+        "line": 2491
       },
       "authentication": {
         "required": "NOT APPLICABLE (handler always returns 405)",
@@ -513,7 +513,7 @@
       "domain": "audit*",
       "source": {
         "file": "server.ts",
-        "line": 2482
+        "line": 2489
       },
       "authentication": {
         "required": "NOT APPLICABLE (handler always returns 405)",
@@ -825,7 +825,7 @@
       "domain": "auth",
       "source": {
         "file": "src/routes/authRoutes.ts",
-        "line": 41
+        "line": 42
       },
       "authentication": {
         "required": "CREDENTIAL/CHALLENGE FLOW",
@@ -852,7 +852,7 @@
       "domain": "auth",
       "source": {
         "file": "src/routes/authRoutes.ts",
-        "line": 37
+        "line": 38
       },
       "authentication": {
         "required": "CREDENTIAL/CHALLENGE FLOW",
@@ -974,7 +974,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3307
+        "line": 3314
       },
       "authentication": {
         "required": "YES",
@@ -1004,7 +1004,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3301
+        "line": 3308
       },
       "authentication": {
         "required": "YES",
@@ -1034,7 +1034,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3309
+        "line": 3316
       },
       "authentication": {
         "required": "YES",
@@ -1064,7 +1064,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3064
+        "line": 3071
       },
       "authentication": {
         "required": "YES",
@@ -1095,7 +1095,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3325
+        "line": 3332
       },
       "authentication": {
         "required": "YES",
@@ -1125,7 +1125,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3293
+        "line": 3300
       },
       "authentication": {
         "required": "CREDENTIAL/CHALLENGE FLOW",
@@ -1152,7 +1152,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3392
+        "line": 3399
       },
       "authentication": {
         "required": "YES",
@@ -1182,7 +1182,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3400
+        "line": 3407
       },
       "authentication": {
         "required": "YES",
@@ -1212,7 +1212,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3430
+        "line": 3437
       },
       "authentication": {
         "required": "YES",
@@ -1242,7 +1242,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3454
+        "line": 3461
       },
       "authentication": {
         "required": "YES",
@@ -1272,7 +1272,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3483
+        "line": 3490
       },
       "authentication": {
         "required": "YES",
@@ -1302,7 +1302,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3491
+        "line": 3498
       },
       "authentication": {
         "required": "YES",
@@ -1332,7 +1332,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3387
+        "line": 3394
       },
       "authentication": {
         "required": "YES",
@@ -1362,7 +1362,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3388
+        "line": 3395
       },
       "authentication": {
         "required": "YES",
@@ -1392,7 +1392,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3390
+        "line": 3397
       },
       "authentication": {
         "required": "YES",
@@ -1422,7 +1422,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3283
+        "line": 3290
       },
       "authentication": {
         "required": "CREDENTIAL/CHALLENGE FLOW",
@@ -1451,7 +1451,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3251
+        "line": 3258
       },
       "authentication": {
         "required": "YES",
@@ -1481,7 +1481,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3275
+        "line": 3282
       },
       "authentication": {
         "required": "YES",
@@ -1511,7 +1511,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3249
+        "line": 3256
       },
       "authentication": {
         "required": "YES",
@@ -1541,7 +1541,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3253
+        "line": 3260
       },
       "authentication": {
         "required": "YES",
@@ -1571,7 +1571,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3233
+        "line": 3240
       },
       "authentication": {
         "required": "YES",
@@ -1601,7 +1601,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3372
+        "line": 3379
       },
       "authentication": {
         "required": "YES",
@@ -1631,7 +1631,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3376
+        "line": 3383
       },
       "authentication": {
         "required": "YES",
@@ -1661,7 +1661,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3386
+        "line": 3393
       },
       "authentication": {
         "required": "YES",
@@ -1691,7 +1691,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3382
+        "line": 3389
       },
       "authentication": {
         "required": "YES",
@@ -1721,7 +1721,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3319
+        "line": 3326
       },
       "authentication": {
         "required": "YES",
@@ -1751,7 +1751,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3323
+        "line": 3330
       },
       "authentication": {
         "required": "YES",
@@ -1781,7 +1781,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3311
+        "line": 3318
       },
       "authentication": {
         "required": "YES",
@@ -1811,7 +1811,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3321
+        "line": 3328
       },
       "authentication": {
         "required": "YES",
@@ -1841,7 +1841,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3261
+        "line": 3268
       },
       "authentication": {
         "required": "YES",
@@ -1871,7 +1871,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3263
+        "line": 3270
       },
       "authentication": {
         "required": "YES",
@@ -1901,7 +1901,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3265
+        "line": 3272
       },
       "authentication": {
         "required": "YES",
@@ -1931,7 +1931,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3273
+        "line": 3280
       },
       "authentication": {
         "required": "YES",
@@ -1961,7 +1961,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3277
+        "line": 3284
       },
       "authentication": {
         "required": "YES",
@@ -1991,7 +1991,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3279
+        "line": 3286
       },
       "authentication": {
         "required": "YES",
@@ -2021,7 +2021,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3281
+        "line": 3288
       },
       "authentication": {
         "required": "YES",
@@ -2051,7 +2051,7 @@
       "domain": "billing",
       "source": {
         "file": "server.ts",
-        "line": 3072
+        "line": 3079
       },
       "authentication": {
         "required": "CREDENTIAL/CHALLENGE FLOW",
@@ -2078,7 +2078,7 @@
       "domain": "capabilities",
       "source": {
         "file": "server.ts",
-        "line": 2075
+        "line": 2082
       },
       "authentication": {
         "required": "YES",
@@ -2107,7 +2107,7 @@
       "domain": "client-error",
       "source": {
         "file": "server.ts",
-        "line": 7935
+        "line": 7942
       },
       "authentication": {
         "required": "NO",
@@ -2722,7 +2722,7 @@
       "domain": "communications",
       "source": {
         "file": "server.ts",
-        "line": 2116
+        "line": 2123
       },
       "authentication": {
         "required": "YES",
@@ -2752,7 +2752,7 @@
       "domain": "communications",
       "source": {
         "file": "server.ts",
-        "line": 2118
+        "line": 2125
       },
       "authentication": {
         "required": "YES",
@@ -2782,7 +2782,7 @@
       "domain": "communications",
       "source": {
         "file": "server.ts",
-        "line": 2122
+        "line": 2129
       },
       "authentication": {
         "required": "YES",
@@ -2812,7 +2812,7 @@
       "domain": "communications",
       "source": {
         "file": "server.ts",
-        "line": 2120
+        "line": 2127
       },
       "authentication": {
         "required": "YES",
@@ -2842,7 +2842,7 @@
       "domain": "communications",
       "source": {
         "file": "server.ts",
-        "line": 2124
+        "line": 2131
       },
       "authentication": {
         "required": "YES",
@@ -2872,7 +2872,7 @@
       "domain": "communications",
       "source": {
         "file": "server.ts",
-        "line": 2128
+        "line": 2135
       },
       "authentication": {
         "required": "YES",
@@ -2902,7 +2902,7 @@
       "domain": "communications",
       "source": {
         "file": "server.ts",
-        "line": 2130
+        "line": 2137
       },
       "authentication": {
         "required": "YES",
@@ -3344,7 +3344,7 @@
       "domain": "currency",
       "source": {
         "file": "server.ts",
-        "line": 3191
+        "line": 3198
       },
       "authentication": {
         "required": "YES",
@@ -3374,7 +3374,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 4438
+        "line": 4445
       },
       "authentication": {
         "required": "YES",
@@ -3406,7 +3406,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 4493
+        "line": 4500
       },
       "authentication": {
         "required": "YES",
@@ -3439,7 +3439,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 5015
+        "line": 5022
       },
       "authentication": {
         "required": "YES",
@@ -3472,7 +3472,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 4481
+        "line": 4488
       },
       "authentication": {
         "required": "YES",
@@ -3504,7 +3504,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 4979
+        "line": 4986
       },
       "authentication": {
         "required": "YES",
@@ -3537,7 +3537,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 4831
+        "line": 4838
       },
       "authentication": {
         "required": "YES",
@@ -3569,7 +3569,7 @@
       "domain": "customers",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 35
+        "line": 36
       },
       "authentication": {
         "required": "YES",
@@ -3601,7 +3601,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 5039
+        "line": 5046
       },
       "authentication": {
         "required": "YES",
@@ -3634,7 +3634,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 5115
+        "line": 5122
       },
       "authentication": {
         "required": "YES",
@@ -3667,7 +3667,7 @@
       "domain": "customers",
       "source": {
         "file": "server.ts",
-        "line": 5083
+        "line": 5090
       },
       "authentication": {
         "required": "YES",
@@ -3700,7 +3700,7 @@
       "domain": "customers",
       "source": {
         "file": "src/routes/applicationCredentialRoutes.ts",
-        "line": 76
+        "line": 77
       },
       "authentication": {
         "required": "YES",
@@ -3727,7 +3727,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2525
+        "line": 2532
       },
       "authentication": {
         "required": "YES",
@@ -3757,7 +3757,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2925
+        "line": 2932
       },
       "authentication": {
         "required": "YES",
@@ -3787,7 +3787,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2935
+        "line": 2942
       },
       "authentication": {
         "required": "YES",
@@ -3817,7 +3817,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2729
+        "line": 2736
       },
       "authentication": {
         "required": "YES",
@@ -3847,7 +3847,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2897
+        "line": 2904
       },
       "authentication": {
         "required": "YES",
@@ -3877,7 +3877,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2907
+        "line": 2914
       },
       "authentication": {
         "required": "YES",
@@ -3907,7 +3907,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2953
+        "line": 2960
       },
       "authentication": {
         "required": "YES",
@@ -3937,7 +3937,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2735
+        "line": 2742
       },
       "authentication": {
         "required": "YES",
@@ -3967,7 +3967,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2745
+        "line": 2752
       },
       "authentication": {
         "required": "YES",
@@ -3997,7 +3997,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2769
+        "line": 2776
       },
       "authentication": {
         "required": "YES",
@@ -4027,7 +4027,7 @@
       "domain": "database",
       "source": {
         "file": "server.ts",
-        "line": 2535
+        "line": 2542
       },
       "authentication": {
         "required": "YES",
@@ -4057,7 +4057,7 @@
       "domain": "db",
       "source": {
         "file": "server.ts",
-        "line": 2731
+        "line": 2738
       },
       "authentication": {
         "required": "YES",
@@ -4410,7 +4410,7 @@
       "domain": "device-trust",
       "source": {
         "file": "server.ts",
-        "line": 7895
+        "line": 7902
       },
       "authentication": {
         "required": "YES",
@@ -4440,7 +4440,7 @@
       "domain": "device-trust",
       "source": {
         "file": "server.ts",
-        "line": 7811
+        "line": 7818
       },
       "authentication": {
         "required": "YES",
@@ -4470,7 +4470,7 @@
       "domain": "device-trust",
       "source": {
         "file": "server.ts",
-        "line": 7785
+        "line": 7792
       },
       "authentication": {
         "required": "YES",
@@ -4500,7 +4500,7 @@
       "domain": "device-trust",
       "source": {
         "file": "server.ts",
-        "line": 7667
+        "line": 7674
       },
       "authentication": {
         "required": "YES",
@@ -4530,7 +4530,7 @@
       "domain": "device-trust",
       "source": {
         "file": "server.ts",
-        "line": 7769
+        "line": 7776
       },
       "authentication": {
         "required": "YES",
@@ -4560,7 +4560,7 @@
       "domain": "device-trust",
       "source": {
         "file": "server.ts",
-        "line": 7745
+        "line": 7752
       },
       "authentication": {
         "required": "YES",
@@ -4590,7 +4590,7 @@
       "domain": "device-trust",
       "source": {
         "file": "server.ts",
-        "line": 7675
+        "line": 7682
       },
       "authentication": {
         "required": "YES",
@@ -4620,7 +4620,7 @@
       "domain": "gateway",
       "source": {
         "file": "server.ts",
-        "line": 5849
+        "line": 5856
       },
       "authentication": {
         "required": "NOT APPLICABLE (public API contract)",
@@ -4647,7 +4647,7 @@
       "domain": "gateway",
       "source": {
         "file": "server.ts",
-        "line": 5681
+        "line": 5688
       },
       "authentication": {
         "required": "YES",
@@ -4676,7 +4676,7 @@
       "domain": "health",
       "source": {
         "file": "server.ts",
-        "line": 2492
+        "line": 2499
       },
       "authentication": {
         "required": "NOT APPLICABLE",
@@ -4987,7 +4987,7 @@
       "domain": "auth",
       "source": {
         "file": "src/routes/authRoutes.ts",
-        "line": 41
+        "line": 42
       },
       "authentication": {
         "required": "CREDENTIAL/CHALLENGE FLOW",
@@ -5014,7 +5014,7 @@
       "domain": "auth",
       "source": {
         "file": "src/routes/authRoutes.ts",
-        "line": 37
+        "line": 38
       },
       "authentication": {
         "required": "CREDENTIAL/CHALLENGE FLOW",
@@ -5136,7 +5136,7 @@
       "domain": "internal",
       "source": {
         "file": "server.ts",
-        "line": 5660
+        "line": 5667
       },
       "authentication": {
         "required": "YES",
@@ -5439,7 +5439,7 @@
       "domain": "knowledge",
       "source": {
         "file": "server.ts",
-        "line": 5871
+        "line": 5878
       },
       "authentication": {
         "required": "YES",
@@ -5468,7 +5468,7 @@
       "domain": "knowledge",
       "source": {
         "file": "server.ts",
-        "line": 5885
+        "line": 5892
       },
       "authentication": {
         "required": "YES",
@@ -5497,7 +5497,7 @@
       "domain": "knowledge",
       "source": {
         "file": "server.ts",
-        "line": 5929
+        "line": 5936
       },
       "authentication": {
         "required": "YES",
@@ -5526,7 +5526,7 @@
       "domain": "knowledge",
       "source": {
         "file": "server.ts",
-        "line": 5829
+        "line": 5836
       },
       "authentication": {
         "required": "YES",
@@ -5555,7 +5555,7 @@
       "domain": "licensing",
       "source": {
         "file": "server.ts",
-        "line": 3626
+        "line": 3633
       },
       "authentication": {
         "required": "CREDENTIAL/CHALLENGE FLOW",
@@ -5584,7 +5584,7 @@
       "domain": "licensing",
       "source": {
         "file": "server.ts",
-        "line": 3513
+        "line": 3520
       },
       "authentication": {
         "required": "YES",
@@ -5613,7 +5613,7 @@
       "domain": "licensing",
       "source": {
         "file": "server.ts",
-        "line": 3529
+        "line": 3536
       },
       "authentication": {
         "required": "YES",
@@ -5643,7 +5643,7 @@
       "domain": "licensing",
       "source": {
         "file": "server.ts",
-        "line": 3553
+        "line": 3560
       },
       "authentication": {
         "required": "YES",
@@ -5675,7 +5675,7 @@
       "domain": "licensing",
       "source": {
         "file": "server.ts",
-        "line": 3573
+        "line": 3580
       },
       "authentication": {
         "required": "YES",
@@ -5705,7 +5705,7 @@
       "domain": "licensing",
       "source": {
         "file": "server.ts",
-        "line": 3750
+        "line": 3757
       },
       "authentication": {
         "required": "NOT APPLICABLE",
@@ -5732,7 +5732,7 @@
       "domain": "logs",
       "source": {
         "file": "server.ts",
-        "line": 5392
+        "line": 5399
       },
       "authentication": {
         "required": "YES",
@@ -5765,7 +5765,7 @@
       "domain": "logs*",
       "source": {
         "file": "server.ts",
-        "line": 2480
+        "line": 2487
       },
       "authentication": {
         "required": "NOT APPLICABLE (handler always returns 405)",
@@ -5793,7 +5793,7 @@
       "domain": "logs*",
       "source": {
         "file": "server.ts",
-        "line": 2478
+        "line": 2485
       },
       "authentication": {
         "required": "NOT APPLICABLE (handler always returns 405)",
@@ -5821,7 +5821,7 @@
       "domain": "logs*",
       "source": {
         "file": "server.ts",
-        "line": 2476
+        "line": 2483
       },
       "authentication": {
         "required": "NOT APPLICABLE (handler always returns 405)",
@@ -5849,7 +5849,7 @@
       "domain": "mobile",
       "source": {
         "file": "server.ts",
-        "line": 2174
+        "line": 2181
       },
       "authentication": {
         "required": "YES",
@@ -5879,7 +5879,7 @@
       "domain": "mobile",
       "source": {
         "file": "server.ts",
-        "line": 2178
+        "line": 2185
       },
       "authentication": {
         "required": "YES",
@@ -5909,7 +5909,7 @@
       "domain": "mobile",
       "source": {
         "file": "server.ts",
-        "line": 2176
+        "line": 2183
       },
       "authentication": {
         "required": "YES",
@@ -5939,7 +5939,7 @@
       "domain": "mobile",
       "source": {
         "file": "server.ts",
-        "line": 2172
+        "line": 2179
       },
       "authentication": {
         "required": "YES",
@@ -5966,7 +5966,7 @@
       "domain": "mobile",
       "source": {
         "file": "server.ts",
-        "line": 2182
+        "line": 2189
       },
       "authentication": {
         "required": "YES",
@@ -5993,7 +5993,7 @@
       "domain": "mobile",
       "source": {
         "file": "server.ts",
-        "line": 2184
+        "line": 2191
       },
       "authentication": {
         "required": "YES",
@@ -6020,7 +6020,7 @@
       "domain": "mobile",
       "source": {
         "file": "server.ts",
-        "line": 2186
+        "line": 2193
       },
       "authentication": {
         "required": "YES",
@@ -6047,7 +6047,7 @@
       "domain": "models",
       "source": {
         "file": "server.ts",
-        "line": 4340
+        "line": 4347
       },
       "authentication": {
         "required": "YES",
@@ -6076,7 +6076,7 @@
       "domain": "models",
       "source": {
         "file": "server.ts",
-        "line": 4367
+        "line": 4374
       },
       "authentication": {
         "required": "YES",
@@ -6106,7 +6106,7 @@
       "domain": "models",
       "source": {
         "file": "server.ts",
-        "line": 4425
+        "line": 4432
       },
       "authentication": {
         "required": "YES",
@@ -6136,7 +6136,7 @@
       "domain": "models",
       "source": {
         "file": "server.ts",
-        "line": 4410
+        "line": 4417
       },
       "authentication": {
         "required": "YES",
@@ -6166,7 +6166,7 @@
       "domain": "models",
       "source": {
         "file": "server.ts",
-        "line": 4351
+        "line": 4358
       },
       "authentication": {
         "required": "YES",
@@ -6195,7 +6195,7 @@
       "domain": "models",
       "source": {
         "file": "server.ts",
-        "line": 4359
+        "line": 4366
       },
       "authentication": {
         "required": "YES",
@@ -6225,7 +6225,7 @@
       "domain": "openapi.yaml",
       "source": {
         "file": "server.ts",
-        "line": 5691
+        "line": 5698
       },
       "authentication": {
         "required": "NOT APPLICABLE",
@@ -6252,7 +6252,7 @@
       "domain": "orchestrate",
       "source": {
         "file": "server.ts",
-        "line": 5961
+        "line": 5968
       },
       "authentication": {
         "required": "YES",
@@ -6279,7 +6279,7 @@
       "domain": "overview",
       "source": {
         "file": "server.ts",
-        "line": 2973
+        "line": 2980
       },
       "authentication": {
         "required": "YES",
@@ -6309,7 +6309,7 @@
       "domain": "policies",
       "source": {
         "file": "server.ts",
-        "line": 5244
+        "line": 5251
       },
       "authentication": {
         "required": "YES",
@@ -6341,7 +6341,7 @@
       "domain": "policies",
       "source": {
         "file": "server.ts",
-        "line": 5256
+        "line": 5263
       },
       "authentication": {
         "required": "YES",
@@ -6374,7 +6374,7 @@
       "domain": "policies",
       "source": {
         "file": "server.ts",
-        "line": 5365
+        "line": 5372
       },
       "authentication": {
         "required": "YES",
@@ -6407,7 +6407,7 @@
       "domain": "policies",
       "source": {
         "file": "server.ts",
-        "line": 5324
+        "line": 5331
       },
       "authentication": {
         "required": "YES",
@@ -6440,7 +6440,7 @@
       "domain": "policy-evidence",
       "source": {
         "file": "server.ts",
-        "line": 2382
+        "line": 2389
       },
       "authentication": {
         "required": "YES",
@@ -6473,7 +6473,7 @@
       "domain": "privileged-operations",
       "source": {
         "file": "server.ts",
-        "line": 2204
+        "line": 2211
       },
       "authentication": {
         "required": "YES",
@@ -6503,7 +6503,7 @@
       "domain": "privileged-operations",
       "source": {
         "file": "server.ts",
-        "line": 2212
+        "line": 2219
       },
       "authentication": {
         "required": "YES",
@@ -6532,7 +6532,7 @@
       "domain": "privileged-operations",
       "source": {
         "file": "server.ts",
-        "line": 2260
+        "line": 2267
       },
       "authentication": {
         "required": "YES",
@@ -6562,7 +6562,7 @@
       "domain": "privileged-operations",
       "source": {
         "file": "server.ts",
-        "line": 2348
+        "line": 2355
       },
       "authentication": {
         "required": "YES",
@@ -6592,7 +6592,7 @@
       "domain": "provider-accounts",
       "source": {
         "file": "server.ts",
-        "line": 3789
+        "line": 3796
       },
       "authentication": {
         "required": "YES",
@@ -6622,7 +6622,7 @@
       "domain": "provider-accounts",
       "source": {
         "file": "server.ts",
-        "line": 3792
+        "line": 3799
       },
       "authentication": {
         "required": "YES",
@@ -6652,7 +6652,7 @@
       "domain": "provider-accounts",
       "source": {
         "file": "server.ts",
-        "line": 3818
+        "line": 3825
       },
       "authentication": {
         "required": "YES",
@@ -6682,7 +6682,7 @@
       "domain": "provider-accounts",
       "source": {
         "file": "server.ts",
-        "line": 3812
+        "line": 3819
       },
       "authentication": {
         "required": "YES",
@@ -6712,7 +6712,7 @@
       "domain": "provider-accounts",
       "source": {
         "file": "server.ts",
-        "line": 3802
+        "line": 3809
       },
       "authentication": {
         "required": "YES",
@@ -6742,7 +6742,7 @@
       "domain": "providers",
       "source": {
         "file": "server.ts",
-        "line": 3824
+        "line": 3831
       },
       "authentication": {
         "required": "YES",
@@ -6771,7 +6771,7 @@
       "domain": "providers",
       "source": {
         "file": "server.ts",
-        "line": 3842
+        "line": 3849
       },
       "authentication": {
         "required": "YES",
@@ -6801,7 +6801,7 @@
       "domain": "providers",
       "source": {
         "file": "server.ts",
-        "line": 3982
+        "line": 3989
       },
       "authentication": {
         "required": "YES",
@@ -6831,7 +6831,7 @@
       "domain": "providers",
       "source": {
         "file": "server.ts",
-        "line": 3943
+        "line": 3950
       },
       "authentication": {
         "required": "YES",
@@ -6861,7 +6861,7 @@
       "domain": "providers",
       "source": {
         "file": "server.ts",
-        "line": 4235
+        "line": 4242
       },
       "authentication": {
         "required": "YES",
@@ -6891,7 +6891,7 @@
       "domain": "providers",
       "source": {
         "file": "server.ts",
-        "line": 4005
+        "line": 4012
       },
       "authentication": {
         "required": "YES",
@@ -6920,7 +6920,7 @@
       "domain": "providers",
       "source": {
         "file": "server.ts",
-        "line": 4290
+        "line": 4297
       },
       "authentication": {
         "required": "YES",
@@ -6950,7 +6950,7 @@
       "domain": "public",
       "source": {
         "file": "server.ts",
-        "line": 2092
+        "line": 2099
       },
       "authentication": {
         "required": "NOT APPLICABLE",
@@ -7031,7 +7031,7 @@
       "domain": "rag",
       "source": {
         "file": "server.ts",
-        "line": 7455
+        "line": 7462
       },
       "authentication": {
         "required": "YES",
@@ -7061,7 +7061,7 @@
       "domain": "routes",
       "source": {
         "file": "server.ts",
-        "line": 5156
+        "line": 5163
       },
       "authentication": {
         "required": "YES",
@@ -7090,7 +7090,7 @@
       "domain": "routes",
       "source": {
         "file": "server.ts",
-        "line": 5172
+        "line": 5179
       },
       "authentication": {
         "required": "YES",
@@ -7120,7 +7120,7 @@
       "domain": "routes",
       "source": {
         "file": "server.ts",
-        "line": 5226
+        "line": 5233
       },
       "authentication": {
         "required": "YES",
@@ -7150,7 +7150,7 @@
       "domain": "routes",
       "source": {
         "file": "server.ts",
-        "line": 5212
+        "line": 5219
       },
       "authentication": {
         "required": "YES",
@@ -7180,7 +7180,7 @@
       "domain": "routing-rules",
       "source": {
         "file": "server.ts",
-        "line": 5164
+        "line": 5171
       },
       "authentication": {
         "required": "YES",
@@ -7209,7 +7209,7 @@
       "domain": "tenant-portal",
       "source": {
         "file": "server.ts",
-        "line": 5721
+        "line": 5728
       },
       "authentication": {
         "required": "YES",
@@ -7241,7 +7241,7 @@
       "domain": "tenant-portal",
       "source": {
         "file": "server.ts",
-        "line": 3193
+        "line": 3200
       },
       "authentication": {
         "required": "YES",
@@ -7274,7 +7274,7 @@
       "domain": "tenant-portal",
       "source": {
         "file": "server.ts",
-        "line": 5803
+        "line": 5810
       },
       "authentication": {
         "required": "YES",
@@ -7307,7 +7307,7 @@
       "domain": "tenant",
       "source": {
         "file": "server.ts",
-        "line": 5857
+        "line": 5864
       },
       "authentication": {
         "required": "YES",
@@ -7876,7 +7876,7 @@
       "domain": "usage",
       "source": {
         "file": "server.ts",
-        "line": 5449
+        "line": 5456
       },
       "authentication": {
         "required": "YES",
@@ -7908,7 +7908,7 @@
       "domain": "platform",
       "source": {
         "file": "server.ts",
-        "line": 5656
+        "line": 5663
       },
       "authentication": {
         "required": "NOT APPLICABLE",
@@ -7935,7 +7935,7 @@
       "domain": "items",
       "source": {
         "file": "server.ts",
-        "line": 5871
+        "line": 5878
       },
       "authentication": {
         "required": "YES",
@@ -7964,7 +7964,7 @@
       "domain": "items",
       "source": {
         "file": "server.ts",
-        "line": 5885
+        "line": 5892
       },
       "authentication": {
         "required": "YES",
@@ -7993,7 +7993,7 @@
       "domain": "items",
       "source": {
         "file": "server.ts",
-        "line": 5929
+        "line": 5936
       },
       "authentication": {
         "required": "YES",
@@ -8022,7 +8022,7 @@
       "domain": "search",
       "source": {
         "file": "server.ts",
-        "line": 5829
+        "line": 5836
       },
       "authentication": {
         "required": "YES",
@@ -8051,7 +8051,7 @@
       "domain": "platform",
       "source": {
         "file": "server.ts",
-        "line": 5647
+        "line": 5654
       },
       "authentication": {
         "required": "YES",
@@ -8080,7 +8080,7 @@
       "domain": "platform",
       "source": {
         "file": "server.ts",
-        "line": 5849
+        "line": 5856
       },
       "authentication": {
         "required": "NOT APPLICABLE",
@@ -8107,7 +8107,7 @@
       "domain": "profile",
       "source": {
         "file": "server.ts",
-        "line": 5857
+        "line": 5864
       },
       "authentication": {
         "required": "YES",
@@ -8136,7 +8136,7 @@
       "domain": "platform",
       "source": {
         "file": "server.ts",
-        "line": 5681
+        "line": 5688
       },
       "authentication": {
         "required": "YES",

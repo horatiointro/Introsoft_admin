@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareMigrationVersions, configurationStatuses, resolveDatabaseConfig, resolvePublicBaseUrl, runtimeSideEffectPolicy, validateRuntimeEnvironment } from './environmentContract.mjs';
+import { compareMigrationVersions, configurationStatuses, resolveDatabaseConfig, resolvePublicBaseUrl, resolveTrustedProxyCidrs, runtimeSideEffectPolicy, validateRuntimeEnvironment } from './environmentContract.mjs';
 
 function validEnvironment(overrides: Record<string, string> = {}): NodeJS.ProcessEnv {
   return {
@@ -81,16 +81,42 @@ test('requires sandbox-mode payment configuration in the development-test profil
   assert.equal(validateRuntimeEnvironment(testStripe).valid, true);
 });
 
+test('accepts a deliberate production profile and does not apply development payment sandbox requirements', () => {
+  const production = validEnvironment({ ALTIL_ENVIRONMENT: 'production', NODE_ENV: 'production' });
+  delete production.PAYFAST_SANDBOX;
+  delete production.IKHOKHA_MODE;
+  assert.deepEqual(validateRuntimeEnvironment(production), { valid: true, errors: [] });
+  assert.ok(validateRuntimeEnvironment(validEnvironment({ NODE_ENV: 'production' })).errors.some(error => error.includes('ALTIL_ENVIRONMENT must be production')));
+  assert.ok(validateRuntimeEnvironment(validEnvironment({ ALTIL_ENVIRONMENT: 'production' })).errors.some(error => error.includes('ALTIL_ENVIRONMENT must be development-test')));
+  assert.ok(validateRuntimeEnvironment(validEnvironment({ ALTIL_ENVIRONMENT: 'local-test', ALTIL_LOCAL_E2E: 'true', NODE_ENV: 'production' })).errors.some(error => error.includes('LOCAL E2E cannot run')));
+});
+
+test('test Super Admin MFA is restricted to the development-test profile and cannot coexist with quick access', () => {
+  const testAdmin = validEnvironment({ ALTIL_ENABLE_TEST_SUPER_ADMINS: 'true', ALTIL_TEST_MFA_CODE: '000000' });
+  assert.equal(validateRuntimeEnvironment(testAdmin).valid, true);
+  assert.ok(validateRuntimeEnvironment(validEnvironment({ NODE_ENV: 'production', ALTIL_ENVIRONMENT: 'production', ALTIL_ENABLE_TEST_SUPER_ADMINS: 'true', ALTIL_TEST_MFA_CODE: '000000' })).errors.some(error => error.includes('Test Super Admin')));
+  assert.ok(validateRuntimeEnvironment(validEnvironment({ ALTIL_ENABLE_TEST_SUPER_ADMINS: 'true' })).errors.some(error => error.includes('six-digit ALTIL_TEST_MFA_CODE')));
+  assert.ok(validateRuntimeEnvironment(validEnvironment({ ALTIL_ENABLE_TEST_SUPER_ADMINS: 'true', ALTIL_TEST_MFA_CODE: '000000', ALTIL_ENABLE_SUPER_ADMIN_QUICK_ACCESS: 'true' })).errors.some(error => error.includes('quick access must remain disabled')));
+});
+
+test('trusted proxy configuration accepts explicit IPs/CIDRs and rejects invalid or trust-all entries', () => {
+  assert.deepEqual(resolveTrustedProxyCidrs({ ALTIL_TRUSTED_PROXY_CIDRS: '127.0.0.1, 10.20.0.0/16,::1' }), ['127.0.0.1', '10.20.0.0/16', '::1']);
+  assert.deepEqual(resolveTrustedProxyCidrs({}), []);
+  assert.throws(() => resolveTrustedProxyCidrs({ ALTIL_TRUSTED_PROXY_CIDRS: 'not-an-ip' }), /valid IP addresses or CIDRs/);
+  assert.throws(() => resolveTrustedProxyCidrs({ ALTIL_TRUSTED_PROXY_CIDRS: '0.0.0.0/0' }), /must not trust every address/);
+});
+
 test('validates environment URL, port, MFA and provider endpoint formats without echoing values', () => {
   const result = validateRuntimeEnvironment(validEnvironment({
     OPENROUTER_BASE_URL: 'http://localhost:4000', IKHOKHA_API_URL: 'http://payment.example.invalid',
-    PORT: '70000', ALTIL_MFA_ENABLED: 'sometimes',
+    PORT: '70000', ALTIL_MFA_ENABLED: 'sometimes', ALTIL_SERVE_BUILT_ASSETS: 'sometimes',
   }));
   assert.equal(result.valid, false);
   assert.ok(result.errors.some(error => error.includes('OPENROUTER_BASE_URL')));
   assert.ok(result.errors.some(error => error.includes('IKHOKHA_API_URL')));
   assert.ok(result.errors.some(error => error.includes('PORT')));
   assert.ok(result.errors.some(error => error.includes('ALTIL_MFA_ENABLED')));
+  assert.ok(result.errors.some(error => error.includes('ALTIL_SERVE_BUILT_ASSETS')));
   assert.equal(JSON.stringify(result).includes('localhost'), false);
 });
 

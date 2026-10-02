@@ -5,6 +5,7 @@ import { authorizeAllInContext, authorizeInContext, organizationsAuthorizedFor }
 import { auditRequestedScopes, evaluateCredentialScopeGrant } from '../security/credentialScopeAuthority.ts';
 import { validateApiKeyRestrictions, validateApplicationProfileUpdate } from '../security/commercialMutationValidation.ts';
 import { requireAuthentication, requireOrganizationPermission, requirePermission, requireRole, type AuthenticatedRequest } from '../middleware/authMiddleware.ts';
+import { canonicalClientIp } from '../security/clientIp.ts';
 
 export interface ApplicationCredentialRouteDependencies {
   getApplications(): Application[];
@@ -251,7 +252,7 @@ export function createApplicationCredentialRouter(deps: ApplicationCredentialRou
     try { await deps.updatePersistedApiKey(updated); }
     catch { return res.status(503).json({ error: 'Key is blocked in this runtime but the registry could not confirm durable revocation. Contact ALTIL support.' }); }
     await deps.recordControlPlaneAuditBestEffort({ actorEmail: req.user.email, tenantId: record.customerId, action: 'API_KEY_REVOKE', resourceId: record.id, requestId: String(req.headers['x-request-id'] || ''), priorState: { status: 'active' }, newState: { status: updated.status } });
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const clientIp = canonicalClientIp(req);
     const event: AuditLog = {
       id: `KEY-REV-${Date.now()}`, timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19), appId: record.appId || 'system-gateway',
       appName: record.appName || 'ALTIL Control Plane', apiKeyPrefix: record.prefix || 'UNKNOWN', requestType: 'api_key_revocation', capability: 'apikeys.revoke',
@@ -275,7 +276,7 @@ export function createApplicationCredentialRouter(deps: ApplicationCredentialRou
       catch { deps.setApiKeys([record, ...deps.getApiKeys()]); return res.status(503).json({ error: 'Could not confirm key removal in the durable registry.' }); }
     }
     await deps.recordControlPlaneAuditBestEffort({ actorEmail: req.user.email, tenantId: record.customerId, action: 'API_KEY_DELETE', resourceId: record.id, requestId: String(req.headers['x-request-id'] || ''), priorState: { status: record.status } });
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const clientIp = canonicalClientIp(req);
     const event: AuditLog = {
       id: `KEY-DEL-${Date.now()}`, timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19), appId: record.appId || 'system-gateway',
       appName: record.appName || 'ALTIL Control Plane', apiKeyPrefix: record.prefix || 'UNKNOWN', requestType: 'api_key_deletion', capability: 'apikeys.delete',

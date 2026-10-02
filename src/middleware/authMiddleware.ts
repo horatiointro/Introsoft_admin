@@ -3,6 +3,7 @@ import { IamRepository, IamUserRecord } from '../db/iamRepository';
 import { dbRepository } from '../db/mariadb';
 import { authorizeInContext, buildAuthorizationContext, type AuthorizationContext } from '../security/authorizationContext';
 import { emitAltilEvent } from '../logging/eventLogger';
+import { canonicalClientIp } from '../security/clientIp';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -93,7 +94,7 @@ export async function requireAuthentication(
       return;
     }
 
-    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+    const clientIp = canonicalClientIp(req);
     const userAgent = req.headers['user-agent'] || 'ALTIL Control Console';
 
     // 1. Session Hijacking / Suspicious IP Change Detection
