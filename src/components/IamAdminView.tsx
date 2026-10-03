@@ -34,6 +34,8 @@ import {
 } from 'lucide-react';
 import { IamUser, IamRole, Customer } from '../types';
 
+const IAM_API_BASE = `${import.meta.env.BASE_URL}api/v1/iam`;
+
 export const PERMISSION_CATALOG = [
   { category: 'Tenant Governance', id: 'tenant.read', label: 'View Tenant Profile & Metrics' },
   { category: 'Tenant Governance', id: 'tenant.write', label: 'Create & Update Tenants' },
@@ -217,7 +219,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
     let active = true;
     setAssignableRoles([]); setNewUserRoleId(''); setInviteError(''); setActivationLink('');
     const query = new URLSearchParams({ tenantId: newUserTenantId });
-    apiFetch(`/api/v1/iam/users/assignable-roles?${query}`).then(async response => {
+    apiFetch(`${IAM_API_BASE}/users/assignable-roles?${query}`).then(async response => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not load roles authorized for this organization.');
       if (!active) return;
@@ -234,7 +236,7 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
     setInviteBusy(true); setInviteError(''); setActivationLink('');
     try {
       const names = newUserName.trim().split(/\s+/);
-      const response = await apiFetch('/api/v1/iam/users', {
+      const response = await apiFetch(`${IAM_API_BASE}/users`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ firstName: names[0], lastName: names.slice(1).join(' ') || names[0], email: newUserEmail.trim(), department: newUserDept, title: newUserDesignation, tenantId: newUserTenantId, roleId: newUserRoleId }),
       });
@@ -1309,22 +1311,24 @@ export const IamAdminView: React.FC<IamAdminViewProps> = ({
                     <input
                       type="password"
                       required
+                      minLength={8}
                       value={adminResetPasswordValue}
                       onChange={e => setAdminResetPasswordValue(e.target.value)}
-                      placeholder="Enter new strong password"
+                      placeholder="At least 8 characters"
                       className="w-full bg-[#181818] border border-[#2a2a2a] rounded p-2 text-white outline-none focus:border-amber-500 font-mono"
                     />
+                    <p className="text-[10px] text-[#aaaaaa]">Use at least 8 characters, including one uppercase letter and one special character.</p>
                   </div>
 
                   <div className="p-3 bg-amber-950/20 border border-amber-500/30 rounded space-y-1.5 text-[11px] text-amber-200">
                     <div className="font-bold flex items-center gap-1">
                       <ShieldAlert className="w-3.5 h-3.5" />
-                      <span>Enterprise Complexity Safeguards (NIST SP 800-63B)</span>
+                      <span>Password requirements</span>
                     </div>
                     <ul className="list-disc list-inside space-y-1 text-[#aaaaaa] text-[10px]">
-                      <li>At least <span className="text-amber-300 font-bold">14 characters</span> in length</li>
-                      <li>Contains uppercase & lowercase alphabetical characters</li>
-                      <li>Contains numerical and special symbol characters</li>
+                      <li>At least <span className="text-amber-300 font-bold">8 characters</span> in length</li>
+                      <li>Contains at least one uppercase letter</li>
+                      <li>Contains at least one special character</li>
                       <li>No previous passwords (enforces 5-cycle history)</li>
                     </ul>
                   </div>

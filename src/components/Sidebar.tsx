@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 export type NavTabId =
-  | 'command_centre' | 'stack_wiring' | 'tenants' | 'org_hierarchy' | 'commercial_account_portal' | 'tenant_360'
+  | 'customer_journey' | 'command_centre' | 'stack_wiring' | 'tenants' | 'org_hierarchy' | 'commercial_account_portal' | 'tenant_360'
   | 'tenant_licensing' | 'billing_admin' | 'billing_commercial' | 'accounting' | 'saas_admin'
   | 'billing_accounts' | 'billing_orders' | 'billing_products' | 'billing_invoices' | 'billing_refunds' | 'billing_settlement' | 'accounting_journals' | 'accounting_chart'
   | 'communications' | 'tenant_portal' | 'service_management' | 'sla_kpi_monitoring'
@@ -33,14 +33,22 @@ interface SidebarProps {
 }
 
 const requiredPermission: Partial<Record<NavTabId, string>> = {
-  command_centre: 'tenant.read', tenants: 'tenant.read', customer_add: 'tenant.write', customer_manage: 'tenant.read',
+  customer_journey: 'tenant.read', command_centre: 'tenant.read', tenants: 'tenant.read', customer_add: 'tenant.write', customer_manage: 'tenant.read',
   org_hierarchy: 'tenant.read', tenant_360: 'tenant.read', tenant_portal: 'tenant.read', tenant_licensing: 'tenant.read',
   commercial_account_portal: 'tenant.read',
   billing_accounts: 'billing.read', billing_orders: 'billing.read', billing_invoices: 'billing.read', billing_refunds: 'billing.read',
   billing_admin: 'billing.read', billing_commercial: 'billing.read', accounting: 'billing.read', accounting_journals: 'billing.read',
   applications: 'tenant.read', api_mgmt: 'tenant.read', keys: 'tenant.read', iam_admin: 'iam.users.write',
   developer_home: 'tenant.read',
-  policies: 'policy.read', logs: 'audit.read',
+  policies: 'policy.read', logs: 'audit.read', customer_logs: 'audit.read',
+  accounting_chart: 'billing.read', billing_products: 'billing.read', billing_settlement: 'billing.read',
+  finops: 'billing.read', reporting: 'audit.read', stack_wiring: 'tenant.read',
+  playground: 'tenant.read', api_docs: 'tenant.read', models: 'model.read', ai_ops: 'provider.read',
+  ai_governance_lab: 'model.read', service_management: 'tenant.read', sla_kpi_monitoring: 'tenant.read',
+  incidents: 'incident.read', operations_cmdb: 'tenant.read', automation: 'tenant.read',
+  communications: 'tenant.read', sec_ops: 'audit.read', compliance: 'dsar.read',
+  dcr_data_protection: 'policy.read', enterprise_risk: 'policy.read', trust_fabric: 'tenant.read',
+  admin_settings: 'system.configure', saas_admin: 'tenant.read',
 };
 
 const sections = [
@@ -49,25 +57,12 @@ const sections = [
     { id: 'reporting', label: 'Reports', icon: FileSpreadsheet, terms: 'audit analytics exports' },
     { id: 'stack_wiring', label: 'Platform architecture', icon: Network, terms: 'layers map infrastructure' }
   ] },
-  { title: 'Platform Administration', icon: Lock, items: [
-    { id: 'org_hierarchy', label: 'Organisations', icon: Network, terms: 'organization hierarchy relationships' },
-    { id: 'iam_admin', label: 'Users, roles & permissions', icon: Users, terms: 'identities roles permissions access' },
-    { id: 'customer_manage', label: 'Customers', icon: Building2, terms: 'customer directory lifecycle' },
-    { id: 'billing_products', label: 'Products & pricing', icon: CreditCard, terms: 'products catalogue prices' },
-    { id: 'tenant_licensing', label: 'Plans & entitlements', icon: CreditCard, terms: 'plans licenses subscriptions' },
-    { id: 'billing_orders', label: 'Orders', icon: FileSpreadsheet, terms: 'commercial orders' },
-    { id: 'billing_accounts', label: 'Billing accounts', icon: WalletCards, terms: 'billing account portfolio' },
-    { id: 'billing_invoices', label: 'Invoices', icon: FileSpreadsheet, terms: 'invoice register' },
-    { id: 'billing_refunds', label: 'Refunds & credits', icon: CircleDollarSign, terms: 'refunds credits ledger' },
-    { id: 'billing_settlement', label: 'Settlement & reconciliation', icon: ArrowLeftRight, terms: 'settlement reconciliation' },
-    { id: 'accounting', label: 'Accounting', icon: BookOpen, terms: 'journals chart of accounts' },
-    { id: 'ai_ops', label: 'Providers & models', icon: Server, terms: 'AI providers model catalogue' },
-    { id: 'policies', label: 'Policies', icon: Shield, terms: 'guardrails policy scope' },
-    { id: 'trust_fabric', label: 'Trust relationships', icon: Lock, terms: 'identity trust evidence' },
-    { id: 'compliance', label: 'Compliance & data protection', icon: FileCheck, terms: 'privacy compliance DSAR' },
-    { id: 'finops', label: 'Usage & FinOps', icon: LineChart, terms: 'usage provider cost charges budgets' },
-    { id: 'communications', label: 'Integrations & communications', icon: MessageSquareMore, terms: 'integrations webhooks communications' },
-    { id: 'admin_settings', label: 'Platform settings', icon: Settings, terms: 'currency locale security settings' },
+  { title: 'Customers', icon: Building2, items: [
+    { id: 'customer_journey', label: 'Customer journey', icon: Rocket, terms: 'onboard register account order invoice payment license users lifecycle' },
+    { id: 'customer_manage', label: 'Customer directory', icon: Users, badgeKey: 'customers', terms: 'tenants companies clients profiles' },
+    { id: 'org_hierarchy', label: 'Organisation network', icon: Network, terms: 'introsoft subsidiaries partners resellers hierarchy' },
+    { id: 'commercial_account_portal', label: 'Commercial accounts', icon: WalletCards, terms: 'buyer organization legal entity billing account' },
+    { id: 'communications', label: 'Customer messages', icon: MessageSquareMore, terms: 'email sms announcements' }
   ] },
   { title: 'Developer Platform', icon: Code2, items: [
     { id: 'developer_home', label: 'Developer Centre', icon: Code2, defaultTab: 'developer_home', badgeKey: 'applications', terms: 'developer centre integrations applications environments credentials api explorer documentation usage', children: [
@@ -78,23 +73,9 @@ const sections = [
       { id: 'models', label: 'Model catalogue', icon: Boxes, terms: 'available models' },
     ] },
   ] },
-  { title: 'Customers', icon: Building2, items: [
-    { id: 'tenants', label: 'Manage customers', icon: Building2, badgeKey: 'customers', terms: 'tenants companies accounts clients', children: [
-      { id: 'customer_add', label: 'Add new customer', icon: Plus, terms: 'register onboard create customer' },
-      { id: 'customer_manage', label: 'Manage customers', icon: Users, terms: 'directory edit customer profile CRUD' },
-      { id: 'customer_logs', label: 'Customer logs', icon: ScrollText, terms: 'customer activity history audit events' }
-    ] },
-    { id: 'org_hierarchy', label: 'Organization tree', icon: Network, terms: 'subsidiaries corporate structure parent' },
-    { id: 'tenant_360', label: 'Customer overview', icon: Gauge, terms: '360 diagnostics health profile' },
-    { id: 'commercial_account_portal', label: 'Commercial account portal', icon: WalletCards, terms: 'commercial organization customer account profile orders invoices payments' },
-    { id: 'tenant_portal', label: 'Customer portal', icon: WalletCards, terms: 'client account portal usage users keys billing' },
-    { id: 'tenant_licensing', label: 'Plans & licenses', icon: CreditCard, terms: 'subscriptions packages entitlements' },
-    { id: 'saas_admin', label: 'Onboarding & growth', icon: Rocket, terms: 'registration trial conversion saas' },
-    { id: 'communications', label: 'Customer messages', icon: MessageSquareMore, terms: 'email sms push firebase announcements' }
-  ] },
   { title: 'Finance', icon: CircleDollarSign, items: [
     { id: 'billing_admin', label: 'Finance workspace', icon: CircleDollarSign, defaultTab: 'billing_accounts', terms: 'revenue payment gateway plans collection', children: [
-      { id: 'billing_commercial', label: 'Commercial lifecycle', icon: GitFork, terms: 'customer 360 contract quote acceptance order subscription entitlement usage charges invoice allocation reconciliation settlement accounting' },
+      { id: 'tenant_licensing', label: 'Plans & licenses', icon: CreditCard, terms: 'subscriptions entitlements packages' },
       { id: 'billing_accounts', label: 'Accounts', icon: Users, terms: 'customer accounts credit balance invoice date' },
       { id: 'billing_orders', label: 'Orders', icon: FileSpreadsheet, terms: 'subscriptions products order history' },
       { id: 'billing_products', label: 'Products & pricing', icon: CreditCard, terms: 'catalog price plans licence seat request charges' },
@@ -102,10 +83,9 @@ const sections = [
       { id: 'billing_invoices', label: 'Invoices', icon: FileSpreadsheet, terms: 'invoice register automatic invoice delivery' },
       { id: 'billing_refunds', label: 'Refunds & credits', icon: CircleDollarSign, terms: 'refund credit adjustment' },
       { id: 'billing_settlement', label: 'Settlement & reconciliation', icon: ArrowLeftRight, terms: 'gateway bank recon settlement' },
-      { id: 'accounting', label: 'Accounting', icon: BookOpen, terms: 'chart of accounts journals books', children: [
+      { id: 'accounting', label: 'Accounting overview', icon: BookOpen, terms: 'books ledger' },
         { id: 'accounting_chart', label: 'Chart of accounts', icon: LineChart, terms: 'general ledger accounts balances' },
         { id: 'accounting_journals', label: 'Journal entries', icon: ScrollText, terms: 'double entry journals invoice mapping' }
-      ] }
     ] },
     { id: 'finops', label: 'AI cost & usage', icon: LineChart, terms: 'finops tokens provider cost budget forecast' }
   ] },
@@ -127,13 +107,18 @@ const sections = [
     { id: 'dcr_data_protection', label: 'Data protection vault', icon: Lock, terms: 'cloak tokens surrogate DCR' },
     { id: 'enterprise_risk', label: 'Risk register', icon: ShieldCheck, terms: 'heatmap assessment' },
     { id: 'trust_fabric', label: 'Identity & trust', icon: Lock, terms: 'devices credentials trust fabric' },
+
+  ] },
+  { title: 'Platform Administration', icon: Settings, items: [
     { id: 'iam_admin', label: 'Users & roles', icon: Users, terms: 'IAM access permissions' },
-    { id: 'admin_settings', label: 'Platform settings', icon: Settings, terms: 'configuration currency locale finance' }
+    { id: 'admin_settings', label: 'Platform settings', icon: Settings, terms: 'configuration currency locale' },
+    { id: 'saas_admin', label: 'Registration & growth', icon: Rocket, terms: 'trial conversion saas' },
+    { id: 'billing_commercial', label: 'Lifecycle scenarios', icon: GitFork, terms: 'synthetic commercial examples' }
   ] }
 ] as const;
 
 const aliases: Partial<Record<NavTabId, NavTabId>> = {
-  dashboard: 'command_centre', customers: 'tenants', providers: 'ai_ops', telemetry: 'ai_ops', routing: 'ai_ops',
+  dashboard: 'command_centre', customers: 'customer_manage', tenants: 'customer_manage', customer_add: 'customer_journey', tenant_360: 'customer_journey', tenant_portal: 'customer_journey', customer_logs: 'customer_journey', providers: 'ai_ops', telemetry: 'ai_ops', routing: 'ai_ops',
   usage: 'finops', system: 'admin_settings'
 };
 
@@ -143,9 +128,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, count
   const [expanded, setExpanded] = useState<string>(activeSection?.title || 'Overview');
   const [search, setSearch] = useState('');
   useEffect(() => { if (!search && activeSection) setExpanded(activeSection.title); }, [activeSection?.title, search]);
-  useEffect(() => {
-    if (!search && globalScope && normalizedActive === 'command_centre') setExpanded('Developer Platform');
-  }, [globalScope, normalizedActive, search]);
   const filtered = useMemo(() => customerMode
     ? [{ title: 'My Account', icon: Users, items: [{ id: 'commercial_account_portal', label: 'My Account', icon: WalletCards, terms: 'my commercial account' }] }]
     : sections.map(section => ({ ...section, items: section.items.flatMap(item => {
@@ -169,7 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, count
     <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="Main navigation">
       {filtered.map(section => { const isExpanded = Boolean(search) || expanded === section.title; const SectionIcon = section.icon; return <section key={section.title} className="mb-1">
         <button type="button" aria-expanded={isExpanded} onClick={() => setExpanded(isExpanded && !search ? '' : section.title)} className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] font-semibold uppercase tracking-[.12em] transition ${isExpanded ? 'text-slate-300' : 'text-slate-500 hover:bg-white/[.035] hover:text-slate-300'}`}><SectionIcon size={13}/><span className="flex-1">{section.title}</span><span className="mr-1 text-[9px] font-normal text-slate-600">{section.items.length}</span><ChevronDown size={13} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}/></button>
-        {isExpanded && <div className="mb-2 ml-[17px] border-l border-white/[.07] pl-2">{section.items.map(item => { const Icon = item.icon; const isTree = 'children' in item && Boolean(item.children?.length); const selected = normalizedActive === item.id || Boolean(isTree && item.children?.some(child => child.id === normalizedActive)); const badge = 'badgeKey' in item ? counts?.[item.badgeKey as keyof typeof counts] : undefined; const navId = section.title === 'Platform Administration' ? `nav-btn-platform-admin-${item.id}` : `nav-btn-${item.id}`; return <React.Fragment key={item.id}><button type="button" id={navId} onClick={() => { setActiveTab((isTree ? ('defaultTab' in item ? item.defaultTab : 'customer_manage') : item.id) as NavTabId); if (isTree) setExpanded(section.title); }} aria-current={selected ? 'page' : undefined} className={`group flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] transition ${selected ? 'bg-cyan-200/[.10] font-medium text-cyan-100 shadow-[inset_2px_0_0_#67e8f9]' : 'text-slate-400 hover:bg-white/[.04] hover:text-slate-100'}`}><Icon size={14} className={selected ? 'text-cyan-200' : 'shrink-0 text-slate-600 group-hover:text-slate-300'}/><span className="min-w-0 flex-1 truncate">{item.label}</span>{badge !== undefined && badge !== null && <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[9px] ${selected ? 'bg-cyan-200/10 text-cyan-100' : 'bg-white/[.045] text-slate-500'}`}>{badge}</span>}</button>{isTree && <div className="mb-1 ml-4 border-l border-cyan-200/10 pl-2">{item.children?.map(child => { const ChildIcon = child.icon; const childSelected = normalizedActive === child.id; return <button key={child.id} type="button" id={`nav-btn-${child.id}`} onClick={() => setActiveTab(child.id as NavTabId)} aria-current={childSelected ? 'page' : undefined} className={`group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[10px] transition ${childSelected ? 'font-medium text-cyan-100' : 'text-slate-500 hover:bg-white/[.04] hover:text-slate-200'}`}><ChildIcon size={12}/><span className="truncate">{child.label}</span></button>})}</div>}</React.Fragment>})}</div>}
+        {isExpanded && <div className="mb-2 ml-[17px] border-l border-white/[.07] pl-2">{section.items.map(item => { const Icon = item.icon; const isTree = 'children' in item && Boolean(item.children?.length); const selected = normalizedActive === item.id || Boolean(isTree && item.children?.some(child => child.id === normalizedActive)); const badge = 'badgeKey' in item ? counts?.[item.badgeKey as keyof typeof counts] : undefined; const navId = section.title === 'Platform Administration' ? `nav-btn-platform-admin-${item.id}` : `nav-btn-${item.id}`; return <React.Fragment key={item.id}><button type="button" id={navId} onClick={() => { setActiveTab((isTree ? ('defaultTab' in item ? item.defaultTab : item.id) : item.id) as NavTabId); if (isTree) setExpanded(section.title); }} aria-current={selected ? 'page' : undefined} className={`group flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[11px] transition ${selected ? 'bg-cyan-200/[.10] font-medium text-cyan-100 shadow-[inset_2px_0_0_#67e8f9]' : 'text-slate-400 hover:bg-white/[.04] hover:text-slate-100'}`}><Icon size={14} className={selected ? 'text-cyan-200' : 'shrink-0 text-slate-600 group-hover:text-slate-300'}/><span className="min-w-0 flex-1 truncate">{item.label}</span>{badge !== undefined && badge !== null && <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[9px] ${selected ? 'bg-cyan-200/10 text-cyan-100' : 'bg-white/[.045] text-slate-500'}`}>{badge}</span>}</button>{isTree && <div className="mb-1 ml-4 border-l border-cyan-200/10 pl-2">{item.children?.map(child => { const ChildIcon = child.icon; const childSelected = normalizedActive === child.id; return <button key={child.id} type="button" id={`nav-btn-${child.id}`} onClick={() => setActiveTab(child.id as NavTabId)} aria-current={childSelected ? 'page' : undefined} className={`group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[10px] transition ${childSelected ? 'font-medium text-cyan-100' : 'text-slate-500 hover:bg-white/[.04] hover:text-slate-200'}`}><ChildIcon size={12}/><span className="truncate">{child.label}</span></button>})}</div>}</React.Fragment>})}</div>}
       </section>})}
       {search && filtered.length === 0 && <div className="px-3 py-8 text-center"><p className="text-xs text-slate-500">No screen matches “{search}”.</p><button onClick={() => openAssistant(`Help me find the ALTIL screen for: ${search}`)} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-indigo-300/15 px-3 py-2 text-[10px] text-indigo-200 hover:bg-indigo-300/10"><Sparkles size={13}/> Ask ALTIL to find it</button></div>}
     </nav>

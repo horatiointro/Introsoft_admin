@@ -68,6 +68,21 @@ async function withMfaDisabled<T>(operation: () => Promise<T>): Promise<T> {
 
 afterEach(() => configureMfaCodeVerifier(undefined));
 
+describe('IAM password policy', () => {
+  it('accepts an eight-character password with an uppercase letter and special character', () => {
+    assert.deepEqual(IamRepository.validatePasswordPolicy('Kite!run'), { valid: true });
+  });
+
+  it('rejects passwords shorter than eight characters', () => {
+    assert.equal(IamRepository.validatePasswordPolicy('Kit!run').valid, false);
+  });
+
+  it('requires an uppercase letter and a special character', () => {
+    assert.equal(IamRepository.validatePasswordPolicy('kite!run').valid, false);
+    assert.equal(IamRepository.validatePasswordPolicy('Kiterunx').valid, false);
+  });
+});
+
 describe('IAM login MFA enforcement', () => {
   it('rejects an MFA-enabled account when the code is absent', async t => {
     const user = syntheticAdmin();

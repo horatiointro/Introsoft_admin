@@ -7,6 +7,7 @@ import { appendDurablyPersistedEvent } from '../logging/eventLogger';
 import { resolveCommercialOrganizationScope, normalizeCommercialContact, validateCommercialContactInput, validateCommercialCustomer, validateCommercialOrganizationType } from '../commercial/foundation';
 import { CommercialMutationError, runDurableCommercialMutation, type CommercialMutationSql, type DurableMutationInput } from '../commercial/durableMutation';
 import { recommendedCustomerPrice } from '../commercial/catalogue';
+import { orchestrateCommercialOnboarding } from '../commercial/onboardingOrchestrator';
 
 type ScopeUser = NonNullable<AuthenticatedRequest['user']>;
 type Query = <T = any>(sql: string, params?: unknown[]) => Promise<T[]>;
@@ -529,6 +530,34 @@ export function createCommercialFoundationRouter(): Router {
       await tx.execute('INSERT INTO commercial_legal_entities (id,customer_id,legal_name,jurisdiction,registration_reference,status,created_by) VALUES (?,?,?,?,?,\'ACTIVE\',?)', [id, customerId, legalName, jurisdiction, registrationReference, req.user!.id]);
       return { statusCode: 201, resourceId: id, body: { id, customerId, legalName, jurisdiction, status: 'ACTIVE' } };
     });
+  });
+
+  router.get('/hierarchy/parents', requireAuthentication, async (req: AuthenticatedRequest, res) => {
+    try {
+      const allowed = await authorizedOrganizationIds(req.user!, 'tenant.read');
+      const rows = await executeQuery<any>(
+        "SELECT id, canonical_key, name, organization_type, status, created_at FROM commercial_organizations WHERE status='ACTIVE' ORDER BY name"
+      );
+      const filtered = allowed.size ? rows.filter(r => allowed.has(r.id) || r.canonical_key === 'INTROSOFT_ROOT' || r.organization_type === 'INTROSOFT') : rows;
+      res.json({ parents: filtered });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to load organization hierarchy parents.' });
+    }
+  });
+
+  router.post('/onboard', requireAuthentication, requirePermission('tenant.write'), async (req: AuthenticatedRequest, res) => {
+    try {
+      const origin = `${req.protocol}://${req.get('host') || 'localhost:3000'}`;
+      const result = await orchestrateCommercialOnboarding(req.user!, req.body, origin);
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error instanceof CommercialMutationError) {
+        res.status(error.statusCode).json({ error: error.message });
+        return;
+      }
+      console.error('[Commercial Onboarding Error]:', error);
+      res.status(500).json({ error: error?.message || 'Commercial onboarding transaction failed.' });
+    }
   });
 
   return router;

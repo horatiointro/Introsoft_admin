@@ -43,8 +43,8 @@ function getDatabaseConfig() {
 async function setAdminPassword() {
   const email = (process.env.ALTIL_ADMIN_EMAIL || 'horatio.huxham@gmail.com').trim().toLowerCase();
   const password = process.env.ALTIL_ADMIN_PASSWORD;
-  if (!password || password.length < 14) {
-    throw new Error('Set ALTIL_ADMIN_PASSWORD to a new password of at least 14 characters in the local/server secret environment.');
+  if (!password || password.length < 8 || !/[A-Z]/.test(password) || !/[!@#$%^&*()_+\-=\[\]{}|;':",\./<>?]/.test(password)) {
+    throw new Error('Set ALTIL_ADMIN_PASSWORD to a password of at least 8 characters, including an uppercase letter and a special character.');
   }
 
   const pool = mysql.createPool({ ...getDatabaseConfig(), connectionLimit: 2 });

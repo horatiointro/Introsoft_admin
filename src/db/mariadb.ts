@@ -521,7 +521,7 @@ export const dbRepository = {
             graceDaysRemaining: Number(r.grace_period_days_remaining || 14),
             activeEnforcement: !r.active_enforcement || r.active_enforcement === 'none' ? null : r.active_enforcement,
             billingContactEmail: 'billing@tenant.com',
-            ...(r.metadata_json ? JSON.parse(typeof r.metadata_json === 'string' ? r.metadata_json : r.metadata_json.toString()) : {})
+            ...(r.metadata_json ? (typeof r.metadata_json === 'string' ? JSON.parse(r.metadata_json) : typeof r.metadata_json === 'object' ? r.metadata_json : JSON.parse(r.metadata_json.toString())) : {})
           }));
         }
       } catch (e) {

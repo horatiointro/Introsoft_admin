@@ -21,6 +21,8 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = () => {
   const [data, setData] = useState<CommercialHierarchyResponse | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
@@ -38,15 +40,25 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = () => {
     return () => { active = false; };
   }, []);
 
-  const root = data?.organizations.find(item => item.canonical_key === 'INTROSOFT_ROOT') || null;
   const orgById = useMemo(() => new Map((data?.organizations || []).map(item => [item.id, item])), [data]);
+  // A scoped response need not include Introsoft. Its visible branch remains navigable.
+  const roots = (data?.organizations || []).filter(item => !data?.relationships.some(edge => edge.child_organization_id === item.id && orgById.has(edge.parent_organization_id)));
+  roots.sort((a, b) => Number(b.canonical_key === 'INTROSOFT_ROOT') - Number(a.canonical_key === 'INTROSOFT_ROOT'));
   const childrenOf = (id: string) => (data?.relationships || []).filter(edge => edge.parent_organization_id === id)
     .map(edge => orgById.get(edge.child_organization_id)).filter((item): item is CommercialOrganization => Boolean(item));
+  const matchesBranch = (id: string, seen = new Set<string>()): boolean => {
+    if (seen.has(id)) return false;
+    const next = new Set(seen).add(id);
+    const needle = search.trim().toLowerCase();
+    return !needle || Boolean(orgById.get(id)?.name.toLowerCase().includes(needle))
+      || (data?.customers || []).some(customer => customer.organization_id === id && customer.display_name.toLowerCase().includes(needle))
+      || childrenOf(id).some(child => matchesBranch(child.id, next));
+  };
   const customersOf = (id: string) => (data?.customers || []).filter(customer => customer.organization_id === id);
   const scopesOf = (id: string) => (data?.technicalScopes || []).filter(scope => scope.organization_id === id);
 
   const renderOrganization = (organization: CommercialOrganization, depth = 0, seen = new Set<string>()): React.ReactNode => {
-    if (seen.has(organization.id)) return null;
+    if (seen.has(organization.id) || !matchesBranch(organization.id)) return null;
     const lineage = new Set(seen).add(organization.id);
     return <section key={organization.id} className="rounded-xl border border-[#2a2a2a] bg-[#121212]" style={{ marginLeft: depth ? Math.min(depth * 18, 72) : 0 }}>
       <button type="button" onClick={() => setSelectedId(organization.id)} className="flex w-full items-center gap-3 p-4 text-left hover:bg-white/[.03]">
@@ -54,20 +66,22 @@ export const OrgHierarchyView: React.FC<OrgHierarchyViewProps> = () => {
         <span className="min-w-0 flex-1"><strong className="block text-sm text-white">{organization.name}</strong><small className="text-[10px] uppercase tracking-wide text-slate-400">{organization.organization_type} · {organization.status}</small></span>
         <span className="text-xs text-slate-500">{customersOf(organization.id).length} customer{customersOf(organization.id).length === 1 ? '' : 's'}</span>
       </button>
+      {childrenOf(organization.id).length > 0 && <button type="button" aria-expanded={Boolean(search) || !collapsed.has(organization.id)} onClick={() => setCollapsed(previous => { const next = new Set(previous); if (next.has(organization.id)) next.delete(organization.id); else next.add(organization.id); return next; })} className="mx-4 mb-3 rounded-lg border border-white/10 px-3 py-2 text-xs text-cyan-200">{collapsed.has(organization.id) && !search ? 'Show' : 'Hide'} {childrenOf(organization.id).length} child organisations</button>}
       {selectedId === organization.id && <div className="border-t border-white/5 px-4 py-3 text-xs text-slate-400"><p>Commercial organization record · {organization.id}</p><p className="mt-3 font-medium text-slate-300">Explicit technical scopes</p>{scopesOf(organization.id).length ? <ul className="mt-1 space-y-1">{scopesOf(organization.id).map(scope => <li key={scope.id}>{scope.tenant_name} · {scope.scope_link_type} · {scope.status} · tenant {scope.tenant_id}</li>)}</ul> : <p className="mt-1">No technical tenant scope is linked to this organization.</p>}</div>}
       {customersOf(organization.id).map(customer => <button key={customer.id} type="button" onClick={() => setSelectedCustomerId(customer.id)} className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3 text-left hover:bg-emerald-500/[.04]" style={{ paddingLeft: `${Math.min(24 + depth * 18, 96)}px` }}>
         <Users size={15} className="text-emerald-300"/><span className="flex-1"><strong className="block text-xs text-slate-200">{customer.display_name}</strong><small className="text-[10px] uppercase text-slate-500">{customer.customer_type} · {customer.relationship_type}</small></span><ChevronRight size={14} className="text-slate-500"/>
       </button>)}
-      <div className="space-y-2 p-2">{childrenOf(organization.id).map(child => renderOrganization(child, depth + 1, lineage))}</div>
+      {(Boolean(search) || !collapsed.has(organization.id)) && <div className="space-y-2 p-2">{childrenOf(organization.id).map(child => renderOrganization(child, depth + 1, lineage))}</div>}
     </section>;
   };
 
   return <main className="space-y-5 pb-12">
-    <header className="border-b border-[#222] pb-4"><p className="text-[10px] uppercase tracking-[.2em] text-cyan-300">Commercial organization structure</p><h1 className="mt-1 text-xl font-semibold text-white">Organizations and customers</h1><p className="mt-1 max-w-3xl text-xs text-slate-400">The tree uses persisted commercial relationships. Technical tenants, customer names, metadata, and industry are never used to infer commercial ownership.</p></header>
+    <header className="border-b border-[#222] pb-4"><p className="text-[10px] uppercase tracking-[.2em] text-cyan-300">Commercial organization structure</p><h1 className="mt-1 text-xl font-semibold text-white">Organisation network</h1><p className="mt-1 max-w-3xl text-xs text-slate-400">The tree uses persisted commercial relationships. Technical tenants, customer names, metadata, and industry are never used to infer commercial ownership.</p></header>
     {loading && <div className="flex items-center gap-2 text-sm text-slate-400"><LoaderCircle className="animate-spin" size={16}/>Loading authorized commercial records…</div>}
     {error && <div role="alert" className="flex gap-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100"><AlertTriangle size={17}/>{error}</div>}
-    {!loading && !error && (!data?.organizations.length || !root) && <div role="status" className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">No authorized commercial hierarchy is available. No technical tenant or customer record has been converted into a commercial organization.</div>}
-    {!loading && !error && root && <div className="space-y-2">{renderOrganization(root)}{data!.organizations.filter(item => item.id !== root.id && !data!.relationships.some(edge => edge.child_organization_id === item.id)).map(item => <div key={item.id} className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-100">Unlinked commercial organization: {item.name}. No parent relationship is inferred.</div>)}</div>}
+    {!loading && !error && <label className="block text-xs text-slate-400">Find an organisation or customer<input aria-label="Search organisation network" value={search} onChange={event => setSearch(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-[#0c111a] p-3 text-sm text-white" placeholder="Search the authorised network…"/></label>}
+    {!loading && !error && !data?.organizations.length && <div role="status" className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">No authorised commercial organisations are available. No technical tenant has been converted into a commercial organisation.</div>}
+    {!loading && !error && Boolean(data?.organizations.length) && <div className="space-y-3"><p className="text-xs text-slate-400">{data!.organizations.length} authorised organisations · {data!.relationships.length} explicit relationships. A top-level visible branch does not imply ownership by Introsoft.</p>{roots.filter(item => matchesBranch(item.id)).map(item => renderOrganization(item))}{!roots.some(item => matchesBranch(item.id)) && <p role="status" className="text-sm text-amber-200">No matching visible branch. A cyclic or disconnected graph requires review; no parent is inferred.</p>}</div>}
     {selectedCustomerId && data?.customers.some(customer => customer.id === selectedCustomerId) && <section className="rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-4 text-sm"><p className="text-[10px] uppercase tracking-wider text-emerald-300">Selected commercial customer</p><strong className="mt-1 block text-white">{data.customers.find(customer => customer.id === selectedCustomerId)?.display_name}</strong><p className="mt-1 text-xs text-slate-400">This is a commercial customer record. The current technical tenant workspace is separate and will not be opened using this customer ID.</p></section>}
   </main>;
 };

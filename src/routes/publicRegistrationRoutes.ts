@@ -37,8 +37,8 @@ router.post('/public/registrations', async (req, res) => {
   const displayName = type === 'company' ? companyName : `${firstName} ${lastName}`.trim();
   const appName = typeof applicationName === 'string' ? applicationName.trim() : '';
   const partyFieldsValid = type === 'individual' ? firstName.length >= 1 && firstName.length <= 100 && lastName.length >= 1 && lastName.length <= 100 : type === 'company' ? companyName.length >= 2 && companyName.length <= 180 && firstName.length >= 1 && firstName.length <= 100 && lastName.length >= 1 && lastName.length <= 100 : false;
-  if (!partyFieldsValid || displayName.length < 2 || displayName.length > 180 || !emailPattern.test(normalizedEmail) || typeof password !== 'string' || password.length < 12 || password.length > 128 || !acceptedTerms || appName.length < 2 || appName.length > 180 || typeof planId !== 'string') {
-    return res.status(400).json({ error: 'Provide valid customer details, account type, application, published package, password (12 characters minimum), and accepted terms.' });
+  if (!partyFieldsValid || displayName.length < 2 || displayName.length > 180 || !emailPattern.test(normalizedEmail) || typeof password !== 'string' || password.length < 8 || password.length > 128 || !acceptedTerms || appName.length < 2 || appName.length > 180 || typeof planId !== 'string') {
+    return res.status(400).json({ error: 'Provide valid customer details, account type, application, published package, password (8 characters minimum), and accepted terms.' });
   }
   if (!isDatabaseConnected()) return res.status(503).json({ error: 'Self-service registration requires the durable ALTIL account database.' });
   const passwordPolicy = IamRepository.validatePasswordPolicy(password);

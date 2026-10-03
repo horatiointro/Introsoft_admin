@@ -1,3 +1,4 @@
+import { CustomerJourney, canOpenJourneyTool, customerJourneySteps } from './components/CustomerJourney';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -145,6 +146,9 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<NavTabId>('command_centre');
   const [onboardingOrderCustomerId, setOnboardingOrderCustomerId] = useState<string | undefined>();
+  const [journeyStep, setJourneyStep] = useState(0);
+  const [journeyTool, setJourneyTool] = useState<NavTabId>('commercial_account_portal');
+  const viewTab = activeTab === 'customer_journey' ? journeyTool : activeTab;
   const [architectureOpen, setArchitectureOpen] = useState(false);
   const [selectedTelemetryProviderId, setSelectedTelemetryProviderId] = useState<string>('p-openai');
 
@@ -204,6 +208,13 @@ export default function App() {
     appId: 'all',
     scopeName: 'Total Company View'
   });
+
+  useEffect(() => {
+    if (activeTab !== 'customer_journey' || canOpenJourneyTool(journeyTool, authorizationScope?.global || false, authorizationScope?.permissions || [])) return;
+    const first = customerJourneySteps.flatMap((step, index) => step.tools.map(tool => ({ ...tool, index })))
+      .find(tool => canOpenJourneyTool(tool.tab, authorizationScope?.global || false, authorizationScope?.permissions || []));
+    if (first) { setJourneyTool(first.tab); setJourneyStep(first.index); }
+  }, [activeTab, journeyTool, authorizationScope]);
 
   // 360 Operational Diagnostic Modal state
   const [selectedDiagnosticIncident, setSelectedDiagnosticIncident] = useState<Incident | null>(null);
@@ -1177,30 +1188,39 @@ export default function App() {
         {/* Content View Container */}
         <main className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full space-y-6">
           {/* Universal Scope Drill-Down Navigation Bar (Total Company -> Tenant -> Application) */}
-          <ScopeHeaderBar
+          {activeTab !== 'customer_journey' && <ScopeHeaderBar
             scopeFilter={scopeFilter}
             onScopeChange={setScopeFilter}
             customers={customers}
             applications={applications}
             activeIncidentsCount={incidents.filter(i => i.status !== 'closed' && i.status !== 'resolved').length}
-            onNavigateToTenants={() => setActiveTab('tenants')}
-          />
-          {activeTab !== 'help_guide' && (
+            onNavigateToTenants={() => { setJourneyStep(1); setJourneyTool('customer_add'); setActiveTab('customer_journey'); }}
+          />}
+          {activeTab === 'customer_journey' && <CustomerJourney
+            customers={customers} selectedId={scopeFilter.tenantId} step={journeyStep} tool={journeyTool}
+            global={authorizationScope?.global || false} permissions={authorizationScope?.permissions || []}
+            onSelect={id => { setScopeFilter({ tenantId: id, appId: 'all', scopeName: customers.find(customer => customer.id === id)?.name || 'Authorised workspaces' }); setOnboardingOrderCustomerId(id === 'all' ? undefined : id); }}
+            onOpen={(step, tool) => {
+              if (!canOpenJourneyTool(tool, authorizationScope?.global || false, authorizationScope?.permissions || [])) return;
+              setJourneyStep(step); setJourneyTool(tool);
+            }}
+          />}
+          {viewTab !== 'help_guide' && (
             <div className="flex justify-end -mt-4">
-              <InfoButton title={getHelpTopic(activeTab)?.title || 'Current screen'} description={getHelpTopic(activeTab)?.description || `You are viewing ${activeTab.replace(/_/g, ' ')}. Use this screen's headings for section-specific help, or open the full guide for all screen and feature descriptions.`} />
+              <InfoButton title={getHelpTopic(viewTab)?.title || 'Current screen'} description={getHelpTopic(viewTab)?.description || `You are viewing ${viewTab.replace(/_/g, ' ')}. Use this screen's headings for section-specific help, or open the full guide for all screen and feature descriptions.`} />
             </div>
           )}
 
-          {activeTab === 'help_guide' && <HelpGuideView onNavigate={setActiveTab} />}
-          {activeTab === 'api_docs' && <ApiDocumentationView />}
-          {activeTab === 'developer_home' && <DeveloperCentreView
+          {viewTab === 'help_guide' && <HelpGuideView onNavigate={setActiveTab} />}
+          {viewTab === 'api_docs' && <ApiDocumentationView />}
+          {viewTab === 'developer_home' && <DeveloperCentreView
             onNavigate={setActiveTab}
             organizationLabel={authorizationScope?.organizationId || currentUser.tenant}
             globalScope={authorizationScope?.global || false}
             permissions={authorizationScope?.permissions || []}
           />}
 
-          {(activeTab === 'command_centre' || activeTab === 'dashboard') && (
+          {(viewTab === 'command_centre' || viewTab === 'dashboard') && (
             <CommandCentreView
               customers={customers}
               providers={providers}
@@ -1210,7 +1230,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'stack_wiring' && (
+          {viewTab === 'stack_wiring' && (
             <AltilStackWiringView
               customers={customers}
               providers={providers}
@@ -1223,43 +1243,47 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'tenant_360' && (
+          {viewTab === 'tenant_360' && (
             <Tenant360View
-              customers={customers}
+              key={scopeFilter.tenantId}
+              selectedTenantId={scopeFilter.tenantId === 'all' ? undefined : scopeFilter.tenantId}
+              customers={activeTab === 'customer_journey' && scopeFilter.tenantId !== 'all' ? customers.filter(customer => customer.id === scopeFilter.tenantId) : customers}
               onNavigateToTenants={() => setActiveTab('tenants')}
             />
           )}
 
-          {activeTab === 'service_management' && (
+          {viewTab === 'service_management' && (
             <ServiceManagementView
               onNavigate={setActiveTab}
             />
           )}
 
-          {activeTab === 'operations_cmdb' && (
+          {viewTab === 'operations_cmdb' && (
             <EnterpriseOperationsView />
           )}
 
-          {activeTab === 'ai_governance_lab' && (
+          {viewTab === 'ai_governance_lab' && (
             <AiGovernanceModelLabView />
           )}
 
-          {activeTab === 'enterprise_risk' && (
+          {viewTab === 'enterprise_risk' && (
             <EnterpriseGovernanceRiskView />
           )}
 
-          {(activeTab === 'tenants' || activeTab === 'customers' || activeTab === 'customer_add' || activeTab === 'customer_manage' || activeTab === 'customer_logs') && (
+          {(viewTab === 'tenants' || viewTab === 'customers' || viewTab === 'customer_add' || viewTab === 'customer_manage' || viewTab === 'customer_logs') && (
             <CustomersView
-              customers={customers}
+              customers={activeTab === 'customer_journey' && scopeFilter.tenantId !== 'all' ? customers.filter(customer => customer.id === scopeFilter.tenantId) : customers}
               applications={applications}
               apiKeys={apiKeys}
               policies={policies}
               auditLogs={auditLogs}
-              initialView={activeTab === 'customer_add' ? 'add' : activeTab === 'customer_logs' ? 'logs' : 'manage'}
+              initialView={viewTab === 'customer_add' ? 'add' : viewTab === 'customer_logs' ? 'logs' : 'manage'}
               onAddCustomer={handleAddCustomer}
+              continueAfterCreate={activeTab === 'customer_journey'}
               onContinueToOrders={customer => {
                 setOnboardingOrderCustomerId(customer.id);
-                setActiveTab('billing_orders');
+                setScopeFilter({ tenantId: customer.id, appId: 'all', scopeName: customer.name });
+                setJourneyStep(2); setJourneyTool('billing_orders'); setActiveTab('customer_journey');
               }}
               onUpdateCustomer={handleUpdateCustomer}
               onDeleteCustomer={handleDeleteCustomer}
@@ -1275,7 +1299,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'org_hierarchy' && (
+          {viewTab === 'org_hierarchy' && (
             <OrgHierarchyView
               customers={customers}
               applications={applications}
@@ -1283,7 +1307,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'sla_kpi_monitoring' && (
+          {viewTab === 'sla_kpi_monitoring' && (
             <SlaKpiMonitoringView
               customers={customers}
               slaProfiles={slaProfiles}
@@ -1291,7 +1315,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'incidents' && (
+          {viewTab === 'incidents' && (
             <IncidentCrmView
               incidents={incidents}
               problems={problems}
@@ -1306,36 +1330,36 @@ export default function App() {
             />
           )}
 
-          {(activeTab === 'ai_ops' || activeTab === 'providers' || activeTab === 'telemetry' || activeTab === 'models' || activeTab === 'routing') && (
+          {(viewTab === 'ai_ops' || viewTab === 'providers' || viewTab === 'telemetry' || viewTab === 'models' || viewTab === 'routing') && (
             <div className="space-y-6">
               <div className="flex items-center gap-2 border-b border-[#222222] pb-3 text-xs font-mono">
                 <button
                   onClick={() => setActiveTab('providers')}
-                  className={`px-3 py-1.5 rounded transition-colors ${activeTab === 'providers' || activeTab === 'ai_ops' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded transition-colors ${viewTab === 'providers' || viewTab === 'ai_ops' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
                 >
                   Providers List
                 </button>
                 <button
                   onClick={() => setActiveTab('telemetry')}
-                  className={`px-3 py-1.5 rounded transition-colors ${activeTab === 'telemetry' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded transition-colors ${viewTab === 'telemetry' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
                 >
                   Telemetry
                 </button>
                 <button
                   onClick={() => setActiveTab('models')}
-                  className={`px-3 py-1.5 rounded transition-colors ${activeTab === 'models' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded transition-colors ${viewTab === 'models' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
                 >
                   Model Catalog
                 </button>
                 <button
                   onClick={() => setActiveTab('routing')}
-                  className={`px-3 py-1.5 rounded transition-colors ${activeTab === 'routing' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded transition-colors ${viewTab === 'routing' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
                 >
                   Routing Rules
                 </button>
               </div>
 
-              {(activeTab === 'providers' || activeTab === 'ai_ops') && (
+              {(viewTab === 'providers' || viewTab === 'ai_ops') && (
                 <ProvidersView
                   providers={providers}
                   onAddProvider={handleAddProvider}
@@ -1346,7 +1370,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'telemetry' && (
+              {viewTab === 'telemetry' && (
                 <ProviderTelemetryView
                   providers={providers}
                   models={models}
@@ -1362,7 +1386,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'models' && (
+              {viewTab === 'models' && (
                 <ModelsView
                   models={models}
                   providers={providers}
@@ -1376,7 +1400,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'routing' && (
+              {viewTab === 'routing' && (
                 <RoutingView
                   routingRules={routingRules}
                   models={models}
@@ -1390,24 +1414,24 @@ export default function App() {
             </div>
           )}
 
-          {(activeTab === 'api_mgmt' || activeTab === 'applications' || activeTab === 'keys') && (
+          {(viewTab === 'api_mgmt' || viewTab === 'applications' || viewTab === 'keys') && (
             <div className="space-y-6">
               <div className="flex items-center gap-2 border-b border-[#222222] pb-3 text-xs font-mono">
                 <button
                   onClick={() => setActiveTab('applications')}
-                  className={`px-3 py-1.5 rounded transition-colors ${activeTab === 'applications' || activeTab === 'api_mgmt' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded transition-colors ${viewTab === 'applications' || viewTab === 'api_mgmt' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
                 >
                   Applications
                 </button>
                 <button
                   onClick={() => setActiveTab('keys')}
-                  className={`px-3 py-1.5 rounded transition-colors ${activeTab === 'keys' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded transition-colors ${viewTab === 'keys' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
                 >
                   API Gateway Keys
                 </button>
               </div>
 
-              {(activeTab === 'applications' || activeTab === 'api_mgmt') && (
+              {(viewTab === 'applications' || viewTab === 'api_mgmt') && (
                 <ApplicationsView
                   applications={applications}
                   apiKeys={apiKeys}
@@ -1420,7 +1444,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'keys' && (
+              {viewTab === 'keys' && (
                 <ApiKeysView
                   apiKeys={apiKeys}
                   applications={applications}
@@ -1432,7 +1456,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'sec_ops' && (
+          {viewTab === 'sec_ops' && (
             <SecOpsView
               customers={customers}
               providers={providers}
@@ -1440,7 +1464,7 @@ export default function App() {
             />
           )}
 
-          {(activeTab === 'governance' || activeTab === 'policies') && (
+          {(viewTab === 'governance' || viewTab === 'policies') && (
             <PoliciesView
               policies={policies}
               applications={applications}
@@ -1453,7 +1477,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'compliance' && (
+          {viewTab === 'compliance' && (
             <PopiaGdprComplianceView
               globalConfig={globalComplianceConfig}
               onSaveGlobalConfig={handleSaveGlobalComplianceConfig}
@@ -1467,7 +1491,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'dcr_data_protection' && (
+          {viewTab === 'dcr_data_protection' && (
             <DataProtectionDcrView
               customers={customers}
               applications={applications}
@@ -1479,11 +1503,11 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'trust_fabric' && (
+          {viewTab === 'trust_fabric' && (
             <TrustFabricView />
           )}
 
-          {activeTab === 'finops' && (
+          {viewTab === 'finops' && (
             <FinOpsView
               customers={customers}
               applications={applications}
@@ -1492,7 +1516,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'tenant_licensing' && (
+          {viewTab === 'tenant_licensing' && (
             <LicensingMonetizationView
               customers={customers}
               applications={applications}
@@ -1517,46 +1541,47 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'commercial_account_portal' && <CommercialAccountPortalView onNavigate={(tab) => setActiveTab(tab as any)} />}
+          {viewTab === 'commercial_account_portal' && <CommercialAccountPortalView onNavigate={(tab) => setActiveTab(tab as any)} />}
 
-          {(activeTab === 'billing_admin' || activeTab === 'billing_accounts' || activeTab === 'billing_invoices') && (
+          {(viewTab === 'billing_admin' || viewTab === 'billing_accounts' || viewTab === 'billing_invoices') && (
             <BillingAdminView
-              customers={customers}
-              licenses={tenantLicenses}
-              initialSection={activeTab === 'billing_invoices' ? 'invoices' : 'portfolio'}
+              scopeTenantId={activeTab === 'customer_journey' && scopeFilter.tenantId !== 'all' ? scopeFilter.tenantId : undefined}
+              customers={activeTab === 'customer_journey' && scopeFilter.tenantId !== 'all' ? customers.filter(customer => customer.id === scopeFilter.tenantId) : customers}
+              licenses={activeTab === 'customer_journey' && scopeFilter.tenantId !== 'all' ? tenantLicenses.filter(license => license.tenantId === scopeFilter.tenantId) : tenantLicenses}
+              initialSection={viewTab === 'billing_invoices' ? 'invoices' : 'portfolio'}
             />
           )}
 
-          {activeTab === 'billing_refunds' && (
+          {viewTab === 'billing_refunds' && (
             <AccountingControlView customers={customers} initialSection="refunds" />
           )}
 
-          {activeTab === 'billing_settlement' && (
+          {viewTab === 'billing_settlement' && (
             <AccountingControlView customers={customers} initialSection="reconcile" />
           )}
 
-          {activeTab === 'billing_commercial' && <StageFFinanceView />}
+          {viewTab === 'billing_commercial' && <StageFFinanceView />}
 
-          {(activeTab === 'billing_orders' || activeTab === 'billing_products') && (
-            <FinanceCommerceView mode={activeTab === 'billing_orders' ? 'orders' : 'products'} customers={customers} initialTenantId={onboardingOrderCustomerId} />
+          {(viewTab === 'billing_orders' || viewTab === 'billing_products') && (
+            <FinanceCommerceView mode={viewTab === 'billing_orders' ? 'orders' : 'products'} customers={activeTab === 'customer_journey' && scopeFilter.tenantId !== 'all' ? customers.filter(customer => customer.id === scopeFilter.tenantId) : customers} initialTenantId={activeTab === 'customer_journey' && scopeFilter.tenantId !== 'all' ? scopeFilter.tenantId : onboardingOrderCustomerId} scopeTenantId={activeTab === 'customer_journey' && scopeFilter.tenantId !== 'all' ? scopeFilter.tenantId : undefined} />
           )}
 
-          {(activeTab === 'accounting' || activeTab === 'accounting_journals' || activeTab === 'accounting_chart') && (
+          {(viewTab === 'accounting' || viewTab === 'accounting_journals' || viewTab === 'accounting_chart') && (
             <AccountingControlView
               customers={customers}
-              initialSection={activeTab === 'accounting_journals' ? 'journals' : 'overview'}
+              initialSection={viewTab === 'accounting_journals' ? 'journals' : 'overview'}
             />
           )}
 
-          {activeTab === 'saas_admin' && (
+          {viewTab === 'saas_admin' && (
             <SaasGrowthView customers={customers} plans={licensingPlans} onNavigate={setActiveTab} />
           )}
 
-          {activeTab === 'communications' && (
+          {viewTab === 'communications' && (
             <CommunicationsHubView customers={customers} />
           )}
 
-          {activeTab === 'tenant_portal' && (
+          {viewTab === 'tenant_portal' && (
             <TenantPortalView
               customerId={scopeFilter.tenantId}
               customers={customers}
@@ -1566,13 +1591,13 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'automation' && (
+          {viewTab === 'automation' && (
             <AutomationView
               workflows={workflows}
             />
           )}
 
-          {activeTab === 'reporting' && (
+          {viewTab === 'reporting' && (
             <ExecutiveReportsView
               reports={executiveReports}
               customers={customers}
@@ -1582,24 +1607,24 @@ export default function App() {
             />
           )}
 
-          {(activeTab === 'iam_admin' || activeTab === 'admin_settings') && (
+          {(viewTab === 'iam_admin' || viewTab === 'admin_settings') && (
             <div className="space-y-6">
               <div className="flex items-center gap-2 border-b border-[#222222] pb-3 text-xs font-mono">
                 <button
                   onClick={() => setActiveTab('iam_admin')}
-                  className={`px-3 py-1.5 rounded transition-colors ${activeTab === 'iam_admin' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded transition-colors ${viewTab === 'iam_admin' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
                 >
                   IAM Users & Roles
                 </button>
                 <button
                   onClick={() => setActiveTab('admin_settings')}
-                  className={`px-3 py-1.5 rounded transition-colors ${activeTab === 'admin_settings' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
+                  className={`px-3 py-1.5 rounded transition-colors ${viewTab === 'admin_settings' ? 'bg-blue-600 text-white font-bold' : 'text-[#888888] hover:text-white'}`}
                 >
                   Platform & Currency Settings
                 </button>
               </div>
 
-              {activeTab === 'iam_admin' && (
+              {viewTab === 'iam_admin' && (
                 <IamAdminView
                   users={iamUsers}
                   roles={iamRoles}
@@ -1613,13 +1638,13 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'admin_settings' && (
+              {viewTab === 'admin_settings' && (
                 <AdminSettingsView />
               )}
             </div>
           )}
 
-          {(activeTab === 'usage' || activeTab === 'logs' || activeTab === 'system') && (
+          {(viewTab === 'usage' || viewTab === 'logs' || viewTab === 'system') && (
             <UsageLogsView
               auditLogs={auditLogs}
               usageMetrics={usageMetrics}
@@ -1628,11 +1653,11 @@ export default function App() {
               models={models}
               selectedLogToInspect={selectedLogToInspect}
               onCloseInspectModal={() => setSelectedLogToInspect(null)}
-              initialSection={activeTab === 'logs' ? 'logs' : 'analytics'}
+              initialSection={viewTab === 'logs' ? 'logs' : 'analytics'}
             />
           )}
 
-          {activeTab === 'playground' && (
+          {viewTab === 'playground' && (
             <PlaygroundView
               applications={applications}
               apiKeys={apiKeys}

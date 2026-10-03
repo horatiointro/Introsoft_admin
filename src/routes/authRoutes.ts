@@ -324,6 +324,49 @@ authRouter.get('/users', requireAuthentication, requireRole(['SUPER_ADMIN', 'SEC
   }
 });
 
+/** Database-backed sign-in history for authorized security/audit review. */
+authRouter.get('/login-events', requireAuthentication, requireRole(['SUPER_ADMIN', 'AUDITOR', 'SECURITY_ADMIN', 'TENANT_ADMIN']), requirePermission('audit.read'), async (req: AuthenticatedRequest, res) => {
+  if (!isDatabaseConnected()) return res.status(503).json({ error: 'Sign-in history requires the durable IAM database.' });
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (email.length > 255 || (email && !/^\S+@\S+\.\S+$/.test(email))) return res.status(400).json({ error: 'Provide a valid email filter.' });
+  const parsedLimit = Number(req.query.limit || 100);
+  const limit = Number.isSafeInteger(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 500)) : 100;
+  const authorization = req.user?.authorization;
+  const globalAuditGrant = authorization?.grants.some(grant => grant.visibility === 'GLOBAL' && grant.permissions.includes('audit.read')) === true;
+  const predicates = ['created_at >= DATE_SUB(NOW(), INTERVAL 5 DAY)'];
+  const parameters: unknown[] = [];
+  if (!globalAuditGrant) {
+    const visibleTenantIds = [...(authorization?.visibleOrganizationIds || [])];
+    if (!visibleTenantIds.length) return res.status(403).json({ error: 'No authorized tenant scope for sign-in history.' });
+    predicates.push(`tenant_id IN (${visibleTenantIds.map(() => '?').join(',')})`);
+    parameters.push(...visibleTenantIds);
+  }
+  if (email) {
+    predicates.push('LOWER(email_attempted) = ?');
+    parameters.push(email);
+  }
+  parameters.push(limit);
+  try {
+    const rows = await executeQuery<any>(
+      `SELECT id,user_id,email_attempted,tenant_id,ip_address,outcome,failure_reason,created_at
+       FROM iam_login_events WHERE ${predicates.join(' AND ')} ORDER BY created_at DESC LIMIT ?`,
+      parameters,
+    );
+    return res.json(rows.map(row => ({
+      id: row.id,
+      userId: row.user_id || null,
+      email: row.email_attempted,
+      tenantId: row.tenant_id || null,
+      ipAddress: row.ip_address || null,
+      outcome: row.outcome,
+      failureReason: row.failure_reason || null,
+      timestamp: row.created_at ? new Date(row.created_at).toISOString() : null,
+    })));
+  } catch {
+    return res.status(503).json({ error: 'Sign-in history is temporarily unavailable.' });
+  }
+});
+
 /** Return database-backed roles the actor may assign inside the target tenant. */
 authRouter.get('/users/assignable-roles', requireAuthentication, requirePermission('user.create'), async (req: AuthenticatedRequest, res) => {
   const tenantId = String(req.query.tenantId || '').trim();

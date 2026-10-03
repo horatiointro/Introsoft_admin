@@ -13,6 +13,7 @@ export interface AltilEvent {
   requestId: string;
   actorId?: string;
   actorEmail?: string;
+  clientIp?: string;
   organizationId?: string;
   tenantId?: string;
   category: EventCategory;
@@ -47,6 +48,7 @@ export function makeAltilEvent(input: NewAltilEvent, context: { environment: Eve
     requestId,
     actorId: clean(input.actorId, 128),
     actorEmail: clean(input.actorEmail, 255),
+    clientIp: clean(input.clientIp, 45),
     organizationId: clean(input.organizationId, 128),
     tenantId: clean(input.tenantId, 128),
     action: clean(input.action, 128) || 'unspecified',

@@ -950,6 +950,7 @@ export class IamRepository {
     try {
       await emitAltilEvent({
         category: 'SECURITY_EVENT', action: 'auth.login', actorId: userId || undefined, actorEmail: email,
+        clientIp: ipAddress,
         tenantId: tenantId || undefined, organizationId: tenantId || undefined,
         outcome: outcome === 'SUCCESS' ? 'SUCCESS' : 'DENIED', statusCode: outcome === 'SUCCESS' ? 200 : 401,
         reason: outcome === 'SUCCESS' ? undefined : outcome,
@@ -1256,21 +1257,19 @@ export class IamRepository {
   }
 
   /**
-   * Validates a password against enterprise complexity policy
+   * Validates a password against the ALTIL password policy.
    */
   public static validatePasswordPolicy(password: string): { valid: boolean; error?: string } {
-    if (!password || password.length < 14) {
-      return { valid: false, error: 'Password must be at least 14 characters long according to enterprise NIST standards.' };
+    if (!password || password.length < 8) {
+      return { valid: false, error: 'Password must be at least 8 characters long.' };
     }
     const hasUpper = /[A-Z]/.test(password);
-    const hasLower = /[a-z]/.test(password);
-    const hasDigit = /[0-9]/.test(password);
     const hasSpecial = /[!@#$%^&*()_+\-=\[\]{}|;':",\./<>?]/.test(password);
 
-    if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
+    if (!hasUpper || !hasSpecial) {
       return {
         valid: false,
-        error: 'Password must contain at least one uppercase letter, one lowercase letter, one numeric digit, and one special character.'
+        error: 'Password must contain at least one uppercase letter and one special character.'
       };
     }
 

@@ -15,6 +15,7 @@ import {
   AuditLog
 } from '../types';
 import { ProvenanceBadge } from './ProvenanceBadge';
+import { CustomerOnboardingWizard } from './CustomerOnboardingWizard';
 import { apiFetch } from '../utils/apiFetch';
 import { buildCustomerRegistrationPayload, customerRegistrationVariant, validateCustomerRegistration } from '../utils/customerRegistration';
 import {
@@ -66,6 +67,7 @@ interface CustomersViewProps {
   policies: AIPolicy[];
   auditLogs: AuditLog[];
   initialView?: 'manage' | 'add' | 'logs';
+  continueAfterCreate?: boolean;
   onAddCustomer: (customerData: any) => Promise<Customer>;
   onContinueToOrders: (customer: Customer) => void;
   onUpdateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
@@ -86,6 +88,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   policies,
   auditLogs,
   initialView = 'manage',
+  continueAfterCreate = false,
   onAddCustomer,
   onContinueToOrders,
   onUpdateCustomer,
@@ -106,6 +109,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [logSearch, setLogSearch] = useState('');
 
   // Modals state
+  const [isWizardOpen, setIsWizardOpen] = useState(initialView === 'add');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [customerFormError, setCustomerFormError] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -432,6 +436,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       else {
         const createdCustomer = await onAddCustomer(payload);
         if (!createdCustomer?.id) throw new Error('Customer setup was not confirmed by the server.');
+        if (continueAfterCreate) { setIsAddModalOpen(false); onContinueToOrders(createdCustomer); return; }
         setOnboardedCustomer(createdCustomer);
         setCustomerFormError('');
         return;
@@ -759,17 +764,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </button>
           </div>
 
-          <button
-            id="btn-register-customer"
-            onClick={() => {
-              resetNewCustomerForm();
-              setIsAddModalOpen(true);
-            }}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold shadow-lg shadow-blue-600/20 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Onboard New Tenant</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              id="btn-register-customer-wizard"
+              onClick={() => setIsWizardOpen(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold rounded text-xs shadow-lg shadow-cyan-500/20 transition-all"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>+ Customer Onboarding Wizard</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3630,6 +3634,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           </div>
         </div>
       )}
+      {/* ========================================================================= */}
+      {/* MODAL: 12-STEP CUSTOMER & COMMERCIAL ONBOARDING WIZARD                   */}
+      {/* ========================================================================= */}
+      <CustomerOnboardingWizard
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        onSuccess={() => {
+          // If in standalone window, can trigger refresh
+        }}
+      />
     </div>
   );
 };

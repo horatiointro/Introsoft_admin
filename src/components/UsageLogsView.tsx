@@ -1,5 +1,5 @@
 import { InfoButton } from './InfoButton';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -18,7 +18,9 @@ import {
   Layers,
   Sparkles,
   X,
-  ArrowUpRight
+  ArrowUpRight,
+  ArrowUpDown,
+  MapPin
 } from 'lucide-react';
 import {
   AreaChart,
@@ -36,6 +38,27 @@ import {
   Legend
 } from 'recharts';
 import { AuditLog, UsageMetric, Application, AIProvider, AIModel } from '../types';
+import { apiFetch } from '../utils/apiFetch';
+
+const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
+
+interface DirectoryUser { id: string; email: string; first_name?: string; last_name?: string; tenant_id?: string | null; }
+interface LoginEvent { id: string; userId: string | null; email: string; tenantId: string | null; ipAddress: string | null; outcome: string; failureReason: string | null; timestamp: string | null; }
+
+function summarizeAuditEvent(log: AuditLog): string {
+  const action = String(log.action || log.localEvent?.route || log.capability || 'activity').replace(/[_./-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const actor = log.actorEmail || log.actorId || log.localEvent?.actor || 'A system process';
+  const outcome = log.outcome || (log.status === 'SUCCESS' || log.status === 'FALLBACK_SUCCESS' ? 'SUCCESS' : log.status === 'POLICY_BLOCKED' ? 'DENIED' : 'FAILURE');
+  const outcomeText = outcome === 'SUCCESS' ? 'completed successfully' : outcome === 'DENIED' ? 'was denied' : outcome === 'FAILURE' ? 'failed' : 'was recorded';
+  const resource = log.resourceType || log.resourceId;
+  return `${actor} ${outcomeText} ${action}${resource ? ` for ${resource}` : ''}${log.statusCode ? ` (HTTP ${log.statusCode})` : ''}.`;
+}
+
+function elapsedLabel(milliseconds: number): string {
+  if (milliseconds < 1000) return `${Math.max(0, milliseconds)} ms`;
+  if (milliseconds < 60_000) return `${(milliseconds / 1000).toFixed(1)} sec`;
+  return `${(milliseconds / 60_000).toFixed(1)} min`;
+}
 
 interface UsageLogsViewProps {
   auditLogs: AuditLog[];
@@ -63,7 +86,53 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
   const [logFilterApp, setLogFilterApp] = useState('all');
   const [logFilterStatus, setLogFilterStatus] = useState('all');
   const [searchLogQuery, setSearchLogQuery] = useState('');
+  const [logFilterActor, setLogFilterActor] = useState('all');
+  const [logSortOrder, setLogSortOrder] = useState<'latest' | 'oldest'>('latest');
   const [inspectingLog, setInspectingLog] = useState<AuditLog | null>(selectedLogToInspect || null);
+  const [directoryUsers, setDirectoryUsers] = useState<DirectoryUser[]>([]);
+  const [directoryError, setDirectoryError] = useState('');
+  const [loginEvents, setLoginEvents] = useState<LoginEvent[]>([]);
+  const [loginEventsLoading, setLoginEventsLoading] = useState(false);
+  const [loginEventsError, setLoginEventsError] = useState('');
+
+  useEffect(() => {
+    if (activeSubTab !== 'logs') return;
+    let active = true;
+    void apiFetch(`${API_BASE}/iam/users`).then(async response => {
+      if (!response.ok) throw new Error(response.status === 403 ? 'Your account cannot read the IAM user directory.' : 'The IAM user directory is unavailable.');
+      const value = await response.json();
+      if (active) {
+        setDirectoryUsers(Array.isArray(value) ? value.filter((user: any) => typeof user?.email === 'string' && user.email.trim()).map((user: any) => ({
+          id: String(user.id || user.email), email: String(user.email), first_name: user.first_name, last_name: user.last_name, tenant_id: user.tenant_id,
+        })) : []);
+        setDirectoryError('');
+      }
+    }).catch(error => { if (active) setDirectoryError(error instanceof Error ? error.message : 'The IAM user directory is unavailable.'); });
+    return () => { active = false; };
+  }, [activeSubTab]);
+
+  useEffect(() => {
+    if (activeSubTab !== 'logs' || logFilterActor === 'all') {
+      setLoginEvents([]);
+      setLoginEventsError('');
+      return;
+    }
+    let active = true;
+    setLoginEventsLoading(true);
+    setLoginEventsError('');
+    const query = new URLSearchParams({ email: logFilterActor, limit: '100' });
+    void apiFetch(`${API_BASE}/iam/login-events?${query.toString()}`).then(async response => {
+      const value = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(value?.error || 'Sign-in history is unavailable.');
+      if (active) setLoginEvents(Array.isArray(value) ? value : []);
+    }).catch(error => {
+      if (active) {
+        setLoginEvents([]);
+        setLoginEventsError(error instanceof Error ? error.message : 'Sign-in history is unavailable.');
+      }
+    }).finally(() => { if (active) setLoginEventsLoading(false); });
+    return () => { active = false; };
+  }, [activeSubTab, logFilterActor]);
 
   // Time chart data
   const hourlyData = [
@@ -101,15 +170,29 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
   const filteredLogs = auditLogs.filter(log => {
     const matchesApp = logFilterApp === 'all' || log.appId === logFilterApp;
     const matchesStatus = logFilterStatus === 'all' || log.status === logFilterStatus;
+    const matchesActor = logFilterActor === 'all' || [log.actorEmail, log.actorId, log.localEvent?.actor].some(value => String(value || '').toLowerCase() === logFilterActor.toLowerCase());
     const matchesSearch =
-      log.appName.toLowerCase().includes(searchLogQuery.toLowerCase()) ||
-      log.capability.toLowerCase().includes(searchLogQuery.toLowerCase()) ||
-      log.modelIdentifier.toLowerCase().includes(searchLogQuery.toLowerCase()) ||
+      String(log.appName || '').toLowerCase().includes(searchLogQuery.toLowerCase()) ||
+      String(log.capability || '').toLowerCase().includes(searchLogQuery.toLowerCase()) ||
+      String(log.modelIdentifier || '').toLowerCase().includes(searchLogQuery.toLowerCase()) ||
       (log.providerName && log.providerName.toLowerCase().includes(searchLogQuery.toLowerCase())) ||
       [log.actorEmail, log.actorId, log.tenantId, log.organizationId, log.requestId, log.testRunId, log.action, log.eventCategory, log.resourceType, log.resourceId, log.denialReason].some(value => String(value || '').toLowerCase().includes(searchLogQuery.toLowerCase())) ||
       (log.localEvent && `${log.localEvent.actor} ${log.localEvent.tenantId} ${log.localEvent.route} ${log.localEvent.detail}`.toLowerCase().includes(searchLogQuery.toLowerCase()));
-    return matchesApp && matchesStatus && matchesSearch;
+    return matchesApp && matchesStatus && matchesActor && matchesSearch;
   });
+
+  const sortedLogs = useMemo(() => [...filteredLogs].sort((left, right) => {
+    const difference = Date.parse(left.timestamp) - Date.parse(right.timestamp);
+    return (logSortOrder === 'latest' ? -1 : 1) * (Number.isFinite(difference) ? difference : 0);
+  }), [filteredLogs, logSortOrder]);
+
+  const inspectedRequestEvents = useMemo(() => {
+    if (!inspectingLog) return [] as AuditLog[];
+    const related = inspectingLog.requestId
+      ? auditLogs.filter(log => log.requestId === inspectingLog.requestId)
+      : [inspectingLog];
+    return related.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+  }, [auditLogs, inspectingLog]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -376,7 +459,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
             </div>
           )}
           {/* Filter Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded bg-[#141414] border border-[#222222] text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 p-3 rounded bg-[#141414] border border-[#222222] text-xs">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-[#666666] absolute left-3 top-2.5" />
               <input
@@ -418,7 +501,64 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                 <option value="ERROR">ERROR</option>
               </select>
             </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="text-[#888888] whitespace-nowrap font-mono text-[11px]">User:</span>
+              <select
+                value={logFilterActor}
+                onChange={e => setLogFilterActor(e.target.value)}
+                className="w-full min-w-0 px-2.5 py-1.5 rounded bg-[#0a0a0a] border border-[#222222] text-[#e5e5e5] focus:outline-none focus:border-blue-500 font-mono"
+                aria-label="Filter audit events by IAM user"
+              >
+                <option value="all">All IAM users</option>
+                {directoryUsers.map(user => <option key={user.id} value={user.email}>{user.email}</option>)}
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <ArrowUpDown className="w-3.5 h-3.5 text-[#666666]" />
+              <span className="text-[#888888] whitespace-nowrap font-mono text-[11px]">Order:</span>
+              <select
+                value={logSortOrder}
+                onChange={e => setLogSortOrder(e.target.value as 'latest' | 'oldest')}
+                className="w-full min-w-0 px-2.5 py-1.5 rounded bg-[#0a0a0a] border border-[#222222] text-[#e5e5e5] focus:outline-none focus:border-blue-500 font-mono"
+                aria-label="Audit event order"
+              >
+                <option value="latest">Latest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </div>
+            {directoryError && <div className="xl:col-span-5 text-[11px] text-amber-300">IAM user list unavailable: {directoryError}</div>}
           </div>
+
+          {logFilterActor !== 'all' && (
+            <section className="rounded bg-[#141414] border border-[#222222] overflow-hidden" aria-live="polite">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-[#222222]">
+                <div>
+                  <h3 className="text-xs font-semibold text-white flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-cyan-300" />Recent sign-ins · {logFilterActor}</h3>
+                  <p className="mt-1 text-[10px] text-[#777777]">Database login history, limited to the last five days and your authorized audit scope.</p>
+                </div>
+                <span className="text-[10px] text-[#777777]">{loginEventsLoading ? 'Loading…' : `${loginEvents.length} records`}</span>
+              </div>
+              {loginEventsError ? <p className="px-4 py-3 text-xs text-amber-300">{loginEventsError}</p> : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[650px] text-left text-xs font-mono">
+                    <thead className="text-[10px] text-[#666666] uppercase"><tr><th className="px-4 py-2.5">Time</th><th className="px-4 py-2.5">IP address</th><th className="px-4 py-2.5">Result</th><th className="px-4 py-2.5">Tenant</th><th className="px-4 py-2.5">Reason</th></tr></thead>
+                    <tbody className="divide-y divide-[#1a1a1a]">
+                      {loginEvents.map(event => <tr key={event.id}>
+                        <td className="px-4 py-2.5 text-[#bbbbbb] whitespace-nowrap">{event.timestamp ? new Date(event.timestamp).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-2.5 text-cyan-200 font-mono">{event.ipAddress || 'Not recorded'}</td>
+                        <td className={`px-4 py-2.5 ${event.outcome === 'SUCCESS' ? 'text-emerald-300' : 'text-amber-300'}`}>{event.outcome}</td>
+                        <td className="px-4 py-2.5 text-[#999999]">{event.tenantId || 'Platform / unknown'}</td>
+                        <td className="px-4 py-2.5 text-[#888888]">{event.failureReason || '—'}</td>
+                      </tr>)}
+                      {!loginEventsLoading && !loginEvents.length && <tr><td className="px-4 py-4 text-center text-[#777777]" colSpan={5}>No sign-in attempts for this account in the retained period.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Audit Logs Table */}
           <div className="bg-[#141414] border border-[#222222] rounded overflow-hidden">
@@ -430,6 +570,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                     <th className="py-3 px-4 font-semibold">ENVIRONMENT</th>
                     <th className="py-3 px-4 font-semibold">TEST RUN ID</th>
                     <th className="py-3 px-4 font-semibold">ACTOR</th>
+                    <th className="py-3 px-4 font-semibold">CLIENT IP</th>
                     <th className="py-3 px-4 font-semibold">CATEGORY / ACTION</th>
                     <th className="py-3 px-4 font-semibold">RESOURCE</th>
                     <th className="py-3 px-4 font-semibold">ORG / TENANT</th>
@@ -439,10 +580,11 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#1a1a1a]">
-                  {filteredLogs.map(log => (
+                  {sortedLogs.map(log => (
                     <tr
                       key={log.id}
                       onClick={() => setInspectingLog(log)}
+                      title={summarizeAuditEvent(log)}
                       className="hover:bg-[#1a1a1a] transition-colors cursor-pointer"
                     >
                       <td className="py-3 px-4 text-[11px] text-[#666666] whitespace-nowrap">
@@ -451,7 +593,8 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                       <td className="py-3 px-4 text-amber-200">{log.environment === 'local-test' ? 'TEST · LOCAL' : log.environment?.toUpperCase() || 'UNKNOWN'}</td>
                       <td className="py-3 px-4 text-[11px] text-amber-200">{log.testRunId || '—'}</td>
                       <td className="py-3 px-4 text-[#dddddd]">{log.actorEmail || log.actorId || 'System'}</td>
-                      <td className="py-3 px-4"><div className="text-blue-300">{log.eventCategory || 'APPLICATION_LOG'}</div><div className="text-[#aaaaaa]">{log.action || log.capability}</div></td>
+                      <td className="py-3 px-4 text-cyan-200">{log.clientIp || '—'}</td>
+                      <td className="py-3 px-4"><div className="text-blue-300">{log.eventCategory || 'APPLICATION_LOG'}</div><div className="text-[#aaaaaa]">{log.action || log.capability}</div><div className="mt-1 max-w-sm text-[10px] leading-4 text-[#727b8c]">{summarizeAuditEvent(log)}</div></td>
                       <td className="py-3 px-4 text-[#bbbbbb]">{[log.resourceType, log.resourceId].filter(Boolean).join(' · ') || '—'}</td>
                       <td className="py-3 px-4 text-[#bbbbbb]">{log.organizationId || log.tenantId || '—'}</td>
                       <td className="py-3 px-4">
@@ -484,7 +627,7 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                       </td>
                     </tr>
                   ))}
-                  {!filteredLogs.length && <tr><td className="px-4 py-8 text-center text-[#777777]" colSpan={10}>No persisted events match this view.</td></tr>}
+                  {!sortedLogs.length && <tr><td className="px-4 py-8 text-center text-[#777777]" colSpan={11}>No persisted events match this view.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -523,6 +666,10 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
 
             {inspectingLog.action || inspectingLog.localEvent ? (
               <div className="space-y-3 text-xs">
+                <div className="rounded border border-cyan-500/20 bg-cyan-500/[.06] p-3 text-cyan-50">
+                  <div className="text-[10px] uppercase tracking-wide text-cyan-200/70">In plain language</div>
+                  <p className="mt-1 leading-5">{summarizeAuditEvent(inspectingLog)}</p>
+                </div>
                 <div className="rounded border border-amber-500/30 bg-amber-500/10 p-3 text-amber-100">
                   {inspectingLog.environment === 'local-test' ? 'TEST · LOCAL E2E persisted event.' : `${inspectingLog.environment || 'Unknown'} persisted event.`} Sensitive request bodies and credentials are excluded.
                 </div>
@@ -531,7 +678,8 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                     ['Environment', inspectingLog.environment || 'Unknown'], ['Test Run ID', inspectingLog.testRunId || 'Not applicable'],
                     ['Actor', inspectingLog.actorEmail || inspectingLog.actorId || 'System'], ['Event category', inspectingLog.eventCategory || 'Unknown'],
                     ['Action', inspectingLog.action || inspectingLog.capability], ['Resource', [inspectingLog.resourceType, inspectingLog.resourceId].filter(Boolean).join(' / ') || '—'],
-                    ['Tenant / organization', inspectingLog.organizationId || inspectingLog.tenantId || 'None'], ['Request / correlation ID', inspectingLog.requestId || '—'],
+                    ['Tenant / organization', inspectingLog.organizationId || inspectingLog.tenantId || 'None'], ['Client IP', inspectingLog.clientIp || 'Not recorded for this event'],
+                    ['Request / correlation ID', inspectingLog.requestId || '—'],
                     ['Outcome / status', `${inspectingLog.outcome || inspectingLog.status} / ${inspectingLog.statusCode ?? '—'}`],
                     ['Required permission', inspectingLog.requiredPermission || '—'], ['Actual scope', inspectingLog.actualScope || '—'],
                     ['Denial reason', inspectingLog.denialReason || '—'], ['Detail', inspectingLog.localEvent?.detail || '—'],
@@ -542,9 +690,47 @@ export const UsageLogsView: React.FC<UsageLogsViewProps> = ({
                     </div>
                   ))}
                 </div>
+                <section className="rounded border border-[#222222] bg-[#0a0a0a] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-[10px] uppercase tracking-wide text-[#aeb9cc]">Request lifecycle · correlated events</h4>
+                    <span className="text-[10px] text-[#6e7788]">{inspectedRequestEvents.length} observed {inspectedRequestEvents.length === 1 ? 'event' : 'events'}</span>
+                  </div>
+                  <ol className="mt-3 space-y-2">
+                    {inspectedRequestEvents.map((event, index) => {
+                      const firstAt = Date.parse(inspectedRequestEvents[0]?.timestamp || event.timestamp);
+                      const eventAt = Date.parse(event.timestamp);
+                      const phase = inspectedRequestEvents.length === 1 ? 'Only observed step' : index === 0 ? 'First observed' : index === inspectedRequestEvents.length - 1 ? 'Last observed' : `Step ${index + 1}`;
+                      const elapsed = Number.isFinite(firstAt) && Number.isFinite(eventAt) ? elapsedLabel(eventAt - firstAt) : 'timing unavailable';
+                      return <li key={event.id} className="grid grid-cols-[auto_1fr_auto] items-start gap-3 rounded border border-white/5 bg-white/[.02] p-2.5">
+                        <span className={`mt-0.5 h-2 w-2 rounded-full ${event.outcome === 'SUCCESS' ? 'bg-emerald-400' : event.outcome === 'DENIED' ? 'bg-amber-400' : 'bg-rose-400'}`} />
+                        <div className="min-w-0"><div className="text-[#d7dce6]">{summarizeAuditEvent(event)}</div><div className="mt-1 text-[10px] text-[#707a8b]">{new Date(event.timestamp).toLocaleString()} · {phase}</div></div>
+                        <span className="whitespace-nowrap text-[10px] text-cyan-200">+{elapsed}</span>
+                      </li>;
+                    })}
+                  </ol>
+                  <p className="mt-2 text-[10px] leading-4 text-[#687183]">Events are grouped by request ID. “First” and “Last” describe the records currently retained, not proof that an entire business process began or finished.</p>
+                </section>
               </div>
             ) : (
             <>
+            <div className="rounded border border-cyan-500/20 bg-cyan-500/[.06] p-3 text-xs text-cyan-50">
+              <div className="text-[10px] uppercase tracking-wide text-cyan-200/70">In plain language</div>
+              <p className="mt-1 leading-5">{summarizeAuditEvent(inspectingLog)}</p>
+            </div>
+            {inspectingLog.clientIp && <div className="rounded border border-[#222222] bg-[#0a0a0a] p-3 text-xs"><span className="text-[10px] uppercase text-[#777777]">Client IP</span><div className="mt-1 font-mono text-cyan-200">{inspectingLog.clientIp}</div></div>}
+            <section className="rounded border border-[#222222] bg-[#0a0a0a] p-3">
+              <div className="flex items-center justify-between gap-2"><h4 className="text-[10px] uppercase tracking-wide text-[#aeb9cc]">Request lifecycle · correlated events</h4><span className="text-[10px] text-[#6e7788]">{inspectedRequestEvents.length} observed</span></div>
+              <ol className="mt-3 space-y-2">
+                {inspectedRequestEvents.map((event, index) => {
+                  const firstAt = Date.parse(inspectedRequestEvents[0]?.timestamp || event.timestamp);
+                  const eventAt = Date.parse(event.timestamp);
+                  const elapsed = Number.isFinite(firstAt) && Number.isFinite(eventAt) ? elapsedLabel(eventAt - firstAt) : 'timing unavailable';
+                  const phase = inspectedRequestEvents.length === 1 ? 'Only observed step' : index === 0 ? 'First observed' : index === inspectedRequestEvents.length - 1 ? 'Last observed' : `Step ${index + 1}`;
+                  return <li key={event.id} className="flex items-start justify-between gap-3 rounded border border-white/5 bg-white/[.02] p-2.5 text-xs"><span className="text-[#d7dce6]">{summarizeAuditEvent(event)}<small className="mt-1 block text-[10px] text-[#707a8b]">{new Date(event.timestamp).toLocaleString()} · {phase}</small></span><span className="whitespace-nowrap text-[10px] text-cyan-200">+{elapsed}</span></li>;
+                })}
+              </ol>
+              <p className="mt-2 text-[10px] leading-4 text-[#687183]">Correlation shows recorded events only; a single event does not prove that a full workflow began or completed.</p>
+            </section>
             {/* Status & Key Parameters */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               <div className="p-2.5 rounded bg-[#0a0a0a] border border-[#222222]">

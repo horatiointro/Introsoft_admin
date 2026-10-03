@@ -513,6 +513,21 @@ paths:
       summary: Admin-provision a tenant, owner, hierarchy node, application and optional key
       responses:
         '201': {description: Tenant provisioned}
+  /api/v1/iam/login-events:
+    get:
+      tags: [Tenants and IAM]
+      summary: Read recent sign-in history and client IPs
+      description: Requires audit.read and an authorized audit role. Results are limited to the caller's global or tenant audit scope and the preceding five days. Passwords, hashes, tokens, and user-agent strings are not returned.
+      security: [{BearerSession: []}]
+      parameters:
+        - {name: email, in: query, required: false, schema: {type: string, format: email}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses:
+        '200': {description: Recent sign-in attempts with identity, outcome, time and IP address}
+        '400': {description: Invalid email filter}
+        '401': {description: ALTIL session required}
+        '403': {description: Audit role, permission or tenant scope is unavailable}
+        '503': {description: Durable IAM database is unavailable}
   /api/v1/commercial/account-portal:
     get:
       tags: [Commercial foundation]
