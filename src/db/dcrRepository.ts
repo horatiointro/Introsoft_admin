@@ -1,4 +1,4 @@
-import { executeQuery } from './mariadb';
+import { executeQuery, isDatabaseConnected } from './mariadb';
 import {
   DcrTransformationRecord,
   DcrPolicyRule,
@@ -8,6 +8,25 @@ import {
   DcrTransformationStrategy
 } from '../types';
 import { TransformationKeyService } from '../utils/dcrKeyService';
+
+function readJsonValue<T>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (Buffer.isBuffer(value)) value = value.toString('utf8');
+  if (typeof value === 'object') return value as T;
+  if (typeof value !== 'string') return fallback;
+  try { return JSON.parse(value) as T; } catch { return fallback; }
+}
+
+function productionPersistenceRequired(): boolean {
+  return process.env.NODE_ENV?.trim().toLowerCase() === 'production';
+}
+
+function persistenceFailure(operation: string, error: unknown): never | void {
+  if (productionPersistenceRequired()) {
+    throw new Error(`DCR durable persistence unavailable during ${operation}.`);
+  }
+  console.warn(`[DcrRepository] ${operation} DB fallback:`, error instanceof Error ? error.name : 'UnknownError');
+}
 
 // Default seeded DCR policy rules
 const INITIAL_DCR_POLICIES: DcrPolicyRule[] = [
@@ -257,13 +276,20 @@ export const DcrRepository = {
           classification, data_type, original_value_ciphertext, original_value_hash,
           original_masked_preview, surrogate_value, transformation_strategy, scope,
           key_reference, semantic_constraints_json, status, reconstruction_count,
-          created_at, expires_at, last_reconstructed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          created_at, expires_at, last_reconstructed_at, transaction_id,
+          conversation_id, mapping_set_id, organization_id, environment_id,
+          policy_version, provider_restrictions_json, reconstruction_policy_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           status = VALUES(status),
           reconstruction_count = VALUES(reconstruction_count),
           last_reconstructed_at = VALUES(last_reconstructed_at),
-          expires_at = VALUES(expires_at)`,
+          expires_at = VALUES(expires_at),
+          transaction_id = VALUES(transaction_id), conversation_id = VALUES(conversation_id),
+          mapping_set_id = VALUES(mapping_set_id), organization_id = VALUES(organization_id),
+          environment_id = VALUES(environment_id), policy_version = VALUES(policy_version),
+          provider_restrictions_json = VALUES(provider_restrictions_json),
+          reconstruction_policy_json = VALUES(reconstruction_policy_json)`,
         [
           record.id,
           record.requestId,
@@ -285,12 +311,23 @@ export const DcrRepository = {
           record.reconstructionCount,
           record.createdAt.replace('T', ' ').slice(0, 19),
           record.expiresAt.replace('T', ' ').slice(0, 19),
-          record.lastReconstructedAt ? record.lastReconstructedAt.replace('T', ' ').slice(0, 19) : null
+          record.lastReconstructedAt ? record.lastReconstructedAt.replace('T', ' ').slice(0, 19) : null,
+          record.transactionId || record.requestId,
+          record.conversationId || null,
+          record.mappingSetId || null,
+          record.organizationId || null,
+          record.environmentId || null,
+          record.policyVersion || null,
+          record.providerRestrictions ? JSON.stringify(record.providerRestrictions) : null,
+          record.reconstructionPolicy ? JSON.stringify(record.reconstructionPolicy) : null
         ]
       );
     } catch (err: any) {
-      // Graceful fallback to memory store
-      console.warn('[DcrRepository] saveTransformationRecord DB fallback:', err.message);
+      if (productionPersistenceRequired()) {
+        const failedIndex = IN_MEMORY_TRANSFORMATION_RECORDS.findIndex(r => r.id === record.id);
+        if (failedIndex >= 0) IN_MEMORY_TRANSFORMATION_RECORDS.splice(failedIndex, 1);
+      }
+      persistenceFailure('saveTransformationRecord', err);
     }
 
     return record;
@@ -299,22 +336,26 @@ export const DcrRepository = {
   /**
    * Find an active transformation record matching surrogate value
    */
-  async findActiveSurrogate(
+async findActiveSurrogate(
     surrogate: string,
-    tenantId?: string,
+    tenantId: string,
     requestId?: string
   ): Promise<DcrTransformationRecord | undefined> {
-    // Check in-memory first for ultra-low latency (<0.5ms)
-    const record = IN_MEMORY_TRANSFORMATION_RECORDS.find(r => {
+    const scope = String(tenantId || '').trim();
+    if (!scope) throw new Error('DCR tenant scope is required to resolve a surrogate.');
+    const globalScope = scope === 'all';
+    const findInMemory = (): DcrTransformationRecord | undefined => IN_MEMORY_TRANSFORMATION_RECORDS.find(r => {
       const matchSurrogate = r.surrogateValue.toLowerCase() === surrogate.trim().toLowerCase() ||
                              r.surrogateValue === surrogate.trim();
-      const matchTenant = !tenantId || tenantId === 'all' || r.tenantId === tenantId;
+      const matchTenant = globalScope || r.tenantId === scope;
       const matchRequest = !requestId || r.scope !== 'REQUEST' || r.requestId === requestId;
       const isNotExpired = new Date(r.expiresAt).getTime() > Date.now();
       return matchSurrogate && matchTenant && matchRequest && isNotExpired && r.status !== 'REVOKED';
     });
 
-    if (record) return record;
+    // A connected database is authoritative. Synthetic in-memory records are
+    // only a local fallback when no durable database is available.
+    if (!isDatabaseConnected()) return findInMemory();
 
     try {
       const rows = await executeQuery<any>(
@@ -322,9 +363,9 @@ export const DcrRepository = {
          WHERE surrogate_value = ? 
          AND status != 'REVOKED' 
          AND expires_at > NOW() 
-         ${tenantId && tenantId !== 'all' ? 'AND tenant_id = ?' : ''} 
+         ${globalScope ? '' : 'AND tenant_id = ?'} 
          LIMIT 1`,
-        tenantId && tenantId !== 'all' ? [surrogate, tenantId] : [surrogate]
+        globalScope ? [surrogate] : [surrogate, scope]
       );
 
       if (rows && rows.length > 0) {
@@ -345,29 +386,45 @@ export const DcrRepository = {
           transformationStrategy: row.transformation_strategy as DcrTransformationStrategy,
           scope: row.scope,
           keyReference: row.key_reference,
-          semanticConstraints: row.semantic_constraints_json ? (typeof row.semantic_constraints_json === 'string' ? JSON.parse(row.semantic_constraints_json) : row.semantic_constraints_json) : undefined,
+          semanticConstraints: readJsonValue(row.semantic_constraints_json, undefined),
           status: row.status,
           reconstructionCount: row.reconstruction_count,
           createdAt: row.created_at,
           expiresAt: row.expires_at,
-          lastReconstructedAt: row.last_reconstructed_at
+          lastReconstructedAt: row.last_reconstructed_at,
+          transactionId: row.transaction_id || row.request_id,
+          conversationId: row.conversation_id || undefined,
+          mappingSetId: row.mapping_set_id || undefined,
+          organizationId: row.organization_id || undefined,
+          environmentId: row.environment_id || undefined,
+          policyVersion: row.policy_version || undefined,
+          providerRestrictions: readJsonValue(row.provider_restrictions_json, undefined),
+          reconstructionPolicy: readJsonValue(row.reconstruction_policy_json, undefined)
         };
       }
-    } catch (_) {}
+    } catch (error) {
+      persistenceFailure('findActiveSurrogate', error);
+      return undefined;
+    }
 
     return undefined;
   },
 
-  /**
-   * Retrieve all active transformation vault records
+/**
+   * Retrieve transformation vault records for one tenant.
+   * The tenant scope is mandatory: an omitted scope must never widen to every tenant.
    */
-  async getTransformationRecords(tenantId?: string, requestId?: string): Promise<DcrTransformationRecord[]> {
+  async getTransformationRecords(tenantId: string, requestId?: string): Promise<DcrTransformationRecord[]> {
+    const scope = String(tenantId || '').trim();
+    if (!scope) throw new Error('DCR tenant scope is required to read the transformation vault.');
+    const globalScope = scope === 'all';
+    const databaseAuthoritative = isDatabaseConnected();
     try {
       let query = `SELECT * FROM dcr_transformation_records WHERE 1=1`;
       const params: any[] = [];
-      if (tenantId && tenantId !== 'all') {
+      if (!globalScope) {
         query += ` AND tenant_id = ?`;
-        params.push(tenantId);
+        params.push(scope);
       }
       if (requestId) {
         query += ` AND request_id = ?`;
@@ -376,8 +433,8 @@ export const DcrRepository = {
       query += ` ORDER BY created_at DESC LIMIT 100`;
 
       const rows = await executeQuery<any>(query, params);
-      if (rows && rows.length > 0) {
-        return rows.map((row: any) => ({
+      if (databaseAuthoritative) {
+        return (rows || []).map((row: any) => ({
           id: row.id,
           requestId: row.request_id,
           tenantId: row.tenant_id,
@@ -393,18 +450,31 @@ export const DcrRepository = {
           transformationStrategy: row.transformation_strategy as DcrTransformationStrategy,
           scope: row.scope,
           keyReference: row.key_reference,
-          semanticConstraints: row.semantic_constraints_json ? (typeof row.semantic_constraints_json === 'string' ? JSON.parse(row.semantic_constraints_json) : row.semantic_constraints_json) : undefined,
+          semanticConstraints: readJsonValue(row.semantic_constraints_json, undefined),
           status: row.status,
           reconstructionCount: row.reconstruction_count,
           createdAt: row.created_at,
           expiresAt: row.expires_at,
-          lastReconstructedAt: row.last_reconstructed_at
+          lastReconstructedAt: row.last_reconstructed_at,
+          transactionId: row.transaction_id || row.request_id,
+          conversationId: row.conversation_id || undefined,
+          mappingSetId: row.mapping_set_id || undefined,
+          organizationId: row.organization_id || undefined,
+          environmentId: row.environment_id || undefined,
+          policyVersion: row.policy_version || undefined,
+          providerRestrictions: readJsonValue(row.provider_restrictions_json, undefined),
+          reconstructionPolicy: readJsonValue(row.reconstruction_policy_json, undefined)
         }));
       }
-    } catch (_) {}
+    } catch (error) {
+      persistenceFailure('getTransformationRecords', error);
+      if (databaseAuthoritative) return [];
+    }
 
-    return IN_MEMORY_TRANSFORMATION_RECORDS.filter(r => {
-      if (tenantId && tenantId !== 'all' && r.tenantId !== tenantId) return false;
+    if (databaseAuthoritative) return [];
+
+return IN_MEMORY_TRANSFORMATION_RECORDS.filter(r => {
+      if (!globalScope && r.tenantId !== scope) return false;
       if (requestId && r.requestId !== requestId) return false;
       return true;
     });
@@ -413,29 +483,38 @@ export const DcrRepository = {
   /**
    * Retrieve DCR policy rules
    */
-  async getDcrPolicyRules(tenantId?: string): Promise<DcrPolicyRule[]> {
+async getDcrPolicyRules(tenantId: string): Promise<DcrPolicyRule[]> {
+    const scope = String(tenantId || '').trim();
+    if (!scope) throw new Error('DCR tenant scope is required to read transformation policies.');
+    const globalScope = scope === 'all';
+    const databaseAuthoritative = isDatabaseConnected();
     try {
       const rows = await executeQuery<any>(
-        `SELECT * FROM dcr_policy_rules ${tenantId && tenantId !== 'all' ? 'WHERE tenant_id = ? OR tenant_id = "all"' : ''} ORDER BY priority ASC`,
-        tenantId && tenantId !== 'all' ? [tenantId] : []
+        `SELECT * FROM dcr_policy_rules ${globalScope ? '' : 'WHERE tenant_id = ? OR tenant_id = "all"'} ORDER BY priority ASC`,
+        globalScope ? [] : [scope]
       );
-      if (rows && rows.length > 0) {
-        return rows.map((row: any) => ({
+      if (databaseAuthoritative) {
+        return (rows || []).map((row: any) => ({
           id: row.id,
           tenantId: row.tenant_id,
           classification: row.classification as DataClassificationType,
           entityType: row.entity_type,
           strategy: row.strategy as DcrTransformationStrategy,
           scope: row.scope,
-          providerRestrictions: typeof row.provider_restrictions_json === 'string' ? JSON.parse(row.provider_restrictions_json) : (row.provider_restrictions_json || []),
-          permittedProviders: typeof row.permitted_providers_json === 'string' ? JSON.parse(row.permitted_providers_json) : (row.permitted_providers_json || []),
-          semanticConfig: row.semantic_config_json ? (typeof row.semantic_config_json === 'string' ? JSON.parse(row.semantic_config_json) : row.semantic_config_json) : undefined,
+          providerRestrictions: readJsonValue(row.provider_restrictions_json, []),
+          permittedProviders: readJsonValue(row.permitted_providers_json, []),
+          semanticConfig: readJsonValue(row.semantic_config_json, undefined),
           priority: row.priority,
           status: row.status,
           updatedAt: row.updated_at
         }));
       }
-    } catch (_) {}
+    } catch (error) {
+      persistenceFailure('getDcrPolicyRules', error);
+      if (databaseAuthoritative) return [];
+    }
+
+    if (databaseAuthoritative) return [];
 
     return INITIAL_DCR_POLICIES;
   },
@@ -445,6 +524,7 @@ export const DcrRepository = {
    */
   async saveDcrPolicyRule(rule: DcrPolicyRule): Promise<DcrPolicyRule> {
     const idx = INITIAL_DCR_POLICIES.findIndex(p => p.id === rule.id);
+    const previous = idx >= 0 ? INITIAL_DCR_POLICIES[idx] : undefined;
     if (idx >= 0) {
       INITIAL_DCR_POLICIES[idx] = rule;
     } else {
@@ -480,7 +560,16 @@ export const DcrRepository = {
           rule.status
         ]
       );
-    } catch (_) {}
+    } catch (error) {
+      if (productionPersistenceRequired()) {
+        if (idx >= 0 && previous) INITIAL_DCR_POLICIES[idx] = previous;
+        else {
+          const failedIndex = INITIAL_DCR_POLICIES.findIndex(item => item.id === rule.id);
+          if (failedIndex >= 0) INITIAL_DCR_POLICIES.splice(failedIndex, 1);
+        }
+      }
+      persistenceFailure('saveDcrPolicyRule', error);
+    }
 
     return rule;
   },
@@ -520,7 +609,13 @@ export const DcrRepository = {
           event.timestamp.replace('T', ' ').slice(0, 19)
         ]
       );
-    } catch (_) {}
+    } catch (error) {
+      if (productionPersistenceRequired()) {
+        const failedIndex = IN_MEMORY_PROVENANCE_LEDGER.findIndex(item => item.eventId === event.eventId);
+        if (failedIndex >= 0) IN_MEMORY_PROVENANCE_LEDGER.splice(failedIndex, 1);
+      }
+      persistenceFailure('appendProvenanceEvent', error);
+    }
 
     return event;
   },
@@ -528,13 +623,16 @@ export const DcrRepository = {
   /**
    * Get provenance ledger events
    */
-  async getProvenanceEvents(tenantId?: string, requestId?: string, limit: number = 50): Promise<DcrProvenanceEvent[]> {
+  async getProvenanceEvents(tenantId: string, requestId?: string, limit: number = 50): Promise<DcrProvenanceEvent[]> {
+    const scope = String(tenantId || '').trim();
+    if (!scope) throw new Error('DCR tenant scope is required to read the provenance ledger.');
+    const globalScope = scope === 'all';
     try {
       let query = `SELECT * FROM dcr_provenance_ledger WHERE 1=1`;
       const params: any[] = [];
-      if (tenantId && tenantId !== 'all') {
+      if (!globalScope) {
         query += ` AND tenant_id = ?`;
-        params.push(tenantId);
+        params.push(scope);
       }
       if (requestId) {
         query += ` AND request_id = ?`;
@@ -560,14 +658,14 @@ export const DcrRepository = {
           description: row.description,
           previousEventHash: row.previous_event_hash,
           eventHash: row.event_hash,
-          details: row.details_json ? (typeof row.details_json === 'string' ? JSON.parse(row.details_json) : row.details_json) : undefined,
+          details: readJsonValue(row.details_json, undefined),
           timestamp: row.created_at
         }));
       }
-    } catch (_) {}
+    } catch (error) { persistenceFailure('getProvenanceEvents', error); }
 
     return IN_MEMORY_PROVENANCE_LEDGER.filter(e => {
-      if (tenantId && tenantId !== 'all' && e.tenantId !== tenantId) return false;
+      if (!globalScope && e.tenantId !== scope) return false;
       if (requestId && e.requestId !== requestId) return false;
       return true;
     }).slice(0, limit);
@@ -597,7 +695,7 @@ export const DcrRepository = {
     }
     try {
       await executeQuery(`DELETE FROM dcr_transformation_records WHERE expires_at < NOW() AND scope = 'REQUEST'`);
-    } catch (_) {}
+    } catch (error) { persistenceFailure('cleanupExpired', error); }
     return beforeCount - IN_MEMORY_TRANSFORMATION_RECORDS.length;
   }
 };

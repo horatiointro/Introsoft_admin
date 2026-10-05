@@ -1,10 +1,17 @@
 import crypto from 'crypto';
+import { resolveProviderLocality, residencySatisfied, type ProviderLocalityInput } from '../security/providerLocality';
+
+export type PolicyLayer = 'LEGAL_BASELINE' | 'ALTIL_BASELINE' | 'CUSTOMER' | 'ORGANISATION' | 'APPLICATION' | 'ENVIRONMENT' | 'API_KEY' | 'REQUEST';
+export const POLICY_LAYER_ORDER: readonly PolicyLayer[] = ['LEGAL_BASELINE', 'ALTIL_BASELINE', 'CUSTOMER', 'ORGANISATION', 'APPLICATION', 'ENVIRONMENT', 'API_KEY', 'REQUEST'];
 
 export interface AI_Governance_Policy {
   policyCode: string;
   policyVersion: string;
   tenantId: string; // 'all' or specific tenant ID
   enabled: boolean;
+  layer?: PolicyLayer;
+  /** Optional application boundary. An empty list means all applications in the tenant scope. */
+  applicationIds?: string[];
   rules: {
     permittedProviders?: string[];      // e.g. ['p-gemini', 'p-ollama']
     permittedModels?: string[];         // e.g. ['m-gemini-25-flash', 'm-qwen36']
@@ -18,11 +25,36 @@ export interface AI_Governance_Policy {
     financialData?: 'allow' | 'block';
     maxTokenLimit?: number;             // maximum total tokens allowed per request
     maxSpendLimit?: number;             // maximum cost allowed per request
+    pemRequired?: boolean;
+    dcrRequired?: boolean;
+    responseDlpRequired?: boolean;
+    retentionPolicyId?: string;
+    crossMatterSharing?: 'ALLOW' | 'APPROVAL_REQUIRED' | 'DENY';
   };
+}
+
+export interface EffectivePolicyDecision {
+  policyIds: string[];
+  versions: string[];
+  rules: AI_Governance_Policy['rules'];
+  source: PolicyLayer[];
+  conflicts: string[];
+  decision: 'ALLOW' | 'DENY';
+  reason: string;
+}
+
+export interface PolicyConflict {
+  policyCode: string;
+  field: string;
+  requestedValue: string;
+  mandatoryValue: string;
+  reason: string;
+  remediation: string;
 }
 
 export interface PolicyDecisionEvidence {
   id: string;
+  transactionId?: string;
   policyCode: string;
   policyVersion: string;
   tenantId: string;
@@ -80,13 +112,117 @@ const activePolicies: AI_Governance_Policy[] = [
 
 // In-memory immutable policy decision logs
 const policyEvidenceLedger: PolicyDecisionEvidence[] = [];
+let policyEvidenceSink: ((evidence: PolicyDecisionEvidence) => void | Promise<void>) | undefined;
+const applicationPolicyCodes = new Set<string>();
+
+/** Configure the durable evidence boundary without coupling policy evaluation to a database. */
+export function configurePolicyEvidenceSink(sink: ((evidence: PolicyDecisionEvidence) => void | Promise<void>) | undefined): void {
+  policyEvidenceSink = sink;
+}
+
+function publishPolicyEvidence(evidence: PolicyDecisionEvidence): void {
+  try { void policyEvidenceSink?.(evidence); } catch { /* The in-memory decision remains available to the caller. */ }
+}
 
 export class PolicyEngine {
+  /**
+   * Reject a lower-layer policy that would explicitly weaken a mandatory
+   * legal/security baseline. Tightening controls remains valid and is merged
+   * monotonically by resolveEffectivePolicy().
+   */
+  public static findPolicyConflicts(candidate: AI_Governance_Policy, existingPolicies: readonly AI_Governance_Policy[]): PolicyConflict[] {
+    if (!candidate.enabled || candidate.layer === 'LEGAL_BASELINE' || candidate.layer === 'ALTIL_BASELINE') return [];
+    const baselinePolicies = existingPolicies.filter(policy =>
+      policy.enabled && policy.tenantId === 'all' &&
+      (policy.layer === 'LEGAL_BASELINE' || policy.layer === 'ALTIL_BASELINE') &&
+      policy.policyCode !== candidate.policyCode,
+    );
+    if (!baselinePolicies.length) return [];
+    const mandatory = this.resolveEffectivePolicy({ policies: baselinePolicies, tenantId: 'any', appId: 'all' }).rules;
+    const conflicts: PolicyConflict[] = [];
+    const add = (field: string, requestedValue: string, mandatoryValue: string, reason: string, remediation: string) => conflicts.push({ policyCode: candidate.policyCode, field, requestedValue, mandatoryValue, reason, remediation });
+    if (mandatory.piiHandling === 'block' && candidate.rules.piiHandling !== undefined && candidate.rules.piiHandling !== 'block') {
+      add('piiHandling', candidate.rules.piiHandling, 'block', 'The candidate policy would permit raw personally identifiable information where the mandatory baseline blocks it.', 'Keep PII handling at block or submit a reviewed baseline amendment.');
+    } else if (mandatory.piiHandling === 'redact' && candidate.rules.piiHandling === 'none') {
+      add('piiHandling', 'none', 'redact', 'The candidate policy would disable mandatory PII redaction.', 'Keep PII handling at redact or stronger.');
+    }
+    if (mandatory.financialData === 'block' && candidate.rules.financialData === 'allow') {
+      add('financialData', 'allow', 'block', 'The candidate policy would permit unprotected financial data against the mandatory baseline.', 'Keep financial-data handling at block or submit a reviewed baseline amendment.');
+    }
+    if (mandatory.phiHandling === 'block' && candidate.rules.phiHandling === 'allow') {
+      add('phiHandling', 'allow', 'block', 'The candidate policy would permit protected health information against the mandatory baseline.', 'Keep PHI handling at block or submit a reviewed baseline amendment.');
+    }
+    return conflicts;
+  }
+
+  /** Resolve policy layers from mandatory baseline to request-specific restrictions. */
+  public static resolveEffectivePolicy(input: {
+    policies: AI_Governance_Policy[];
+    tenantId?: string;
+    appId?: string;
+  }): EffectivePolicyDecision {
+    const applicable = input.policies
+      .filter(policy => policy.enabled && (policy.tenantId === 'all' || policy.tenantId === input.tenantId) && (!policy.applicationIds?.length || (Boolean(input.appId) && (policy.applicationIds.includes('all') || policy.applicationIds.includes(input.appId!)))))
+      .sort((a, b) => POLICY_LAYER_ORDER.indexOf(a.layer || 'CUSTOMER') - POLICY_LAYER_ORDER.indexOf(b.layer || 'CUSTOMER'));
+    const conflicts: string[] = [];
+    const rules: AI_Governance_Policy['rules'] = {};
+    const policyIds: string[] = [];
+    const versions: string[] = [];
+    const source: PolicyLayer[] = [];
+
+    for (const policy of applicable) {
+      policyIds.push(policy.policyCode);
+      versions.push(policy.policyVersion);
+      source.push(policy.layer || 'CUSTOMER');
+      const incoming = policy.rules;
+      if (incoming.permittedProviders) rules.permittedProviders = rules.permittedProviders ? rules.permittedProviders.filter(value => incoming.permittedProviders!.includes(value)) : [...incoming.permittedProviders];
+      if (incoming.permittedModels) rules.permittedModels = rules.permittedModels ? rules.permittedModels.filter(value => incoming.permittedModels!.includes(value)) : [...incoming.permittedModels];
+      if (incoming.permittedCapabilities) rules.permittedCapabilities = rules.permittedCapabilities ? rules.permittedCapabilities.filter(value => incoming.permittedCapabilities!.includes(value)) : [...incoming.permittedCapabilities];
+      if (incoming.prohibitedCapabilities) rules.prohibitedCapabilities = [...new Set([...(rules.prohibitedCapabilities || []), ...incoming.prohibitedCapabilities])];
+      if (incoming.localModelOnly) rules.localModelOnly = true;
+      if (incoming.externalProviderBlock) rules.externalProviderBlock = true;
+      if (incoming.dataResidency) rules.dataResidency = [...new Set([...(rules.dataResidency || []), ...incoming.dataResidency])];
+      if (incoming.piiHandling === 'block' || (incoming.piiHandling === 'redact' && rules.piiHandling !== 'block')) rules.piiHandling = incoming.piiHandling;
+      if (incoming.phiHandling === 'block' || (incoming.phiHandling === 'allow' && rules.phiHandling === undefined)) rules.phiHandling = incoming.phiHandling;
+      if (incoming.financialData === 'block' || (incoming.financialData === 'allow' && rules.financialData === undefined)) rules.financialData = incoming.financialData;
+      if (incoming.maxTokenLimit !== undefined) rules.maxTokenLimit = rules.maxTokenLimit === undefined ? incoming.maxTokenLimit : Math.min(rules.maxTokenLimit, incoming.maxTokenLimit);
+      if (incoming.maxSpendLimit !== undefined) rules.maxSpendLimit = rules.maxSpendLimit === undefined ? incoming.maxSpendLimit : Math.min(rules.maxSpendLimit, incoming.maxSpendLimit);
+      if (incoming.pemRequired) rules.pemRequired = true;
+      if (incoming.dcrRequired) rules.dcrRequired = true;
+      if (incoming.responseDlpRequired) rules.responseDlpRequired = true;
+      if (incoming.retentionPolicyId) rules.retentionPolicyId = incoming.retentionPolicyId;
+      if (incoming.crossMatterSharing === 'DENY' || (incoming.crossMatterSharing === 'APPROVAL_REQUIRED' && rules.crossMatterSharing !== 'DENY')) rules.crossMatterSharing = incoming.crossMatterSharing;
+    }
+    return {
+      policyIds,
+      versions,
+      rules,
+      source,
+      conflicts,
+      decision: conflicts.length ? 'DENY' : 'ALLOW',
+      reason: conflicts.length ? conflicts.join(' ') : 'Effective policy resolved with monotonic restrictions.'
+    };
+  }
   public static getPolicies(tenantId?: string): AI_Governance_Policy[] {
     if (!tenantId || tenantId === 'all') {
       return activePolicies;
     }
     return activePolicies.filter(p => p.tenantId === 'all' || p.tenantId === tenantId);
+  }
+
+  /** Replace only the application-managed policies while retaining mandatory ALTIL defaults. */
+  public static replaceApplicationPolicies(policies: AI_Governance_Policy[]): void {
+    for (const policyCode of applicationPolicyCodes) {
+      const index = activePolicies.findIndex(policy => policy.policyCode === policyCode);
+      if (index >= 0) activePolicies.splice(index, 1);
+    }
+    applicationPolicyCodes.clear();
+    for (const policy of policies) {
+      const existingIndex = activePolicies.findIndex(candidate => candidate.policyCode === policy.policyCode);
+      if (existingIndex >= 0) activePolicies[existingIndex] = policy;
+      else activePolicies.push(policy);
+      applicationPolicyCodes.add(policy.policyCode);
+    }
   }
 
   public static getEvidence(tenantId?: string): PolicyDecisionEvidence[] {
@@ -117,6 +253,7 @@ export class PolicyEngine {
    * Returns a decision (ALLOW / DENY / REDACT / BLOCK / REQUIRE_APPROVAL).
    */
   public static evaluate(request: {
+    transactionId?: string;
     tenantId: string | null;
     appId: string;
     userOrKeyPrefix: string;
@@ -125,15 +262,46 @@ export class PolicyEngine {
     providerType: string;
     modelId: string;
     prompt: string;
+    /** Deployment metadata for the selected provider; locality is resolved from this, not from the vendor type. */
+    providerLocality?: ProviderLocalityInput;
   }): {
     decision: 'ALLOW' | 'DENY' | 'REDACT' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT' | 'BLOCK';
     reason: string;
     policyCode: string;
     policyVersion: string;
     sanitizedPrompt?: string;
+    providerLocality?: ReturnType<typeof resolveProviderLocality>;
   } {
-    const tenantId = request.tenantId || 'global';
-    const applicable = activePolicies.filter(p => p.enabled && (p.tenantId === 'all' || p.tenantId === tenantId));
+const tenantId = request.tenantId || 'global';
+    const locality = resolveProviderLocality({
+      providerId: request.providerId,
+      providerType: request.providerType,
+      endpoint: request.providerLocality?.endpoint,
+      onPremAttested: request.providerLocality?.onPremAttested,
+      processingJurisdictions: request.providerLocality?.processingJurisdictions,
+    });
+    const applicable = activePolicies
+      .filter(p => p.enabled && (p.tenantId === 'all' || p.tenantId === tenantId) && (!p.applicationIds?.length || p.applicationIds.includes('all') || p.applicationIds.includes(request.appId)))
+      .sort((a, b) => POLICY_LAYER_ORDER.indexOf(a.layer || 'CUSTOMER') - POLICY_LAYER_ORDER.indexOf(b.layer || 'CUSTOMER'));
+    const effective = this.resolveEffectivePolicy({ policies: activePolicies, tenantId, appId: request.appId });
+    if (effective.decision === 'DENY') {
+      const selected = applicable[applicable.length - 1] || activePolicies[0];
+      const denied = this.logDecision(selected, tenantId, request, 'BLOCK', effective.reason);
+      return { decision: 'BLOCK', reason: denied.reason, policyCode: selected.policyCode, policyVersion: selected.policyVersion, providerLocality: locality };
+    }
+
+    const estimatedPromptTokens = Math.ceil(request.prompt.length / 4);
+    if (effective.rules.maxTokenLimit !== undefined && estimatedPromptTokens > effective.rules.maxTokenLimit) {
+      const selected = applicable[applicable.length - 1] || activePolicies[0];
+      const denied = this.logDecision(
+        selected,
+        tenantId,
+        request,
+        'BLOCK',
+        `Prompt exceeds the effective maximum token limit of ${effective.rules.maxTokenLimit}.`,
+      );
+      return { decision: 'BLOCK', reason: denied.reason, policyCode: selected.policyCode, policyVersion: selected.policyVersion };
+    }
 
     let sanitized = request.prompt;
     let didRedact = false;
@@ -154,15 +322,21 @@ export class PolicyEngine {
       }
 
       // 3. Local-model-only check
-      if (rules.localModelOnly && request.providerType !== 'ollama') {
-        const dec = this.logDecision(policy, tenantId, request, 'BLOCK', `SaaS cloud provider [${request.providerType}] blocked: policy enforces local-model-only on-prem execution.`);
-        return { decision: 'BLOCK', reason: dec.reason, policyCode: policy.policyCode, policyVersion: policy.policyVersion };
+      if (rules.localModelOnly && !locality.isLocalExecution) {
+        const dec = this.logDecision(policy, tenantId, request, 'BLOCK', `Provider [${request.providerId}] blocked: policy enforces local-model-only execution and this deployment is ${locality.locality}. ${locality.basis}`);
+        return { decision: 'BLOCK', reason: dec.reason, policyCode: policy.policyCode, policyVersion: policy.policyVersion, providerLocality: locality };
       }
 
       // 4. External cloud provider block check
-      if (rules.externalProviderBlock && request.providerType !== 'ollama') {
-        const dec = this.logDecision(policy, tenantId, request, 'BLOCK', `External SaaS cloud provider [${request.providerType}] is blocked by policy rules.`);
-        return { decision: 'BLOCK', reason: dec.reason, policyCode: policy.policyCode, policyVersion: policy.policyVersion };
+      if (rules.externalProviderBlock && locality.isExternalCloud) {
+        const dec = this.logDecision(policy, tenantId, request, 'BLOCK', `External cloud provider [${request.providerId}] is blocked by policy rules. ${locality.basis}`);
+        return { decision: 'BLOCK', reason: dec.reason, policyCode: policy.policyCode, policyVersion: policy.policyVersion, providerLocality: locality };
+      }
+
+      // 4a. Declared data-residency allow-list check
+      if (rules.dataResidency?.length && !residencySatisfied(rules.dataResidency, locality.declaredRegions)) {
+        const dec = this.logDecision(policy, tenantId, request, 'BLOCK', `Provider [${request.providerId}] does not satisfy the residency requirement [${rules.dataResidency.join(', ')}]. ${locality.basis}`);
+        return { decision: 'BLOCK', reason: dec.reason, policyCode: policy.policyCode, policyVersion: policy.policyVersion, providerLocality: locality };
       }
 
       // 5. Permitted Providers allowlist
@@ -220,20 +394,22 @@ export class PolicyEngine {
       reason,
       policyCode: selectedPolicy.policyCode,
       policyVersion: selectedPolicy.policyVersion,
-      sanitizedPrompt: sanitized
+      sanitizedPrompt: sanitized,
+      providerLocality: locality
     };
   }
 
   private static logDecision(
     policy: AI_Governance_Policy,
     tenantId: string,
-    req: { appId: string; userOrKeyPrefix: string; capability: string; providerId: string; modelId: string },
+    req: { transactionId?: string; appId: string; userOrKeyPrefix: string; capability: string; providerId: string; modelId: string },
     decision: 'ALLOW' | 'DENY' | 'REDACT' | 'REQUIRE_APPROVAL' | 'RATE_LIMIT' | 'BLOCK',
     reason: string
   ): PolicyDecisionEvidence {
     const id = 'ev-' + crypto.randomBytes(8).toString('hex');
     const evidence: PolicyDecisionEvidence = {
       id,
+      transactionId: req.transactionId,
       policyCode: policy.policyCode,
       policyVersion: policy.policyVersion,
       tenantId,
@@ -247,6 +423,7 @@ export class PolicyEngine {
       timestamp: new Date().toISOString()
     };
     policyEvidenceLedger.unshift(evidence);
+    publishPolicyEvidence(evidence);
     return evidence;
   }
 
@@ -261,8 +438,9 @@ export class PolicyEngine {
     ruleApplied: string;
     details: string;
   }): void {
-    policyEvidenceLedger.unshift({
+    const record: PolicyDecisionEvidence = {
       id: evidence.requestId,
+      transactionId: evidence.requestId,
       policyCode: evidence.ruleApplied,
       policyVersion: '1.0.0',
       tenantId: evidence.tenantId,
@@ -274,6 +452,8 @@ export class PolicyEngine {
       decision: evidence.decision,
       reason: evidence.details,
       timestamp: evidence.timestamp
-    });
+    };
+    policyEvidenceLedger.unshift(record);
+    publishPolicyEvidence(record);
   }
 }

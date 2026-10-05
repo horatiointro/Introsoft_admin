@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import {
   requireAuthentication,
   requireRole,
@@ -8,6 +9,7 @@ import { DcrEngine } from '../utils/dcrEngine';
 import { DcrRepository } from '../db/dcrRepository';
 import { TransformationKeyService } from '../utils/dcrKeyService';
 import { resolveAuthorizedTenantTarget } from '../security/tenantTarget';
+import { pemServiceForRuntime, resolveCommercialCustomerForTenant } from '../pem/runtime';
 
 export const dcrRouter = express.Router();
 
@@ -48,10 +50,14 @@ dcrRouter.post(
 
       const activeTenant = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: tenantId });
       if (!activeTenant) return res.status(403).json({ error: 'DCR tenant is outside the authenticated scope.' });
+      const commercialCustomerId = await resolveCommercialCustomerForTenant(activeTenant);
       const result = await DcrEngine.cloakPayload(text, {
         tenantId: activeTenant,
+        customerId: commercialCustomerId,
+        transactionId: req.header('x-request-id') || undefined,
         forcedStrategy: strategy,
-        scope: scope || 'CONVERSATION'
+        scope: scope || 'CONVERSATION',
+        pemResolver: commercialCustomerId ? pemServiceForRuntime() : undefined
       });
 
       res.json({
@@ -74,6 +80,7 @@ dcrRouter.post(
 dcrRouter.post(
   '/reconstruct',
   requireAuthentication,
+  requireRole(['SUPER_ADMIN', 'SECURITY_ADMIN', 'COMPLIANCE_OFFICER']),
   async (req: AuthenticatedRequest, res) => {
     try {
       const { responseText, requestId, tenantId } = req.body;
@@ -85,7 +92,8 @@ dcrRouter.post(
       if (!activeTenant) return res.status(403).json({ error: 'DCR tenant is outside the authenticated scope.' });
       const result = await DcrEngine.reconstructResponse(responseText, {
         tenantId: activeTenant,
-        requestId
+        requestId,
+        canReconstruct: record => record.tenantId === activeTenant && record.requestId === requestId
       });
 
       res.json({
@@ -116,10 +124,14 @@ dcrRouter.post(
 
       const activeTenant = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: tenantId });
       if (!activeTenant) return res.status(403).json({ error: 'DCR tenant is outside the authenticated scope.' });
+      const commercialCustomerId = await resolveCommercialCustomerForTenant(activeTenant);
       const result = await DcrEngine.runFullPipeline(prompt, {
         tenantId: activeTenant,
+        customerId: commercialCustomerId,
+        transactionId: req.header('x-request-id') || undefined,
         preferredStrategy,
-        simulatedAiResponse
+        simulatedAiResponse,
+        pemResolver: commercialCustomerId ? pemServiceForRuntime() : undefined
       });
 
       res.json(result);
@@ -164,8 +176,10 @@ dcrRouter.post(
         return res.status(400).json({ error: 'Record ID is required' });
       }
 
-      const isGlobal = req.user?.authorization?.grants.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL') === true;
-      const records = await DcrRepository.getTransformationRecords(isGlobal ? 'all' : req.user?.tenantId || undefined);
+      const tenantFilter = resolveAuthorizedTenantTarget({ context: req.user?.authorization, actorTenantId: req.user?.tenantId, requestedTenantId: req.body?.tenantId as string | undefined, allowGlobalList: true });
+      if (!tenantFilter) return res.status(403).json({ error: 'DCR tenant scope is required.' });
+
+      const records = await DcrRepository.getTransformationRecords(tenantFilter);
       const record = records.find(r => r.id === recordId);
       if (!record) {
         return res.status(404).json({ error: 'Transformation record not found in vault' });
@@ -181,8 +195,8 @@ dcrRouter.post(
         actor: req.user?.email || 'DPO'
       });
       await DcrRepository.appendProvenanceEvent({
-        eventId: `EVT-DCR-DPO-${Date.now()}`,
-        eventType: 'KEY_ROTATED', // or vault inspection
+        eventId: `EVT-DCR-DPO-${randomUUID()}`,
+        eventType: 'VAULT_REVEAL',
         requestId: record.requestId,
         tenantId: record.tenantId,
         classification: record.classification,

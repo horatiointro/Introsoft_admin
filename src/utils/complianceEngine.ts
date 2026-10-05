@@ -5,6 +5,7 @@ import {
   RegulatoryViolation,
   AIProvider
 } from '../types';
+import { resolveProviderLocality } from '../security/providerLocality';
 
 /**
  * Validates 13-digit South African ID number using the Luhn checksum algorithm
@@ -328,16 +329,25 @@ export function scanAndSanitizePrompt(
   let crossBorderTransferFlag: ComplianceScanResult['crossBorderTransferFlag'];
 
   if (options.targetProvider) {
-    const isLocalOrOnPrem = options.targetProvider.type === 'ollama' || options.targetProvider.endpoint.includes('192.168.') || options.targetProvider.endpoint.includes('internal');
-    const isAdequate = isLocalOrOnPrem || options.targetProvider.type === 'gemini'; // Local is sovereign
+    const targetLocality = resolveProviderLocality({
+      providerId: options.targetProvider.id,
+      providerType: options.targetProvider.type,
+      endpoint: options.targetProvider.endpoint,
+      onPremAttested: options.targetProvider.onPremAttested,
+      processingJurisdictions: options.targetProvider.processingJurisdictions,
+    });
 
-    if (popia.enforceSection72CrossBorder && detectedCategories.size > 0 && !isLocalOrOnPrem) {
+    if (popia.enforceSection72CrossBorder && targetLocality.isExternalCloud && detectedCategories.size > 0) {
       crossBorderTransferFlag = {
         sourceJurisdiction: 'South Africa (POPIA Scope)',
         destinationProvider: options.targetProvider.name,
-        destinationJurisdiction: 'United States / Offshore Cloud Node',
-        isAdequate,
-        warning: 'Trans-border transfer of personal information requires POPIA Section 72(1) compliance (adequate protection or consent).'
+        destinationJurisdiction: targetLocality.declaredRegions.length
+          ? targetLocality.declaredRegions.join(', ')
+          : `Undeclared (${targetLocality.locality})`,
+        isAdequate: targetLocality.jurisdictionAdequate,
+        warning: targetLocality.jurisdictionAdequate
+          ? 'Trans-border transfer to a declared jurisdiction with a recognised adequacy or transfer basis. Retain the contractual safeguards evidence.'
+          : 'Trans-border transfer of personal information requires POPIA Section 72(1) compliance (adequate protection or consent). This destination has no declared adequate processing jurisdiction.'
       };
     }
   }
@@ -369,6 +379,13 @@ export function scanAndSanitizePrompt(
   }
 
   return {
+    providerLocality: options.targetProvider ? resolveProviderLocality({
+      providerId: options.targetProvider.id,
+      providerType: options.targetProvider.type,
+      endpoint: options.targetProvider.endpoint,
+      onPremAttested: options.targetProvider.onPremAttested,
+      processingJurisdictions: options.targetProvider.processingJurisdictions,
+    }) : undefined,
     passed,
     riskScore,
     actionTaken,

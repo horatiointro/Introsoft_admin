@@ -11,6 +11,8 @@ export type ProviderType =
   | 'openai_compatible'
   | 'custom';
 
+import type { ProviderLocalityFacts } from './security/providerLocality';
+
 export type DataProvenanceType = 'LIVE' | 'CALCULATED' | 'DERIVED' | 'DEMO' | 'FALLBACK';
 
 export interface ProvenanceMetadata {
@@ -43,8 +45,12 @@ export interface AIProvider {
   customHeaders?: Record<string, string>;
   enabled: boolean;
   status: HealthStatus;
-  executionState?: 'LIVE' | 'CONFIGURED-BUT-NOT-VERIFIED' | 'FALLBACK' | 'UNAVAILABLE';
+  executionState?: 'LIVE' | 'CONFIGURED-BUT-VERIFIED' | 'CONFIGURED-BUT-NOT-VERIFIED' | 'FALLBACK' | 'UNAVAILABLE';
   provenance?: DataProvenanceType;
+  /** Operator attestation that this endpoint runs on-premises or otherwise inside an ALTIL-controlled boundary. */
+  onPremAttested?: boolean;
+  /** Jurisdictions this deployment actually processes in. Locality enforcement fails closed when absent. */
+  processingJurisdictions?: string[];
   latencyMs: number;
   p95LatencyMs?: number;
   uptimePercent?: number;
@@ -313,6 +319,8 @@ export interface Application {
   description: string;
   status: ApplicationStatus;
   environment: 'production' | 'staging' | 'development';
+  /** Optional persistent environment binding; legacy records continue to use environment. */
+  environmentId?: string;
   allowedCapabilities: string[];
   rateLimitRpm: number;
   quotaMonthlyRequests: number;
@@ -347,6 +355,34 @@ export interface ApiKey {
   billingMode?: 'included' | 'metered' | 'prepaid';
   monthlyRequestLimit?: number | null;
   monthlySpendLimitUsd?: number | null;
+  /** Optional immutable scope bindings populated by a persistence adapter when available. */
+  organizationId?: string;
+  environmentId?: string;
+  productId?: string;
+  licenseId?: string;
+  policyId?: string;
+  providerRestrictions?: string[];
+  modelRestrictions?: string[];
+  classificationRestrictions?: string[];
+  validFrom?: string | null;
+  replacementOf?: string | null;
+  compromisedAt?: string | null;
+  archivedAt?: string | null;
+}
+
+export type EnvironmentStatus = 'active' | 'suspended' | 'retired';
+
+export interface Environment {
+  id: string;
+  customerId: string;
+  applicationId?: string | null;
+  code: string;
+  name: string;
+  status: EnvironmentStatus;
+  createdAt: string;
+  updatedAt: string;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
 }
 
 export type FallbackTrigger = 'on_error' | 'on_timeout' | 'on_rate_limit';
@@ -431,6 +467,8 @@ export interface RegulatoryViolation {
 }
 
 export interface ComplianceScanResult {
+  /** Deployment locality that was actually evaluated for this scan. */
+  providerLocality?: ProviderLocalityFacts;
   passed: boolean;
   riskScore: number; // 0 to 100
   actionTaken: 'PASSED' | 'REDACTED_FORWARDED' | 'BLOCKED' | 'FLAGGED_FOR_REVIEW';
@@ -1606,6 +1644,16 @@ export interface DcrTransformationRecord {
   createdAt: string;
   expiresAt: string;
   lastReconstructedAt?: string;
+  pemEntityId?: string;
+  pemPseudonymId?: string;
+  transactionId?: string;
+  conversationId?: string;
+  mappingSetId?: string;
+  organizationId?: string;
+  environmentId?: string;
+  policyVersion?: string;
+  providerRestrictions?: string[];
+  reconstructionPolicy?: Record<string, unknown>;
 }
 
 export interface DcrPolicyRule {
@@ -1643,7 +1691,18 @@ export type DcrEventType =
   | 'VALUE_RECONSTRUCTED'
   | 'RECONSTRUCTION_BLOCKED'
   | 'TRANSFORMATION_EXPIRED'
-  | 'KEY_ROTATED';
+  | 'RECONSTRUCTION'
+  | 'VAULT_READ'
+  | 'VAULT_REVEAL'
+  | 'KEY_CREATED'
+  | 'KEY_ROTATED'
+  | 'KEY_REVOKED'
+  | 'BREAK_GLASS_REIDENTIFICATION'
+  | 'PEM_ENTITY_CREATED'
+  | 'PEM_ENTITY_MATCHED'
+  | 'PEM_PSEUDONYM_COMPROMISED'
+  | 'PEM_PSEUDONYM_ROTATED'
+  | 'PEM_REIDENTIFICATION_ATTEMPT';
 
 export interface DcrProvenanceEvent {
   eventId: string;
@@ -1667,12 +1726,17 @@ export interface DcrProvenanceEvent {
 export interface DcrVaultKeyMetadata {
   keyId: string;
   tenantId: string;
+  organizationId?: string;
+  applicationId?: string;
+  environmentId?: string;
+  purpose?: string;
   algorithm: 'AES-256-GCM' | 'CHACHA20-POLY1305';
   version: number;
-  status: 'ACTIVE' | 'ROTATED' | 'REVOKED';
+  status: 'ACTIVE' | 'ROTATED' | 'REVOKED' | 'RETIRED';
   createdAt: string;
   expiresAt?: string;
-  activeTransformationsCount: number;
+  predecessorKeyId?: string;
+  activeTransformationsCount?: number;
 }
 
 export interface DcrPipelineResult {

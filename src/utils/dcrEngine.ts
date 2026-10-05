@@ -1,3 +1,4 @@
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   DcrClassificationResult,
   DcrTransformationRecord,
@@ -10,6 +11,8 @@ import {
 } from '../types';
 import { TransformationKeyService } from './dcrKeyService';
 import { DcrRepository } from '../db/dcrRepository';
+import type { PemResolver } from '../pem/types';
+import { generateOpaquePseudonym } from '../pem/pseudonym';
 
 // Synthetic Pools for Semantic Pseudonymization & Cloaking
 const SYNTHETIC_FIRST_NAMES = ['David', 'Emily', 'Marcus', 'Sophia', 'James', 'Elena', 'Michael', 'Chloe', 'Daniel', 'Amara', 'Liam', 'Zuri'];
@@ -50,7 +53,7 @@ export const DcrEngine = {
     let match;
     while ((match = saIdRegex.exec(text)) !== null) {
       findings.push({
-        id: `cls-said-${Date.now()}-${findings.length}`,
+        id: `cls-said-${randomUUID()}`,
         originalText: match[0],
         startIndex: match.index,
         endIndex: match.index + match[0].length,
@@ -69,7 +72,7 @@ export const DcrEngine = {
       // Avoid matching already matched SA ID
       if (!findings.some(f => f.startIndex === match!.index)) {
         findings.push({
-          id: `cls-cc-${Date.now()}-${findings.length}`,
+          id: `cls-cc-${randomUUID()}`,
           originalText: match[0],
           startIndex: match.index,
           endIndex: match.index + match[0].length,
@@ -87,7 +90,7 @@ export const DcrEngine = {
     const ibanRegex = /\b(?:[A-Z]{2}[0-9]{2}[A-Z0-9]{4}[0-9]{7}([A-Z0-9]?){0,16}|(?:ACC|Account|Acc No)[\s#:]+([0-9]{8,14}))\b/gi;
     while ((match = ibanRegex.exec(text)) !== null) {
       findings.push({
-        id: `cls-iban-${Date.now()}-${findings.length}`,
+        id: `cls-iban-${randomUUID()}`,
         originalText: match[0],
         startIndex: match.index,
         endIndex: match.index + match[0].length,
@@ -107,7 +110,7 @@ export const DcrEngine = {
       const rawNum = match[0].replace(/[^0-9.]/g, '');
       if (parseFloat(rawNum) > 50) {
         findings.push({
-          id: `cls-sal-${Date.now()}-${findings.length}`,
+          id: `cls-sal-${randomUUID()}`,
           originalText: match[0],
           startIndex: match.index,
           endIndex: match.index + match[0].length,
@@ -125,7 +128,7 @@ export const DcrEngine = {
     const phoneRegex = /(?:\+27|0)[1-9][0-9](?:[- ]?[0-9]{3}[- ]?[0-9]{4}|[0-9]{7})\b|\+(?:1|44|49|33|31)[- ]?[0-9]{2,4}[- ]?[0-9]{3,4}[- ]?[0-9]{3,4}\b/g;
     while ((match = phoneRegex.exec(text)) !== null) {
       findings.push({
-        id: `cls-ph-${Date.now()}-${findings.length}`,
+        id: `cls-ph-${randomUUID()}`,
         originalText: match[0],
         startIndex: match.index,
         endIndex: match.index + match[0].length,
@@ -142,7 +145,7 @@ export const DcrEngine = {
     const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
     while ((match = emailRegex.exec(text)) !== null) {
       findings.push({
-        id: `cls-em-${Date.now()}-${findings.length}`,
+        id: `cls-em-${randomUUID()}`,
         originalText: match[0],
         startIndex: match.index,
         endIndex: match.index + match[0].length,
@@ -160,7 +163,7 @@ export const DcrEngine = {
       const condRegex = new RegExp(`\\b${conditionTerm}\\b`, 'gi');
       while ((match = condRegex.exec(text)) !== null) {
         findings.push({
-          id: `cls-med-${Date.now()}-${findings.length}`,
+          id: `cls-med-${randomUUID()}`,
           originalText: match[0],
           startIndex: match.index,
           endIndex: match.index + match[0].length,
@@ -184,7 +187,7 @@ export const DcrEngine = {
         // Avoid duplicate overlapping spans
         if (!findings.some(f => (start >= f.startIndex && start < f.endIndex))) {
           findings.push({
-            id: `cls-name-${Date.now()}-${findings.length}`,
+            id: `cls-name-${randomUUID()}`,
             originalText: nameMatch,
             startIndex: start,
             endIndex: start + nameMatch.length,
@@ -204,7 +207,7 @@ export const DcrEngine = {
     while ((match = addressRegex.exec(text)) !== null) {
       if (!findings.some(f => match!.index >= f.startIndex && match!.index < f.endIndex)) {
         findings.push({
-          id: `cls-addr-${Date.now()}-${findings.length}`,
+          id: `cls-addr-${randomUUID()}`,
           originalText: match[0],
           startIndex: match.index,
           endIndex: match.index + match[0].length,
@@ -223,7 +226,7 @@ export const DcrEngine = {
     while ((match = companyRegex.exec(text)) !== null) {
       if (!findings.some(f => match!.index >= f.startIndex && match!.index < f.endIndex)) {
         findings.push({
-          id: `cls-comp-${Date.now()}-${findings.length}`,
+          id: `cls-comp-${randomUUID()}`,
           originalText: match[1],
           startIndex: match.index,
           endIndex: match.index + match[1].length,
@@ -285,17 +288,10 @@ export const DcrEngine = {
       }
 
       case 'PSEUDONYM': {
-        if (finding.entityType === 'PERSON_NAME') {
-          const first = SYNTHETIC_FIRST_NAMES[(indexSeed + raw.length) % SYNTHETIC_FIRST_NAMES.length];
-          const last = SYNTHETIC_LAST_NAMES[(indexSeed * 3 + raw.length) % SYNTHETIC_LAST_NAMES.length];
-          return { surrogate: `${first} ${last}`, semanticConstraints: { preserveCase: true } };
-        }
-        if (finding.entityType === 'EMAIL_ADDRESS') {
-          const first = SYNTHETIC_FIRST_NAMES[(indexSeed + raw.length) % SYNTHETIC_FIRST_NAMES.length].toLowerCase();
-          const last = SYNTHETIC_LAST_NAMES[(indexSeed * 3 + raw.length) % SYNTHETIC_LAST_NAMES.length].toLowerCase();
-          return { surrogate: `${first}.${last}@vanguard-apex.internal` };
-        }
-        return { surrogate: `Synthetic_${finding.entityType}_${hash6}` };
+        // A provider-facing pseudonym is always opaque. Persistent PEM
+        // resolution supplies continuity when an explicit commercial scope is
+        // available; this fallback remains non-semantic and non-derivable.
+        return { surrogate: generateOpaquePseudonym(), semanticConstraints: { preserveCase: false } };
       }
 
       case 'SYNTHETIC_VALUE': {
@@ -352,7 +348,7 @@ export const DcrEngine = {
 
       case 'FORMAT_PRESERVE': {
         if (finding.entityType === 'PHONE_NUMBER') {
-          const randDigits = Math.floor(1000000 + Math.random() * 9000000);
+          const randDigits = randomInt(1000000, 10000000);
           if (raw.startsWith('+27')) {
             return { surrogate: `+27 82 ${String(randDigits).slice(0, 3)} ${String(randDigits).slice(3, 7)}` };
           }
@@ -403,9 +399,20 @@ export const DcrEngine = {
     rawText: string,
     options: {
       tenantId?: string;
+      customerId?: string;
       requestId?: string;
+      transactionId?: string;
+      conversationId?: string;
+      mappingSetId?: string;
+      organizationId?: string;
+      environmentId?: string;
+      policyVersion?: string;
+      providerRestrictions?: string[];
+      reconstructionPolicy?: Record<string, unknown>;
+      applicationId?: string;
       scope?: DcrTransformationScope;
       forcedStrategy?: DcrTransformationStrategy;
+      pemResolver?: PemResolver;
     } = {}
   ): Promise<{
     cloakedText: string;
@@ -413,7 +420,7 @@ export const DcrEngine = {
     events: DcrProvenanceEvent[];
   }> {
     const tenantId = options.tenantId || 'tenant-global';
-    const requestId = options.requestId || `REQ-DCR-${Date.now()}`;
+    const requestId = options.requestId || `REQ-DCR-${randomUUID()}`;
     const scope = options.scope || 'REQUEST';
 
     const findings = this.classifyPayload(rawText, options.forcedStrategy);
@@ -432,12 +439,43 @@ export const DcrEngine = {
     for (let i = 0; i < sortedFindings.length; i++) {
       const f = sortedFindings[i];
       const strategy = options.forcedStrategy || f.suggestedStrategy;
-      const { surrogate, semanticConstraints } = this.generateSurrogate(f, strategy, i);
+      const generated = this.generateSurrogate(f, strategy, i);
+      let surrogate = generated.surrogate;
+      let semanticConstraints = generated.semanticConstraints;
+      let pemEntityId: string | undefined;
+      let pemPseudonymId: string | undefined;
+      if (strategy === 'PSEUDONYM' && options.pemResolver) {
+        if (!options.customerId) throw new Error('PEM requires an explicit commercial customer mapping for the technical tenant.');
+        const entityType = f.entityType === 'PERSON_NAME' ? 'PERSON' : f.entityType === 'EMAIL_ADDRESS' ? 'EMAIL' : f.entityType;
+        const deterministicIdentifiers = f.entityType === 'EMAIL_ADDRESS'
+          ? { email: f.originalText }
+          : f.entityType === 'SA_ID_NUMBER'
+            ? { saId: f.originalText }
+            : undefined;
+        const pemResult = await options.pemResolver.resolveOrCreate({
+          customerId: options.customerId,
+          entityType,
+          deterministicIdentifiers,
+          classification: f.classification,
+          confidence: f.confidence,
+          requestId,
+          transactionId: options.transactionId,
+        });
+        surrogate = pemResult.pseudonym.value;
+        pemEntityId = pemResult.entity.id;
+        pemPseudonymId = pemResult.pseudonym.id;
+        semanticConstraints = { ...(semanticConstraints || {}), pemMatchedBy: pemResult.matchedBy } as typeof semanticConstraints;
+      }
       const rawVal = f.originalText;
       const masked = this.generateMaskedPreview(rawVal, f.entityType);
 
       // Encrypt raw original value with AES-256-GCM
-      const encrypted = TransformationKeyService.encrypt(rawVal, tenantId);
+      const encrypted = TransformationKeyService.encrypt(rawVal, tenantId, {
+        organizationId: options.organizationId,
+        applicationId: options.applicationId,
+        environmentId: options.environmentId,
+        purpose: 'DCR_TRANSFORMATION',
+      });
       const rawHash = TransformationKeyService.hashValue(rawVal);
       const surrogateHash = TransformationKeyService.hashValue(surrogate);
 
@@ -446,7 +484,7 @@ export const DcrEngine = {
       const expiresAt = new Date(Date.now() + ttlHours * 3600 * 1000).toISOString();
 
       const record: DcrTransformationRecord = {
-        id: `DCR-REC-${Date.now()}-${i}`,
+        id: `DCR-REC-${randomUUID()}`,
         requestId,
         tenantId,
         classification: f.classification,
@@ -462,7 +500,18 @@ export const DcrEngine = {
         status: 'ACTIVE',
         reconstructionCount: 0,
         createdAt: new Date().toISOString(),
-        expiresAt
+        expiresAt,
+        pemEntityId,
+        pemPseudonymId,
+        transactionId: options.transactionId || requestId,
+        conversationId: options.conversationId,
+        mappingSetId: options.mappingSetId,
+        organizationId: options.organizationId,
+        environmentId: options.environmentId,
+        policyVersion: options.policyVersion,
+        providerRestrictions: options.providerRestrictions,
+        reconstructionPolicy: options.reconstructionPolicy,
+        applicationId: options.applicationId
       };
 
       await DcrRepository.saveTransformationRecord(record);
@@ -476,7 +525,7 @@ export const DcrEngine = {
         rawHash
       });
       const detectEvent: DcrProvenanceEvent = {
-        eventId: `EVT-DCR-${Date.now()}-${i * 2}`,
+        eventId: `EVT-DCR-${randomUUID()}`,
         eventType: 'DATA_DETECTED',
         requestId,
         tenantId,
@@ -502,7 +551,7 @@ export const DcrEngine = {
         surrogateHash
       });
       const transEvent: DcrProvenanceEvent = {
-        eventId: `EVT-DCR-${Date.now()}-${i * 2 + 1}`,
+        eventId: `EVT-DCR-${randomUUID()}`,
         eventType: 'VALUE_TRANSFORMED',
         requestId,
         tenantId,
@@ -516,7 +565,7 @@ export const DcrEngine = {
         previousEventHash: lastHash,
         eventHash: eventTransHash,
         description: `Cloaked with ${strategy} (surrogate: "${surrogate}"). Original encrypted with AES-256-GCM in vault.`,
-        details: { maskedPreview: masked, keyReference: encrypted.keyReference }
+        details: { maskedPreview: masked, keyReference: encrypted.keyReference, pemEntityId, pemPseudonymId }
       };
       await DcrRepository.appendProvenanceEvent(transEvent);
       events.push(transEvent);
@@ -539,6 +588,7 @@ export const DcrEngine = {
       tenantId?: string;
       requestId?: string;
       activeRecords?: DcrTransformationRecord[];
+      canReconstruct?: (record: DcrTransformationRecord) => boolean;
     } = {}
   ): Promise<{
     reconstructedText: string;
@@ -563,16 +613,38 @@ export const DcrEngine = {
     let reconstructedText = rawResponse;
     const reconstructedItems: any[] = [];
     const unreconstructedItems: any[] = [];
-    const tenantId = options.tenantId || 'all';
+    const tenantId = String(options.tenantId || '').trim();
+    const globalScope = tenantId === 'all';
+    if (!tenantId) {
+      return {
+        reconstructedText: rawResponse,
+        reconstructedItems: [],
+        unreconstructedItems: [{
+          value: rawResponse,
+          reason: 'Tenant scope is required; reconstruction is refused without one.',
+          provenance: 'ALTIL_SURROGATE'
+        }]
+      };
+    }
 
     // Retrieve active records (either passed or fetched from repository)
-    const records = options.activeRecords || await DcrRepository.getTransformationRecords(tenantId, options.requestId);
+    const records = (options.activeRecords || await DcrRepository.getTransformationRecords(tenantId, options.requestId))
+      .filter(record => globalScope || record.tenantId === tenantId);
 
     for (const record of records) {
       if (!record.surrogateValue || record.surrogateValue.length < 2) continue;
 
       // Check if response contains the surrogate value
       if (reconstructedText.includes(record.surrogateValue)) {
+        if (options.canReconstruct && !options.canReconstruct(record)) {
+          unreconstructedItems.push({
+            value: record.surrogateValue,
+            reason: 'Reconstruction authorization denied for this mapping.',
+            provenance: 'ALTIL_SURROGATE'
+          });
+          continue;
+        }
+
         // PROVENANCE VERIFICATION RULE:
         // Decrypt only if authorized and within TTL
         const isExpired = new Date(record.expiresAt).getTime() <= Date.now();
@@ -604,7 +676,7 @@ export const DcrEngine = {
             recordId: record.id
           });
           await DcrRepository.appendProvenanceEvent({
-            eventId: `EVT-DCR-REC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            eventId: `EVT-DCR-REC-${randomUUID()}`,
             eventType: 'VALUE_RECONSTRUCTED',
             requestId: record.requestId,
             tenantId: record.tenantId,
@@ -656,20 +728,27 @@ export const DcrEngine = {
     prompt: string,
     options: {
       tenantId?: string;
+      customerId?: string;
+      transactionId?: string;
       preferredStrategy?: DcrTransformationStrategy;
       simulatedAiResponse?: string;
+      pemResolver?: PemResolver;
     } = {}
   ): Promise<DcrPipelineResult> {
-    const startTime = Date.now();
-    const requestId = `REQ-DCR-${Date.now()}`;
-    const tenantId = options.tenantId || 'cust-enterprise';
+const startTime = Date.now();
+    const requestId = `REQ-DCR-${randomUUID()}`;
+    const tenantId = String(options.tenantId || '').trim();
+    if (!tenantId) throw new Error('DCR pipeline requires an explicit tenant scope.');
 
     // Step 1: Cloak Outbound Payload
     const { cloakedText, records, events } = await this.cloakPayload(prompt, {
       tenantId,
+      customerId: options.customerId,
       requestId,
+      transactionId: options.transactionId || requestId,
       scope: 'CONVERSATION',
-      forcedStrategy: options.preferredStrategy
+      forcedStrategy: options.preferredStrategy,
+      pemResolver: options.pemResolver
     });
 
     // Step 2: Simulate or Provide AI Response referencing cloaked entities
