@@ -11,6 +11,17 @@ const LEGACY_PERMISSION_IMPLICATIONS: Readonly<Record<string, readonly string[]>
   'audit.export': ['audit.read'],
   'billing.write': ['billing.read', 'billing.modify'],
   'iam.users.write': ['user.read', 'user.create', 'user.update', 'user.disable'],
+  // Route-level read gates use singular codes while role grants use the plural
+  // operation names. Bridge both so a role granted incidents.write or
+  // compliance.dsr can reach the routes that check incident.read and dsar.read.
+  'incidents.write': ['incident.read', 'incident.create', 'incident.update'],
+  'incidents.create': ['incident.read', 'incident.create'],
+  'incidents.update': ['incident.read', 'incident.update'],
+  'compliance.dsr': ['dsar.read', 'dsar.create', 'dsar.update'],
+  'compliance.dsr.erase': ['dsar.read', 'dsar.erase'],
+  // Platform administration is gated on system.configure; expose the
+  // migration code as a read so configuration views remain reachable.
+  'system.migrate': ['system.configure'],
 });
 
 export function expandLegacyPermissionCodes(permissionCodes: readonly string[]): string[] {

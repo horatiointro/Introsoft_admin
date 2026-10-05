@@ -50,6 +50,7 @@ export const safeTestFiles = Object.freeze([
   'src/security/testSuperAdminMfa.test.ts',
   'src/security/mfaVerification.test.ts',
   'src/security/permissionImplications.test.ts',
+  'src/security/permissionImplicationsSidebar.test.ts',
   'src/security/providerLocality.test.ts',
   'src/security/responseGate.test.ts',
   'src/security/reidentification.test.ts',

@@ -1,4 +1,5 @@
-import { resolveVisibleOrganizationIds, type AccessScope, type OrganizationNode, type OrganizationRelationship, type OrganizationVisibility } from './organizationScope';
+import { resolveVisibleOrganizationIds, type AccessScope, type OrganizationNode, type OrganizationRelationship, type OrganizationRelationshipType, type OrganizationVisibility } from './organizationScope';
+import { expandLegacyPermissionCodes } from './permissionImplications';
 
 export interface AuthorizationAssignment {
   readonly assignmentId: string;
@@ -6,6 +7,8 @@ export interface AuthorizationAssignment {
   readonly organizationId: string | null;
   readonly visibility: OrganizationVisibility;
   readonly permissions: readonly string[];
+  /** Optional relationship-type boundary; absent means all explicit types. */
+  readonly relationshipTypes?: readonly OrganizationRelationshipType[];
 }
 
 export interface AuthorizationGrant extends AccessScope {
@@ -33,10 +36,14 @@ export function buildAuthorizationContext(input: {
   readonly relationships?: readonly OrganizationRelationship[];
   readonly asOf?: string;
 }): AuthorizationContext {
-  const organizationIds = new Set(input.organizations.map(node => node.id));
-  const grants: AuthorizationGrant[] = [];
+    const organizationIds = new Set(input.organizations.map(node => node.id));
+    const grants: AuthorizationGrant[] = [];
+    // Expand legacy operation names once at the authorization boundary so every
+    // consumer (Sidebar, route gates, capability inventory) sees the implied
+    // read codes without re-implying them per surface.
+    const expand = (codes: readonly string[]): string[] => [...new Set(expandLegacyPermissionCodes(codes))];
 
-  for (const assignment of input.assignments) {
+    for (const assignment of input.assignments) {
     if (!VALID_VISIBILITIES.has(assignment.visibility)) continue;
     const isGlobal = assignment.visibility === 'GLOBAL';
     // Global reach is an explicit Super Admin assignment with a NULL organization scope.
@@ -46,7 +53,8 @@ export function buildAuthorizationContext(input: {
         rootOrganizationId: 'platform:introsoft',
         organizationId: 'platform:introsoft',
         visibility: 'GLOBAL',
-        permissions: Object.freeze([...assignment.permissions]),
+        permissions: Object.freeze(expand(assignment.permissions)),
+        relationshipTypes: assignment.relationshipTypes ? Object.freeze([...assignment.relationshipTypes]) : undefined,
       };
       grants.push(Object.freeze({ ...scope, role: assignment.role, assignmentId: assignment.assignmentId, visibleOrganizationIds: new Set(organizationIds) }));
       continue;
@@ -57,7 +65,8 @@ export function buildAuthorizationContext(input: {
       rootOrganizationId: assignment.organizationId,
       organizationId: assignment.organizationId,
       visibility: assignment.visibility,
-      permissions: Object.freeze([...assignment.permissions]),
+      permissions: Object.freeze(expand(assignment.permissions)),
+      relationshipTypes: assignment.relationshipTypes ? Object.freeze([...assignment.relationshipTypes]) : undefined,
     };
     const visibleOrganizationIds = resolveVisibleOrganizationIds({
       scope,
