@@ -13,17 +13,11 @@ type PortalData = {
   activity?: any[]; attention?: any[]; credits?: any;
 };
 
-interface Props { onNavigate?: (tab: string) => void; }
+interface Props { onNavigate?: (tab: string) => void; customerMode?: boolean; }
 
 const money = (amount: unknown, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format(Number(amount || 0));
 
-export const CommercialAccountPortalView: React.FC<Props> = ({ onNavigate }) => {
-  const [customerMode] = useState(() => {
-    try {
-      const profile = JSON.parse(localStorage.getItem('altil_user_profile') || '{}');
-      return Array.isArray(profile.roles) && profile.roles.length === 1 && profile.roles[0] === 'CUSTOMER_ACCOUNT_USER';
-    } catch { return false; }
-  });
+export const CommercialAccountPortalView: React.FC<Props> = ({ onNavigate, customerMode = false }) => {
   const [choices, setChoices] = useState<AccountChoice[]>([]);
   const [selected, setSelected] = useState('');
   const [data, setData] = useState<PortalData | null>(null);

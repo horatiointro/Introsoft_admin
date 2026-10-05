@@ -62,7 +62,7 @@ import { ModelsView } from './components/ModelsView';
 import { ApplicationsView } from './components/ApplicationsView';
 import { ApiKeysView } from './components/ApiKeysView';
 import { RoutingView } from './components/RoutingView';
-import { PoliciesView } from './components/PoliciesView';
+import { PoliciesView, type PolicyImportTemplate } from './components/PoliciesView';
 import { PopiaGdprComplianceView } from './components/PopiaGdprComplianceView';
 import { TrustFabricView } from './components/TrustFabricView';
 import { UsageLogsView } from './components/UsageLogsView';
@@ -559,7 +559,13 @@ export default function App() {
 
     // Fallback local key generation
     const cust = customers.find(c => c.id === customerId);
-    const rawKey = `ALTIL-LIVE-${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+    const secureKeyId = globalThis.crypto?.randomUUID?.() || (() => {
+      const bytes = new Uint8Array(16);
+      globalThis.crypto?.getRandomValues(bytes);
+      return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    })();
+    if (!secureKeyId) throw new Error('Secure browser randomness is unavailable for local API-key generation.');
+    const rawKey = `ALTIL-LIVE-${secureKeyId.replace(/-/g, '').toUpperCase()}`;
     const newKey: ApiKey = {
       id: `key-${Date.now().toString(36)}`,
       customerId,
@@ -885,7 +891,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRoute)
       });
-    } catch (_) {}
+    } catch (error: any) {
+      showToast(error?.message || 'Routing rule could not be persisted.', 'error');
+      throw error;
+    }
 
     setRoutingRules(prev => [newRoute, ...prev]);
     showToast(`Routing rule "${newRoute.name}" created.`);
@@ -898,7 +907,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
-    } catch (_) {}
+    } catch (error: any) {
+      showToast(error?.message || 'Routing rule could not be persisted.', 'error');
+      throw error;
+    }
 
     setRoutingRules(prev => prev.map(r => (r.id === id ? { ...r, ...updates } : r)));
     showToast('Routing rule updated.');
@@ -907,14 +919,17 @@ export default function App() {
   const handleDeleteRoute = async (id: string) => {
     try {
       await apiFetch(`${API_BASE}/routes/${id}`, { method: 'DELETE' });
-    } catch (_) {}
+    } catch (error: any) {
+      showToast(error?.message || 'Routing rule could not be deleted.', 'error');
+      throw error;
+    }
 
     setRoutingRules(prev => prev.filter(r => r.id !== id));
     showToast('Routing rule deleted.');
   };
 
   // --- Policy Handlers ---
-  const handleAddPolicy = async (policyData: Partial<AIPolicy>) => {
+  const handleAddPolicy = async (policyData: Partial<AIPolicy>): Promise<AIPolicy | undefined> => {
     const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const newPol: AIPolicy = {
       id: `pol-${Date.now()}`,
@@ -940,6 +955,7 @@ export default function App() {
     };
 
     let savedPolicy = newPol;
+    let policyPersisted = false;
     try {
       const response = await apiFetch(`${API_BASE}/policies`, {
         method: 'POST',
@@ -947,11 +963,43 @@ export default function App() {
         body: JSON.stringify(newPol)
       });
       const result = await response.json().catch(() => null);
-      if (response.ok && result?.id) savedPolicy = result as AIPolicy;
+      if (response.ok && result?.id) {
+        savedPolicy = result as AIPolicy;
+        policyPersisted = true;
+      }
     } catch (_) {}
 
     setPolicies(prev => [savedPolicy, ...prev]);
     showToast(`AI Policy "${newPol.name}" created.`);
+    return policyPersisted ? savedPolicy : undefined;
+  };
+
+  const handleRecordPolicyEvidence = async (policy: AIPolicy, template: PolicyImportTemplate): Promise<{ status: string; evidenceId?: string }> => {
+    const sourcePayload = JSON.stringify({
+      source: 'ALTIL_LOCAL_TEST_POLICY_LIBRARY_V1',
+      templateId: template.id,
+      category: template.category,
+      name: template.name,
+      summary: template.summary,
+      rules: template.rules,
+    });
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sourcePayload));
+    const contentHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    const response = await apiFetch(`${API_BASE}/policies/${encodeURIComponent(policy.id)}/evidence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        evidenceKind: 'MACHINE_EXTRACTION',
+        sourceReference: `local-test-policy-library://${template.id}`,
+        contentHash,
+        contentType: 'application/vnd.altil.policy-template+json',
+        extractionVersion: 'local-test-policy-library-v1',
+        extractedRules: template.rules,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `Policy evidence could not be recorded (${response.status}).`);
+    return result as { status: string; evidenceId?: string };
   };
 
   const handleUpdatePolicy = async (id: string, updates: Partial<AIPolicy>) => {
@@ -1224,8 +1272,10 @@ export default function App() {
             <CommandCentreView
               customers={customers}
               providers={providers}
+              applications={applications}
               auditLogs={auditLogs}
               incidents={incidents}
+              incidentsProvenance="DEMO"
               onNavigate={setActiveTab}
             />
           )}
@@ -1472,6 +1522,7 @@ export default function App() {
               customers={customers}
               initialTenantId={scopeFilter.tenantId}
               onAddPolicy={handleAddPolicy}
+              onRecordPolicyEvidence={handleRecordPolicyEvidence}
               onUpdatePolicy={handleUpdatePolicy}
               onDeletePolicy={handleDeletePolicy}
             />
@@ -1541,7 +1592,7 @@ export default function App() {
             />
           )}
 
-          {viewTab === 'commercial_account_portal' && <CommercialAccountPortalView onNavigate={(tab) => setActiveTab(tab as any)} />}
+          {viewTab === 'commercial_account_portal' && <CommercialAccountPortalView onNavigate={(tab) => setActiveTab(tab as any)} customerMode={currentUser.role === 'CUSTOMER_ACCOUNT_USER'} />}
 
           {(viewTab === 'billing_admin' || viewTab === 'billing_accounts' || viewTab === 'billing_invoices') && (
             <BillingAdminView

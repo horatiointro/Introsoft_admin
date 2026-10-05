@@ -195,10 +195,11 @@ export async function orchestrateCommercialOnboarding(
     const appName = input.initialApplicationName?.trim() || `${orgName} AI Ingress`;
 
     // 3. Create Commercial Organization
+    const orgType = relationshipType === 'SUBSIDIARY' ? 'SUBSIDIARY' : relationshipType === 'RESELLER' ? 'RESELLER' : relationshipType === 'PARTNER' ? 'PARTNER' : 'CUSTOMER';
     await connection.execute(
       `INSERT INTO commercial_organizations (id, name, organization_type, status, created_by, created_at, updated_at)
        VALUES (?, ?, ?, 'ACTIVE', ?, NOW(3), NOW(3))`,
-      [orgId, orgName, relationshipType === 'SUBSIDIARY' ? 'SUBSIDIARY' : relationshipType === 'PARTNER' || relationshipType === 'RESELLER' ? 'PARTNER' : 'CUSTOMER', actor.id]
+      [orgId, orgName, orgType, actor.id]
     );
 
     // 4. Create Parent-Child Organization Relationship
