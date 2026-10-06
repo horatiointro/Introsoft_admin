@@ -86,7 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="h-24 border-b border-[#222222] flex items-center justify-between px-6 sm:px-8 bg-[#0a0a0a] shrink-0 select-none relative z-40">
       {/* Left Branding with Company Logo */}
       <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-3 cursor-pointer hover:opacity-90 transition-opacity">
+        <div className="flex items-center space-x-3 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => onNavigate?.('command_centre')} role="button" tabIndex={0} aria-label="Return to command centre" onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onNavigate?.('command_centre'); }}>
           <AltilLogo size="custom" height="80px" />
         </div>
       </div>
