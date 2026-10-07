@@ -26,6 +26,16 @@ export interface CommercialOnboardingInput {
   adminPhone?: string;
   adminDesignation?: string;
 
+  // Optional initial company administration team. Each invited identity is
+  // inactive until its one-time activation link is used to choose a password.
+  administratorInvitations?: Array<{
+    firstName: string;
+    lastName: string;
+    email: string;
+    designation?: string;
+    roleCode: 'TENANT_ADMIN' | 'BUSINESS_ADMIN' | 'FINOPS_MANAGER' | 'SECURITY_OFFICER' | 'COMPLIANCE_OFFICER';
+  }>;
+
   // 4. Governance / Statutory Officers (Optional)
   informationOfficer?: {
     name: string;
@@ -103,6 +113,13 @@ export interface OnboardingOrchestrationResult {
     invitationToken: string;
     activationUrl: string;
   };
+  administrators: Array<{
+    id: string;
+    name: string;
+    email: string;
+    roleCode: string;
+    activationUrl: string;
+  }>;
   application: {
     id: string;
     name: string;
@@ -302,7 +319,7 @@ export async function orchestrateCommercialOnboarding(
       await connection.execute(
         `INSERT INTO iam_users
          (id, tenant_id, email, password_hash, first_name, last_name, department, status, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, NOW(3), NOW(3))`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'INACTIVE', ?, NOW(3), NOW(3))`,
         [primaryUserId, tenantId, adminEmail, passwordHash, adminFirst, adminLast, input.adminDesignation || 'Management', actor.id]
       );
     }
@@ -324,16 +341,71 @@ export async function orchestrateCommercialOnboarding(
       [acctIamRelId, accountId, primaryUserId, actor.id]
     );
 
-    // 13. Generate One-Time Administrator Activation Token
-    const rawInvitationToken = `altil_act_${randomBytes(24).toString('hex')}`;
-    const tokenHash = createHash('sha256').update(rawInvitationToken).digest('hex');
+    // 13. Generate one-time administrator activation tokens. The primary
+    // administrator is always included; additional role-specific invites are
+    // optional and use the existing system role catalogue.
+    const primaryInvitationToken = `altil_act_${randomBytes(24).toString('hex')}`;
+    const primaryTokenHash = createHash('sha256').update(primaryInvitationToken).digest('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     await connection.execute(
       `INSERT INTO iam_user_invitations (id, user_id, token_hash, expires_at, created_by, created_at)
        VALUES (?, ?, ?, ?, ?, NOW(3))`,
-      [invId, primaryUserId, tokenHash, expiresAt, actor.id]
+      [invId, primaryUserId, primaryTokenHash, expiresAt, actor.id]
     );
+
+    const roleIds: Record<NonNullable<CommercialOnboardingInput['administratorInvitations']>[number]['roleCode'], string> = {
+      TENANT_ADMIN: 'role_tenant_admin',
+      FINOPS_MANAGER: 'role_finops_manager',
+      // The current IAM catalogue has no separate BUSINESS_ADMIN role. Keep
+      // the requested business responsibility visible while using the
+      // existing tenant-admin permission contract until that role is designed
+      // and migrated explicitly.
+      BUSINESS_ADMIN: 'role_tenant_admin',
+      SECURITY_OFFICER: 'role_security_officer',
+      COMPLIANCE_OFFICER: 'role_compliance_officer'
+    };
+    const additionalAdministrators: Array<{ id: string; name: string; email: string; roleCode: string; activationUrl: string }> = [];
+    const seenAdministratorEmails = new Set([adminEmail.toLowerCase()]);
+    for (const invitation of input.administratorInvitations || []) {
+      const email = String(invitation.email || '').trim().toLowerCase();
+      const firstName = String(invitation.firstName || '').trim();
+      const lastName = String(invitation.lastName || '').trim();
+      const roleId = roleIds[invitation.roleCode];
+      if (!email || !/^\S+@\S+\.\S+$/.test(email) || !firstName || !lastName || !roleId) throw new CommercialMutationError(400, 'Each additional administrator requires a valid name, email and supported role.');
+      if (seenAdministratorEmails.has(email)) throw new CommercialMutationError(409, 'Administrator email addresses must be unique within a company setup.');
+      seenAdministratorEmails.add(email);
+      const [existing] = await connection.execute<any[]>('SELECT id FROM iam_users WHERE LOWER(email)=? LIMIT 1 FOR UPDATE', [email]);
+      if (existing.length) throw new CommercialMutationError(409, `An account already exists for ${email}.`);
+      const userId = `user-${randomUUID()}`;
+      const invitationId = `invite-${randomUUID()}`;
+      const temporaryPassword = `AltilPass#${randomBytes(4).toString('hex')}!`;
+      const additionalPasswordHash = await bcrypt.hash(temporaryPassword, 10);
+      await connection.execute(
+        `INSERT INTO iam_users
+         (id, tenant_id, email, password_hash, first_name, last_name, title, department, status, mfa_enabled, mfa_enforced, force_password_change, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'INACTIVE', 0, 0, 1, ?, NOW(3), NOW(3))`,
+        [userId, tenantId, email, additionalPasswordHash, firstName, lastName, invitation.designation || null, invitation.roleCode, actor.id]
+      );
+      await connection.execute(
+        `INSERT INTO iam_user_roles (id, user_id, role_id, tenant_id, assigned_by, access_scope)
+         VALUES (?, ?, ?, ?, ?, 'ORGANISATION')`,
+        [`ur-${randomUUID()}`, userId, roleId, tenantId, actor.id]
+      );
+      const rawToken = `altil_act_${randomBytes(24).toString('hex')}`;
+      await connection.execute(
+        `INSERT INTO iam_user_invitations (id, user_id, token_hash, expires_at, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, NOW(3))`,
+        [invitationId, userId, createHash('sha256').update(rawToken).digest('hex'), expiresAt, actor.id]
+      );
+      await connection.execute(
+        `INSERT IGNORE INTO commercial_account_iam_relationships
+         (id, account_id, user_id, relationship_type, status, effective_from, audit_reference, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, 'ACCOUNT_ADMINISTRATOR', 'ACTIVE', NOW(3), 'ONBOARDING_WIZARD', ?, NOW(3), NOW(3))`,
+        [`acctiam-${randomUUID()}`, accountId, userId, actor.id]
+      );
+      additionalAdministrators.push({ id: userId, name: `${firstName} ${lastName}`.trim(), email, roleCode: invitation.roleCode, activationUrl: `${originBaseUrl}/activate-account#${rawToken}` });
+    }
 
     // 14. Create Tenant Application
     await connection.execute(
@@ -347,7 +419,10 @@ export async function orchestrateCommercialOnboarding(
     const keyPrefix = `ALTIL_${orgName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) || 'LIVE'}`;
     const rawApiKeySecret = `${keyPrefix}_${randomBytes(24).toString('hex')}`;
     const keyHash = createHash('sha256').update(rawApiKeySecret).digest('hex');
-    const scopes = input.apiKeyScopes?.length ? input.apiKeyScopes : ['inference:chat', 'inference:stream', 'models:read', 'policies:enforce'];
+    // Keep the initial credential aligned with the runtime scope authority.
+    // The gateway currently enforces read:inference; historical UI labels
+    // such as inference:chat are not runtime scopes and make a new key unusable.
+    const scopes = input.apiKeyScopes?.length ? input.apiKeyScopes : ['read:inference'];
     const keyMetadata = JSON.stringify({
       keyName: input.apiKeyName || 'Primary Production Key',
       scopes,
@@ -442,7 +517,10 @@ export async function orchestrateCommercialOnboarding(
       [auditId, tenantId, actor.email, auditPayload]
     );
 
-    const activationUrl = `${originBaseUrl}/activate?token=${rawInvitationToken}`;
+    // AccountActivationPage consumes the one-time token from the URL fragment.
+    // Keeping the token in the fragment also prevents it being sent as a URL
+    // query parameter to intermediaries and server access logs.
+    const activationUrl = `${originBaseUrl}/activate-account#${primaryInvitationToken}`;
 
     return {
       success: true,
@@ -473,9 +551,13 @@ export async function orchestrateCommercialOnboarding(
         id: primaryUserId,
         email: adminEmail,
         name: `${adminFirst} ${adminLast}`.trim(),
-        invitationToken: rawInvitationToken,
+        invitationToken: primaryInvitationToken,
         activationUrl
       },
+      administrators: [
+        { id: primaryUserId, name: `${adminFirst} ${adminLast}`.trim(), email: adminEmail, roleCode: 'TENANT_ADMIN', activationUrl },
+        ...additionalAdministrators
+      ],
       application: {
         id: appId,
         name: appName,

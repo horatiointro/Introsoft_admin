@@ -93,6 +93,17 @@ export const CustomerOnboardingWizard: React.FC<CustomerOnboardingWizardProps> =
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPhone, setAdminPhone] = useState('');
   const [adminDesignation, setAdminDesignation] = useState('Chief Technology Officer');
+  const [administratorTeam, setAdministratorTeam] = useState<Array<{
+    roleCode: 'TENANT_ADMIN' | 'BUSINESS_ADMIN' | 'FINOPS_MANAGER';
+    label: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  }>>([
+    { roleCode: 'TENANT_ADMIN', label: 'Technical administrator', firstName: '', lastName: '', email: '' },
+    { roleCode: 'FINOPS_MANAGER', label: 'Financial administrator', firstName: '', lastName: '', email: '' },
+    { roleCode: 'BUSINESS_ADMIN', label: 'Business administrator', firstName: '', lastName: '', email: '' }
+  ]);
 
   // Statutory Governance (POPIA / GDPR)
   const [enableInfoOfficer, setEnableInfoOfficer] = useState(true);
@@ -121,7 +132,7 @@ export const CustomerOnboardingWizard: React.FC<CustomerOnboardingWizardProps> =
   const [appName, setAppName] = useState('');
   const [capabilityType, setCapabilityType] = useState('General_AI');
   const [keyName, setKeyName] = useState('Primary Production Key');
-  const [keyScopes, setKeyScopes] = useState<string[]>(['inference:chat', 'inference:stream', 'models:read', 'policies:enforce']);
+  const [keyScopes, setKeyScopes] = useState<string[]>(['read:inference']);
 
   // Activation Result
   const [activationResult, setActivationResult] = useState<any | null>(null);
@@ -252,6 +263,9 @@ export const CustomerOnboardingWizard: React.FC<CustomerOnboardingWizardProps> =
         adminEmail,
         adminPhone,
         adminDesignation,
+        administratorInvitations: administratorTeam
+          .filter(administrator => administrator.email.trim() || administrator.firstName.trim() || administrator.lastName.trim())
+          .map(({ label: _label, ...administrator }) => administrator),
         informationOfficer: enableInfoOfficer && ioName.trim() ? {
           name: ioName.trim(),
           email: ioEmail.trim() || adminEmail,
@@ -516,6 +530,42 @@ export const CustomerOnboardingWizard: React.FC<CustomerOnboardingWizardProps> =
                     <option value="United States (US)">United States (US) · HIPAA / SOC2</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-cyan-500/20 bg-cyan-950/10 p-4 space-y-3">
+                <div>
+                  <h4 className="font-bold text-cyan-200">Initial company administration team</h4>
+                  <p className="mt-1 text-[11px] leading-5 text-slate-400">
+                    Add the role-specific administrators who should receive one-time activation links. Leave a row empty to invite that role later.
+                    No shared default password is stored; each invitee chooses a password during activation and must change it before first use.
+                  </p>
+                </div>
+                {administratorTeam.map((administrator, index) => (
+                  <div key={administrator.roleCode} className="grid grid-cols-1 gap-2 rounded-lg border border-white/[.08] bg-black/20 p-3 md:grid-cols-4">
+                    <div className="flex items-center text-xs font-semibold text-slate-200">{administrator.label}</div>
+                    <input
+                      type="text"
+                      value={administrator.firstName}
+                      onChange={event => setAdministratorTeam(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, firstName: event.target.value } : item))}
+                      placeholder="First name"
+                      className="bg-black/40 border border-white/[.12] rounded-lg px-3 py-2 text-white outline-none focus:border-cyan-400"
+                    />
+                    <input
+                      type="text"
+                      value={administrator.lastName}
+                      onChange={event => setAdministratorTeam(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, lastName: event.target.value } : item))}
+                      placeholder="Last name"
+                      className="bg-black/40 border border-white/[.12] rounded-lg px-3 py-2 text-white outline-none focus:border-cyan-400"
+                    />
+                    <input
+                      type="email"
+                      value={administrator.email}
+                      onChange={event => setAdministratorTeam(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, email: event.target.value } : item))}
+                      placeholder="administrator@company.com"
+                      className="bg-black/40 border border-white/[.12] rounded-lg px-3 py-2 text-white outline-none focus:border-cyan-400 font-mono"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -914,10 +964,7 @@ export const CustomerOnboardingWizard: React.FC<CustomerOnboardingWizardProps> =
                 <label className="block text-slate-300 font-semibold mb-2">Permitted Scopes:</label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {[
-                    { id: 'inference:chat', label: 'Chat Inference' },
-                    { id: 'inference:stream', label: 'Streaming' },
-                    { id: 'models:read', label: 'Model Catalog' },
-                    { id: 'policies:enforce', label: 'Policy Enforce' }
+                    { id: 'read:inference', label: 'Inference access (enforced)' }
                   ].map(sc => {
                     const active = keyScopes.includes(sc.id);
                     return (
@@ -986,9 +1033,9 @@ export const CustomerOnboardingWizard: React.FC<CustomerOnboardingWizardProps> =
                   <CheckCircle2 size={26} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Customer Successfully Onboarded &amp; Activated</h3>
+                  <h3 className="text-base font-bold text-white">Company provisioned successfully</h3>
                   <p className="text-slate-300 mt-0.5">
-                    Organization <b className="text-emerald-300 font-mono">{activationResult.organization.name}</b> [{activationResult.tenant.code}] is live in the ALTIL control plane.
+                    Organization <b className="text-emerald-300 font-mono">{activationResult.organization.name}</b> [{activationResult.tenant.code}] is provisioned in the ALTIL control plane. The primary administrator must activate the invitation before signing in.
                   </p>
                 </div>
               </div>
@@ -1018,12 +1065,30 @@ export const CustomerOnboardingWizard: React.FC<CustomerOnboardingWizardProps> =
                 </div>
               </div>
 
+              {Array.isArray(activationResult.administrators) && activationResult.administrators.length > 1 && (
+                <div className="p-4 bg-black/50 border border-white/[.10] rounded-xl space-y-3">
+                  <div>
+                    <div className="font-bold text-cyan-300">Administration team activation links</div>
+                    <p className="mt-1 text-[11px] text-slate-400">Share each one-time link with the named administrator. Links expire after seven days and each person chooses their own password.</p>
+                  </div>
+                  {activationResult.administrators.slice(1).map((administrator: { id: string; name: string; email: string; roleCode: string; activationUrl: string }) => (
+                    <div key={administrator.id} className="rounded-lg border border-white/[.08] bg-black/40 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                        <span className="font-semibold text-white">{administrator.name} · {administrator.roleCode}</span>
+                        <span className="font-mono text-slate-400">{administrator.email}</span>
+                      </div>
+                      <div className="mt-2 break-all font-mono text-[10px] text-emerald-300 select-all">{administrator.activationUrl}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* API Key Secret Box */}
               <div className="p-4 bg-black/50 border border-white/[.10] rounded-xl space-y-2">
                 <div className="flex items-center justify-between text-slate-300">
                   <span className="font-bold flex items-center gap-1.5 text-amber-300">
                     <KeyRound size={14} />
-                    Production API Gateway Key (Shown Once):
+                    API Gateway Key (Shown Once):
                   </span>
                   <button
                     type="button"
