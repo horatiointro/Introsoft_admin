@@ -36,21 +36,22 @@ import { AIProvider, ProviderTestResult, ProviderType } from '../types';
 interface ProvidersViewProps {
   providers: AIProvider[];
   onAddProvider: (provider: Partial<AIProvider> & { autoProvisionModels?: boolean }) => void;
-  onUpdateProvider: (id: string, provider: Partial<AIProvider>) => void;
+  onUpdateProvider: (id: string, provider: Partial<AIProvider>) => Promise<void>;
   onDeleteProvider: (id: string) => void;
   onTestProvider: (id: string) => Promise<ProviderTestResult>;
   onViewTelemetry?: (providerId: string) => void;
 }
 
-type ProviderAccountRow = { id: string; providerId: string; providerName: string; label: string; keyPrefix: string; enabled: boolean; state: string; currentStatus: string; createdAt: string; lastTestedAt?: string; lastTestStatus?: string; lastTestMessage?: string; requests: number; tokens: number; testedModels: number; availableModels: string[] };
+type ProviderAccountRow = { id: string; providerId: string; providerName: string; label: string; keyPrefix: string; enabled: boolean; state: string; currentStatus: string; createdAt: string; lastTestedAt?: string; lastTestStatus?: string; lastTestMessage?: string; requests: number; tokens: number; testedModels: number; availableModels: string[]; verifiedModels?: string[]; defaultModelIdentifier?: string };
+const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
 const ProviderAccountsPanel: React.FC<{ providers: AIProvider[] }> = ({ providers }) => {
   const [accounts, setAccounts] = useState<ProviderAccountRow[]>([]);
   const [label, setLabel] = useState(''); const [apiKey, setApiKey] = useState(''); const [providerId, setProviderId] = useState(providers.find(p => p.type === 'openrouter')?.id || providers[0]?.id || '');
-  const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('');
-  const load = async () => { const response = await apiFetch('/api/v1/provider-accounts'); if (response.ok) setAccounts(await response.json()); };
+  const [busy, setBusy] = useState(false); const [notice, setNotice] = useState(''); const [noticeTone, setNoticeTone] = useState<'success' | 'error'>('success');
+  const load = async () => { const response = await apiFetch(`${API_BASE}/provider-accounts`); if (response.ok) setAccounts(await response.json()); };
   useEffect(() => { void load(); }, []);
-  const request = async (url: string, method = 'POST', body?: unknown) => { setBusy(true); setNotice(''); try { const response = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Provider account action failed.'); setNotice(result.message || 'Account updated.'); await load(); return result; } catch (error) { setNotice(error instanceof Error ? error.message : 'Provider account action failed.'); } finally { setBusy(false); } };
-  const add = async (event: React.FormEvent) => { event.preventDefault(); const result = await request('/api/v1/provider-accounts', 'POST', { providerId, label, apiKey }); if (result?.id || result?.encryptedKey === undefined) { setApiKey(''); setLabel(''); if (result?.id) await request(`/api/v1/provider-accounts/${result.id}/test`); } };
+  const request = async (url: string, method = 'POST', body?: unknown, failurePrefix = '') => { setBusy(true); setNotice(''); try { const response = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Provider account action failed.'); setNoticeTone('success'); setNotice(result.message || 'Provider account action succeeded.'); await load(); return result; } catch (error) { setNoticeTone('error'); setNotice(`${failurePrefix}${error instanceof Error ? error.message : 'Provider account action failed.'}`); } finally { setBusy(false); } };
+  const add = async (event: React.FormEvent) => { event.preventDefault(); const result = await request(`${API_BASE}/provider-accounts`, 'POST', { providerId, label, apiKey }); if (result?.id) { setApiKey(''); setLabel(''); const checked = await request(`${API_BASE}/provider-accounts/${result.id}/test`, 'POST', undefined, 'Credential encrypted and stored, but live validation failed: '); if (checked?.ok) { setNoticeTone('success'); setNotice('Credential encrypted, stored, and live validation passed. This account is ready for routing.'); } } };
   return <section className="space-y-5">
     <div className="grid gap-4 xl:grid-cols-[.8fr_1.2fr]">
       <form onSubmit={add} className="rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[.07] to-indigo-400/[.04] p-5">
@@ -58,14 +59,18 @@ const ProviderAccountsPanel: React.FC<{ providers: AIProvider[] }> = ({ provider
         <label className="mt-5 block text-xs text-slate-400">Provider<select value={providerId} onChange={e => setProviderId(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 text-sm text-white">{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         <label className="mt-3 block text-xs text-slate-400">Account label<input required value={label} onChange={e => setLabel(e.target.value)} placeholder="OpenRouter main account" className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 text-sm text-white"/></label>
         <label className="mt-3 block text-xs text-slate-400">API key<input required type="password" autoComplete="new-password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Paste provider key" className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 font-mono text-sm text-white"/></label>
-        <button disabled={busy} className="mt-4 w-full rounded-xl bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy?'Saving and testing…':'Encrypt, save & test account'}</button>{notice&&<div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">{notice}</div>}
+        <button disabled={busy} className="mt-4 w-full rounded-xl bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy?'Saving and testing…':'Encrypt, save & test account'}</button>{notice&&<div className={`mt-3 rounded-xl border p-3 text-xs ${noticeTone==='error'?'border-red-400/30 bg-red-500/10 text-red-200':'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'}`}>{notice}</div>}
       </form>
-      <div className="rounded-2xl border border-white/10 bg-[#0e141d] p-5"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold text-white">Model access roster</h2><p className="mt-1 text-xs text-slate-500">Accounts become routable only after credential and inference checks pass.</p></div><span className="rounded-full border border-cyan-200/10 bg-cyan-100/[.05] px-3 py-1 text-xs text-cyan-100">{accounts.filter(a=>a.enabled&&a.state==='active').length} ready</span></div>
+      <div className="rounded-2xl border border-white/10 bg-[#0e141d] p-5"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold text-white">Model access roster</h2><p className="mt-1 text-xs text-slate-500">Accounts become routable only after credential and inference checks pass.</p></div><span className="rounded-full border border-cyan-200/10 bg-cyan-100/[.05] px-3 py-1 text-xs text-cyan-100">{accounts.filter(a=>a.enabled&&a.state==='active'&&a.lastTestStatus==='passed'&&a.lastTestedAt&&Date.now()-Date.parse(a.lastTestedAt)<24*60*60*1000).length} ready</span></div>
         <div className="mt-4 space-y-3">{accounts.map(account=><article key={account.id} className="rounded-xl border border-white/[.08] bg-white/[.025] p-4"><div className="flex flex-wrap items-center gap-3"><div className={`grid h-10 w-10 place-items-center rounded-xl ${account.currentStatus==='online'?'bg-emerald-300/10 text-emerald-200':'bg-amber-300/10 text-amber-200'}`}>{account.currentStatus==='online'?<CheckCircle2 size={18}/>:<Key size={18}/>}</div><div className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{account.label}</b><span className="text-[11px] text-slate-500">{account.providerName} · <code>{account.keyPrefix}</code></span></div><span className={`rounded-full px-2.5 py-1 text-[10px] uppercase ${account.currentStatus==='online'?'bg-emerald-300/10 text-emerald-200':account.currentStatus==='paused'?'bg-slate-300/10 text-slate-300':'bg-amber-300/10 text-amber-100'}`}>{account.currentStatus.replace('_',' ')}</span></div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Requests',account.requests],['Tokens',account.tokens],['Verified models',account.testedModels],['Available models',account.availableModels.length]].map(([k,v])=><div key={k} className="rounded-lg bg-black/20 p-2"><small className="block text-[9px] uppercase tracking-wider text-slate-500">{k}</small><b className="mt-1 block text-sm text-slate-200">{v}</b></div>)}</div>
           <div className="mt-3"><div className="mb-2 text-[9px] uppercase tracking-wider text-slate-500">Tested model routes on this account</div><div className="flex flex-wrap gap-1.5">{account.availableModels.map(model=><span key={model} className="rounded-md border border-emerald-200/10 bg-emerald-100/[.035] px-2 py-1 font-mono text-[9px] text-emerald-100">{model}</span>)}{!account.availableModels.length&&<span className="text-[10px] text-slate-600">No tested model routes yet</span>}</div></div>
           <div className="mt-3 text-[10px] text-slate-500">{account.lastTestedAt ? <>Last live check {new Date(account.lastTestedAt).toLocaleString()} · {account.lastTestStatus} · {account.lastTestMessage}</> : 'No live connection test has completed yet.'}</div>
-          <div className="mt-3 flex flex-wrap gap-2"><button disabled={busy} onClick={()=>void request(`/api/v1/provider-accounts/${account.id}/test`)} className="rounded-lg border border-cyan-200/15 px-3 py-2 text-[10px] text-cyan-100">Run live check</button><button disabled={busy||account.state!=='active'} onClick={()=>void request(`/api/v1/provider-accounts/${account.id}`,'PATCH',{enabled:false})} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] text-slate-300">Pause routing</button><button disabled={busy} onClick={()=>void request(`/api/v1/provider-accounts/${account.id}`,'DELETE')} className="ml-auto rounded-lg border border-rose-200/10 px-3 py-2 text-[10px] text-rose-200">Remove account</button></div>
+          <label className="mt-3 block text-[10px] uppercase tracking-wider text-slate-500">Default live model
+            <input list={`provider-models-${account.id}`} value={account.defaultModelIdentifier || ''} disabled={busy || account.currentStatus !== 'online' || !(account.verifiedModels?.length)} placeholder="Choose after a live check" onChange={event => setAccounts(current => current.map(item => item.id === account.id ? { ...item, defaultModelIdentifier: event.target.value } : item))} onBlur={event => { const value = event.target.value.trim(); if (!value && account.defaultModelIdentifier) void request(`${API_BASE}/provider-accounts/${account.id}`, 'PATCH', { defaultModelIdentifier: null }); else if (value && account.verifiedModels?.includes(value)) void request(`${API_BASE}/provider-accounts/${account.id}`, 'PATCH', { defaultModelIdentifier: value }); }} className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 font-mono text-[10px] text-slate-200 disabled:opacity-50" />
+            <datalist id={`provider-models-${account.id}`}>{(account.verifiedModels || account.availableModels).map(model => <option key={model} value={model} />)}</datalist>
+          </label>
+          <div className="mt-3 flex flex-wrap gap-2"><button disabled={busy} onClick={()=>void request(`${API_BASE}/provider-accounts/${account.id}/test`)} className="rounded-lg border border-cyan-200/15 px-3 py-2 text-[10px] text-cyan-100">Run live check</button><button disabled={busy||account.state!=='active'} onClick={()=>void request(`${API_BASE}/provider-accounts/${account.id}`,'PATCH',{enabled:false})} className="rounded-lg border border-white/10 px-3 py-2 text-[10px] text-slate-300">Pause routing</button><button disabled={busy} onClick={()=>void request(`${API_BASE}/provider-accounts/${account.id}`,'DELETE')} className="ml-auto rounded-lg border border-rose-200/10 px-3 py-2 text-[10px] text-rose-200">Remove account</button></div>
         </article>)}{!accounts.length&&<div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No managed accounts yet. Connect a key to start live validation.</div>}</div>
       </div>
     </div>
@@ -251,12 +256,16 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.endpoint.trim()) return;
 
     if (editingProvider) {
-      onUpdateProvider(editingProvider.id, formData);
+      try {
+        await onUpdateProvider(editingProvider.id, formData);
+      } catch {
+        return;
+      }
     } else {
       onAddProvider(formData);
     }
@@ -622,25 +631,24 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
 
                 {/* Step checklist */}
                 <div className="space-y-2 text-xs bg-[#0a0a0a] p-3 rounded border border-[#222222] font-mono">
-                  <div className="flex items-center space-x-2 text-green-400">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>✓ Authentication bearer / token validated</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-green-400">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>✓ Host socket reachable & TLS handshake complete</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-green-400">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>
-                      ✓ {testResult.modelsDiscoveredCount} model endpoints discovered
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-green-400">
-                    <Check className="w-3.5 h-3.5" />
-                    <span>✓ Synthetic inference verification OK</span>
-                  </div>
+                  {[
+                    [testResult.authValid, 'Authentication bearer / token validated'],
+                    [testResult.reachable, 'Host socket reachable & TLS handshake complete'],
+                    [testResult.modelsDiscoveredCount > 0, `${testResult.modelsDiscoveredCount} model endpoints discovered`],
+                    [testResult.sampleGenerationSuccess, 'Live inference response received']
+                  ].map(([passed, label]) => (
+                    <div key={String(label)} className={`flex items-center space-x-2 ${passed ? 'text-green-400' : 'text-red-400'}`}>
+                      {passed ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                      <span>{passed ? '✓' : '✕'} {label}</span>
+                    </div>
+                  ))}
                 </div>
+
+                {testResult.errorMessage && (
+                  <div className="rounded border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">
+                    {testResult.errorMessage}
+                  </div>
+                )}
 
                 {/* Discovered Models List */}
                 {testResult.discoveredModels.length > 0 && (
