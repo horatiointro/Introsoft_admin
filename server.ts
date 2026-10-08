@@ -199,6 +199,7 @@ import { getFirebaseAccessToken, sendFirebaseMessage } from './src/utils/firebas
 import { chargeSavedPaymentMethod, createHostedPayment, createPaymentMethodSetup, newPaymentIntentId, verifyIkhokhaSignature, verifyPayfastSignature, type PaymentProvider } from './src/utils/paymentGateways';
 import { OpenRouterProviderAdapter } from './src/aiGateway/openRouterProvider';
 import { createProviderAdapter, normalizeProviderResponse } from './src/aiGateway/providerAdapters';
+import { classifyProviderError } from './src/aiGateway/providerAdapter';
 import { OpenAiRequestValidationError, openAiModelList, toOpenRouterChatRequest, validateOpenAiChatRequest, type OpenAiChatRequest } from './src/aiGateway/openAiChatRequest';
 import { renderAltilContentEnvelope, renderProtectedInput, toAltilContentEnvelope } from './src/aiGateway/contentEnvelope';
 import { relaySseStream } from './src/aiGateway/streaming';
@@ -235,7 +236,7 @@ const tenantActivity = new Map<string, TenantActivity>();
 
 const tenantKnowledgeStatePath = process.env.ALTIL_TENANT_KNOWLEDGE_STATE || path.join(process.cwd(), '.altil-data', 'tenant-knowledge.json');
 
-type ProviderAccount = { id: string; providerId: string; label: string; keyPrefix: string; enabled: boolean; state: 'needs_test' | 'active' | 'paused' | 'error'; createdAt: string; lastTestedAt?: string; lastTestStatus?: 'passed' | 'failed'; lastTestMessage?: string; requests: number; tokens: number; verifiedModels?: string[]; defaultModelIdentifier?: string; encryptedKey: string };
+type ProviderAccount = { id: string; providerId: string; label: string; keyPrefix: string; enabled: boolean; state: 'needs_test' | 'active' | 'paused' | 'error'; createdAt: string; lastTestedAt?: string; lastTestStatus?: 'passed' | 'failed'; lastTestMessage?: string; requests: number; tokens: number; verifiedModels?: string[]; allowedModels?: string[]; defaultModelIdentifier?: string; ownerType?: 'ALTIL_MANAGED' | 'CUSTOMER_MANAGED'; ownerId?: string; byokOnly?: boolean; lastDiscoveredAt?: string; discoveryStatus?: 'LIVE' | 'UNAVAILABLE' | 'FAILED'; discoveryError?: string; discoveredModelCount?: number; discoveredModels?: Array<Record<string, unknown>>; encryptedKey: string };
 const providerAccountsPath = process.env.ALTIL_PROVIDER_ACCOUNTS_FILE || path.join(process.cwd(), '.altil-data', 'provider-accounts.json');
 const providerVaultKeyPath = process.env.ALTIL_PROVIDER_VAULT_KEY_FILE || path.join(process.cwd(), '.altil-data', 'provider-vault-key');
 let providerAccounts: ProviderAccount[] = [];
@@ -258,6 +259,11 @@ function decryptProviderSecret(value: string): string {
 }
 function persistProviderAccounts() { mkdirSync(path.dirname(providerAccountsPath), { recursive: true }); writeFileSync(providerAccountsPath, JSON.stringify(providerAccounts, null, 2), { mode: 0o600 }); }
 function publicProviderAccount(account: ProviderAccount) { const { encryptedKey: _secret, ...safe } = account; return safe; }
+function providerAccountVisibleTo(account: ProviderAccount, req: any): boolean {
+  const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+  if (roles.includes('SUPER_ADMIN') || !req.user?.tenantId) return true;
+  return (account.ownerType || 'ALTIL_MANAGED') === 'CUSTOMER_MANAGED' && account.ownerId === (req.user.tenantId || req.user.tenant_id);
+}
 function upsertProviderEditAccount(provider: AIProvider, secret: string): ProviderAccount {
   const label = `${provider.name} default account`;
   const keyPrefix = `${secret.slice(0, 7)}…${secret.slice(-4)}`;
@@ -286,18 +292,20 @@ function upsertProviderEditAccount(provider: AIProvider, secret: string): Provid
     persistProviderAccounts();
     return existing;
   }
-  const account: ProviderAccount = { id: `pa-${randomUUID()}`, providerId: provider.id, label, keyPrefix, enabled: false, state: 'needs_test', createdAt: new Date().toISOString(), requests: 0, tokens: 0, encryptedKey: encryptProviderSecret(secret) };
+  const account: ProviderAccount = { id: `pa-${randomUUID()}`, providerId: provider.id, label, keyPrefix, enabled: false, state: 'needs_test', createdAt: new Date().toISOString(), requests: 0, tokens: 0, ownerType: 'ALTIL_MANAGED', encryptedKey: encryptProviderSecret(secret) };
   providerAccounts.push(account);
   persistProviderAccounts();
   return account;
 }
-function accountApiKey(providerId: string, modelIdentifier?: string): string {
-  const account = providerAccounts.find(item => item.providerId === providerId && item.enabled && item.state === 'active' && item.lastTestStatus === 'passed' && item.lastTestedAt && Date.now() - Date.parse(item.lastTestedAt) < 24 * 60 * 60 * 1000 && (!modelIdentifier || item.verifiedModels?.includes(modelIdentifier)));
+function accountApiKey(providerId: string, modelIdentifier?: string, ownerId?: string): string {
+  const owned = ownerId ? providerAccounts.filter(item => item.providerId === providerId && item.ownerType === 'CUSTOMER_MANAGED' && item.ownerId === ownerId) : [];
+  const candidates = owned.length && owned.some(item => item.byokOnly) ? owned : owned.length ? [...owned, ...providerAccounts.filter(item => item.providerId === providerId && (item.ownerType || 'ALTIL_MANAGED') === 'ALTIL_MANAGED')] : providerAccounts.filter(item => item.providerId === providerId && (item.ownerType || 'ALTIL_MANAGED') === 'ALTIL_MANAGED');
+  const account = candidates.find(item => item.enabled && item.state === 'active' && item.lastTestStatus === 'passed' && item.lastTestedAt && Date.now() - Date.parse(item.lastTestedAt) < 24 * 60 * 60 * 1000 && (!modelIdentifier || item.verifiedModels?.includes(modelIdentifier)) && (item.allowedModels === undefined || !modelIdentifier || item.allowedModels.includes(modelIdentifier)));
   if (!account) return '';
   try { return decryptProviderSecret(account.encryptedKey); } catch { account.state = 'error'; account.enabled = false; return ''; }
 }
 function accountForSecret(providerId: string, secret: string) { return providerAccounts.find(item => item.providerId === providerId && (() => { try { return decryptProviderSecret(item.encryptedKey) === secret; } catch { return false; } })()); }
-function activateVerifiedProviderModel(provider: AIProvider, modelIdentifier: string, displayName?: string, contextWindow?: number, maxOutputTokens?: number) {
+function activateVerifiedProviderModel(provider: AIProvider, modelIdentifier: string, displayName?: string, contextWindow?: number, maxOutputTokens?: number, liveCapabilities?: readonly string[]) {
   const checkedAt = new Date().toISOString();
   const existing = models.find(item => item.providerId === provider.id && item.modelIdentifier === modelIdentifier);
   if (existing) {
@@ -305,6 +313,7 @@ function activateVerifiedProviderModel(provider: AIProvider, modelIdentifier: st
     existing.status = 'online';
     existing.verificationStatus = 'verified';
     existing.freeQuotaState = 'available';
+    if (liveCapabilities?.length) existing.capabilities = [...liveCapabilities];
     existing.lastVerifiedAt = checkedAt;
     existing.lastCatalogUpdateAt = checkedAt;
     return existing;
@@ -319,7 +328,7 @@ function activateVerifiedProviderModel(provider: AIProvider, modelIdentifier: st
     contextWindow: contextWindow || 32768,
     maxOutputTokens: maxOutputTokens || 4096,
     enabled: true,
-    capabilities: ['general_ai'],
+    capabilities: liveCapabilities?.length ? [...liveCapabilities] : ['chat'],
     costPer1kInput: 0,
     costPer1kOutput: 0,
     averageLatencyMs: provider.latencyMs || 0,
@@ -339,9 +348,16 @@ async function verifyProviderAccount(account: ProviderAccount): Promise<{ tested
   const key = decryptProviderSecret(account.encryptedKey);
   if (provider.type !== 'ollama' && !key) throw new Error('A live provider credential is required for this provider.');
   const now = new Date().toISOString();
+  const startedAt = Date.now();
   try {
     const adapter = createProviderAdapter(provider, key);
     const catalog = await adapter.listModels(AbortSignal.timeout(20000));
+    account.lastDiscoveredAt = now;
+    account.discoveryStatus = catalog.length ? 'LIVE' : 'UNAVAILABLE';
+    account.discoveryError = catalog.length ? undefined : 'The provider returned no models.';
+    account.discoveredModelCount = catalog.length;
+    account.discoveredModels = catalog.map(model => ({ id: model.id, canonicalSlug: model.canonicalSlug, name: model.name, description: model.description, contextLength: model.contextLength, inputModalities: [...model.inputModalities], outputModalities: [...model.outputModalities], supportedParameters: [...model.supportedParameters], capabilities: [...model.capabilities], supportsStreaming: model.supportsStreaming, supportsTools: model.supportsTools, supportsVision: model.supportsVision, supportsEmbeddings: model.supportsEmbeddings, supportsReasoning: model.supportsReasoning, provenance: 'LIVE' }));
+    persistProviderAccounts();
     const candidates = catalog.filter(item => item.inputModalities.includes('text') && item.capabilities.includes('chat')).slice(0, 8);
     if (!candidates.length) throw new Error('The account is valid, but the provider returned no chat-capable text model to test.');
     let testedModel = ''; let lastProbeIssue = 'No candidate model produced text.';
@@ -356,8 +372,8 @@ async function verifyProviderAccount(account: ProviderAccount): Promise<{ tested
     }
     if (!testedModel) throw new Error(`Credential and catalog checks passed, but live model checks did not produce text. ${lastProbeIssue}`);
     const tested = candidates.find(candidate => candidate.id === testedModel);
-    activateVerifiedProviderModel(provider, testedModel, tested?.name, tested?.contextLength);
-    account.lastTestedAt = now; account.lastTestStatus = 'passed'; account.lastTestMessage = `Credential and live inference check passed using ${testedModel}.`; account.enabled = true; account.state = 'active'; persistProviderAccounts();
+    activateVerifiedProviderModel(provider, testedModel, tested?.name, tested?.contextLength, undefined, tested?.capabilities);
+    account.lastTestedAt = now; account.lastTestStatus = 'passed'; account.lastTestMessage = `Credential and live inference check passed using ${testedModel}.`; account.enabled = true; account.state = 'active'; provider.status = 'online'; provider.latencyMs = Date.now() - startedAt; provider.lastConnectionTest = { success: true, timestamp: now, latencyMs: provider.latencyMs }; provider.lastTested = now; persistProviderAccounts();
     account.verifiedModels = [...new Set([...(account.verifiedModels || []), testedModel])]; persistProviderAccounts();
     account.defaultModelIdentifier = account.defaultModelIdentifier && account.verifiedModels.includes(account.defaultModelIdentifier) ? account.defaultModelIdentifier : testedModel;
     persistProviderAccounts();
@@ -368,6 +384,10 @@ async function verifyProviderAccount(account: ProviderAccount): Promise<{ tested
 }
 function seedProviderAccounts() {
   try { if (existsSync(providerAccountsPath)) providerAccounts = JSON.parse(readFileSync(providerAccountsPath, 'utf8')); } catch (error) { console.error('[Provider vault] Stored account registry could not be read.'); }
+  for (const account of providerAccounts) {
+    account.ownerType = account.ownerType || 'ALTIL_MANAGED';
+    account.verifiedModels = Array.isArray(account.verifiedModels) ? account.verifiedModels : [];
+  }
   const environmentKeys: Partial<Record<ProviderType, string>> = { gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', openai: 'OPENAI_API_KEY', groq: 'GROQ_API_KEY', deepseek: 'DEEPSEEK_API_KEY', mistral: 'MISTRAL_API_KEY', together: 'TOGETHER_API_KEY' };
   let changed = false;
   for (const provider of providers) {
@@ -376,7 +396,7 @@ function seedProviderAccounts() {
     if (!key || /placeholder|example|altil_live/i.test(key)) continue;
     const prefix = `${key.slice(0, 7)}…${key.slice(-4)}`;
     if (!providerAccounts.some(item => item.providerId === provider.id && item.keyPrefix === prefix)) {
-      providerAccounts.push({ id: `pa-${randomUUID()}`, providerId: provider.id, label: `${provider.name} default account`, keyPrefix: prefix, enabled: false, state: 'needs_test', createdAt: new Date().toISOString(), requests: 0, tokens: 0, encryptedKey: encryptProviderSecret(key) });
+      providerAccounts.push({ id: `pa-${randomUUID()}`, providerId: provider.id, label: `${provider.name} default account`, keyPrefix: prefix, enabled: false, state: 'needs_test', createdAt: new Date().toISOString(), requests: 0, tokens: 0, ownerType: 'ALTIL_MANAGED', encryptedKey: encryptProviderSecret(key) });
       changed = true;
     }
   }
@@ -1742,9 +1762,9 @@ function recordModelEvent(event: Omit<ModelFleetEvent, 'id' | 'at'>) {
 
 
 
-function liveProviderKey(provider: AIProvider, modelIdentifier?: string): string {
+function liveProviderKey(provider: AIProvider, modelIdentifier?: string, ownerId?: string): string {
 
-  return accountApiKey(provider.id, modelIdentifier);
+  return accountApiKey(provider.id, modelIdentifier, ownerId);
 
 }
 
@@ -1779,6 +1799,13 @@ function safeProvider(provider: AIProvider) {
   const managedAccountFresh = Boolean(managedAccount?.enabled && managedAccount.state === 'active' && managedAccount.lastTestStatus === 'passed' && managedAccount.lastTestedAt && Date.now() - Date.parse(managedAccount.lastTestedAt) < 24 * 60 * 60 * 1000);
   return {
     ...safe,
+    status: managedAccountFresh ? 'online' : 'offline',
+    executionState: managedAccountFresh ? 'LIVE' : managedAccount ? 'CONFIGURED-BUT-NOT-VERIFIED' : 'UNAVAILABLE',
+    latencyMs: managedAccountFresh ? Number(provider.lastConnectionTest?.latencyMs || 0) : 0,
+    p95LatencyMs: managedAccountFresh ? safe.p95LatencyMs : undefined,
+    uptimePercent: managedAccountFresh ? safe.uptimePercent : undefined,
+    errorRate: managedAccountFresh ? safe.errorRate : 0,
+    lastTested: managedAccountFresh ? (managedAccount?.lastTestedAt || safe.lastTested) : '',
     credentialsConfigured: Boolean(managedAccount) || providerHasLiveCredentials(provider),
     keyPrefix: managedAccount?.keyPrefix || configuredPrefix || (provider.apiKey ? '••••••••' : undefined),
     credentialState: managedAccount ? (managedAccountFresh ? 'validated' : 'test_required') : undefined,
@@ -1790,22 +1817,22 @@ function providerHasLiveAdapter(provider: AIProvider): boolean {
   return ['gemini','openai','groq','openrouter','anthropic','ollama','deepseek','mistral','together','openai_compatible'].includes(provider.type);
 }
 
-function providerHasLiveCredentials(provider: AIProvider, modelIdentifier?: string): boolean {
-  return Boolean(liveProviderKey(provider, modelIdentifier));
+function providerHasLiveCredentials(provider: AIProvider, modelIdentifier?: string, ownerId?: string): boolean {
+  return Boolean(liveProviderKey(provider, modelIdentifier, ownerId));
 }
 
-function isLiveModelRouteable(model: AIModel | undefined): boolean {
-  if (!model || !model.enabled || model.status !== 'online' || model.freeQuotaState === 'exhausted' || (model.isFree && model.verificationStatus !== 'verified')) return false;
+function isLiveModelRouteable(model: AIModel | undefined, ownerId?: string): boolean {
+  if (!model || !model.enabled || model.status !== 'online' || model.verificationStatus !== 'verified' || !model.lastVerifiedAt || model.freeQuotaState === 'exhausted') return false;
   const provider = providers.find(item => item.id === model.providerId);
   if (!provider || !provider.enabled || provider.status !== 'online' || !providerHasLiveAdapter(provider)) return false;
-  return Boolean(providerAccounts.some(item => item.providerId === provider.id) ? providerHasLiveCredentials(provider, model.modelIdentifier) : providerHasLiveCredentials(provider));
+  return Boolean(providerAccounts.some(item => item.providerId === provider.id) ? providerHasLiveCredentials(provider, model.modelIdentifier, ownerId) : providerHasLiveCredentials(provider, model.modelIdentifier));
 }
 
 
 
-async function callOpenAiCompatibleModel(provider: AIProvider, model: AIModel, prompt: string, requestedMaxTokens?: number, retryCount = 0, conversationMessages?: ReadonlyArray<{ role: string; content: any }>): Promise<{ text: string; tokens: number; inputTokens: number; outputTokens: number }> {
+async function callOpenAiCompatibleModel(provider: AIProvider, model: AIModel, prompt: string, requestedMaxTokens?: number, retryCount = 0, conversationMessages?: ReadonlyArray<{ role: string; content: any }>, ownerId?: string): Promise<{ text: string; tokens: number; inputTokens: number; outputTokens: number; usageReported: boolean }> {
 
-  const apiKey = liveProviderKey(provider, model.modelIdentifier);
+  const apiKey = liveProviderKey(provider, model.modelIdentifier, ownerId);
 
   if (!apiKey) throw new Error(`Provider ${provider.name} has no valid live API key configured.`);
   const usedAccount = accountForSecret(provider.id, apiKey);
@@ -1841,11 +1868,11 @@ async function callOpenAiCompatibleModel(provider: AIProvider, model: AIModel, p
 
       void persistModelFleetState();
 
-      if (otherReadyAccount && retryCount < providerAccounts.filter(item => item.providerId === provider.id).length) return callOpenAiCompatibleModel(provider, model, prompt, requestedMaxTokens, retryCount + 1);
+      if (otherReadyAccount && retryCount < providerAccounts.filter(item => item.providerId === provider.id).length) return callOpenAiCompatibleModel(provider, model, prompt, requestedMaxTokens, retryCount + 1, conversationMessages, ownerId);
 
     }
 
-    throw new Error(`${response.status}: ${detail}`);
+    throw new Error(`${classifyProviderError(response.status, detail)}: ${detail}`);
 
   }
 
@@ -1860,7 +1887,7 @@ async function callOpenAiCompatibleModel(provider: AIProvider, model: AIModel, p
 
   const totalTokens = normalized.totalTokens || inputTokens + outputTokens;
   if (usedAccount) { usedAccount.tokens += totalTokens; persistProviderAccounts(); }
-  return { text, tokens: totalTokens, inputTokens, outputTokens };
+  return { text, tokens: totalTokens, inputTokens, outputTokens, usageReported: normalized.inputTokens !== undefined || normalized.outputTokens !== undefined };
 
 }
 
@@ -1908,7 +1935,7 @@ async function refreshFreeModelCatalog(accountId?: string) {
 
     const probeGuard = scanAndSanitizePrompt('Reply with the single word OK.', {});
 
-    if (!probeGuard.passed) throw new Error('ALTIL policy gate rejected the synthetic catalog validation probe.');
+    if (!probeGuard.passed) throw new Error('ALTIL policy gate rejected the live catalog validation probe.');
 
     let activated = 0;
 
@@ -3917,44 +3944,94 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
 
   // Provider account vault: credentials are encrypted at rest and never returned to a client.
-  app.get('/api/v1/provider-accounts', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (_req, res) => {
-    res.json(providerAccounts.map(item => { const current = Boolean(item.enabled && item.state === 'active' && item.lastTestStatus === 'passed' && item.lastTestedAt && Date.now() - Date.parse(item.lastTestedAt) < 24 * 60 * 60 * 1000); return { ...publicProviderAccount(item), currentStatus: current ? 'online' : item.state === 'paused' ? 'paused' : item.lastTestStatus === 'failed' ? 'offline' : 'check_required', providerName: providers.find(p => p.id === item.providerId)?.name || 'Unknown provider', testedModels: item.verifiedModels?.length || 0, availableModels: models.filter(m => current && item.verifiedModels?.includes(m.modelIdentifier) && m.enabled && m.isFree && m.verificationStatus === 'verified' && m.freeQuotaState !== 'exhausted').map(m => m.modelIdentifier) }; }));
+  app.get('/api/v1/provider-accounts', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
+    res.json(providerAccounts.filter(item => providerAccountVisibleTo(item, req)).map(item => { const current = Boolean(item.enabled && item.state === 'active' && item.lastTestStatus === 'passed' && item.lastTestedAt && Date.now() - Date.parse(item.lastTestedAt) < 24 * 60 * 60 * 1000); return { ...publicProviderAccount(item), ownerType: item.ownerType || 'ALTIL_MANAGED', currentStatus: current ? 'online' : item.state === 'paused' ? 'paused' : item.lastTestStatus === 'failed' ? 'offline' : 'check_required', providerName: providers.find(p => p.id === item.providerId)?.name || 'Unknown provider', testedModels: item.verifiedModels?.length || 0, availableModels: current ? (item.verifiedModels || []) : [] }; }));
   });
   app.post('/api/v1/provider-accounts', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
     const provider = providers.find(p => p.id === req.body.providerId);
     const label = typeof req.body.label === 'string' ? req.body.label.trim().slice(0, 100) : '';
     const key = typeof req.body.apiKey === 'string' ? req.body.apiKey.trim() : '';
-    if (!provider || !label || key.length < 12) return res.status(400).json({ error: 'Choose a provider and enter an account name and valid API key.' });
+    if (!provider || !label || (provider.type !== 'ollama' && key.length < 12)) return res.status(400).json({ error: 'Choose a provider and enter an account name and valid API key.' });
     if (providerAccounts.some(item => item.providerId === provider.id && item.keyPrefix === `${key.slice(0, 7)}…${key.slice(-4)}`)) return res.status(409).json({ error: 'That account key is already registered for this provider.' });
-    const account: ProviderAccount = { id: `pa-${randomUUID()}`, providerId: provider.id, label, keyPrefix: `${key.slice(0, 7)}…${key.slice(-4)}`, enabled: false, state: 'needs_test', createdAt: new Date().toISOString(), requests: 0, tokens: 0, encryptedKey: encryptProviderSecret(key) };
+    const ownerType = req.body.ownerType === 'CUSTOMER_MANAGED' ? 'CUSTOMER_MANAGED' : 'ALTIL_MANAGED';
+    const ownerId = ownerType === 'CUSTOMER_MANAGED' && typeof req.body.ownerId === 'string' ? req.body.ownerId.trim() : undefined;
+    if (ownerType === 'CUSTOMER_MANAGED' && !ownerId) return res.status(400).json({ error: 'Customer-managed connections require an ownerId.' });
+    if (ownerType === 'CUSTOMER_MANAGED' && !customers.some(customer => customer.id === ownerId)) return res.status(400).json({ error: 'The customer owner does not exist.' });
+    if (ownerType === 'CUSTOMER_MANAGED' && !providerAccountVisibleTo({ ownerType, ownerId } as ProviderAccount, req)) return res.status(403).json({ error: 'Provider account owner is outside the current tenant scope.' });
+    const account: ProviderAccount = { id: `pa-${randomUUID()}`, providerId: provider.id, label, keyPrefix: `${key.slice(0, 7)}…${key.slice(-4)}`, enabled: false, state: 'needs_test', createdAt: new Date().toISOString(), requests: 0, tokens: 0, ownerType, ownerId, byokOnly: req.body.byokOnly === true, encryptedKey: encryptProviderSecret(key) };
     providerAccounts.push(account); persistProviderAccounts();
     res.status(201).json(publicProviderAccount(account));
   });
   app.post('/api/v1/provider-accounts/:id/test', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req, res) => {
-    const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' });
+    const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' }); if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
     try {
       const verification = await verifyProviderAccount(account);
-      void refreshFreeModelCatalog(account.id);
+      if (providers.find(item => item.id === account.providerId)?.type === 'openrouter') void refreshFreeModelCatalog(account.id);
       res.json({ ok: true, account: publicProviderAccount(account), ...verification });
     } catch (error) {
       res.status(422).json({ ok: false, account: publicProviderAccount(account), error: account.lastTestMessage });
     }
   });
+  app.post('/api/v1/provider-accounts/:id/discover-models', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req, res) => {
+    const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' }); if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
+    const provider = providers.find(item => item.id === account.providerId); if (!provider) return res.status(404).json({ error: 'Provider not found.' });
+    try {
+      const key = decryptProviderSecret(account.encryptedKey);
+      const catalog = await createProviderAdapter(provider, key).listModels(AbortSignal.timeout(20000));
+      account.lastDiscoveredAt = new Date().toISOString(); account.discoveryStatus = catalog.length ? 'LIVE' : 'UNAVAILABLE'; account.discoveryError = catalog.length ? undefined : 'The provider returned no models.'; account.discoveredModelCount = catalog.length;
+      account.discoveredModels = catalog.map(model => ({ id: model.id, canonicalSlug: model.canonicalSlug, name: model.name, description: model.description, contextLength: model.contextLength, inputModalities: [...model.inputModalities], outputModalities: [...model.outputModalities], supportedParameters: [...model.supportedParameters], capabilities: [...model.capabilities], supportsStreaming: model.supportsStreaming, supportsTools: model.supportsTools, supportsVision: model.supportsVision, supportsEmbeddings: model.supportsEmbeddings, supportsReasoning: model.supportsReasoning, provenance: 'LIVE' }));
+      persistProviderAccounts(); return res.json({ ok: true, account: publicProviderAccount(account), models: account.discoveredModels });
+    } catch (error) { account.discoveryStatus = 'FAILED'; account.discoveryError = error instanceof Error ? error.message.slice(0, 220) : 'Live model discovery failed.'; persistProviderAccounts(); return res.status(422).json({ ok: false, account: publicProviderAccount(account), error: account.discoveryError }); }
+  });
+  app.get('/api/v1/provider-accounts/:id/models', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
+    const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' }); if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
+    const verified = new Set(account.verifiedModels || []);
+    const modelsForAccount = (account.discoveredModels || []).map(model => ({ ...model, status: verified.has(String(model.id)) ? 'VERIFIED' : 'AVAILABLE', allowed: account.allowedModels === undefined || account.allowedModels.includes(String(model.id)), default: account.defaultModelIdentifier === model.id }));
+    return res.json({ accountId: account.id, source: account.discoveryStatus || 'UNAVAILABLE', lastDiscoveredAt: account.lastDiscoveredAt || null, models: modelsForAccount });
+  });
+  app.post('/api/v1/provider-accounts/:id/models/:modelId/test', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req, res) => {
+    const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' }); if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
+    const provider = providers.find(item => item.id === account.providerId); if (!provider) return res.status(404).json({ error: 'Provider not found.' });
+    const modelIdentifier = decodeURIComponent(req.params.modelId);
+    try {
+      const key = decryptProviderSecret(account.encryptedKey);
+      const adapter = createProviderAdapter(provider, key);
+      const catalog = await adapter.listModels(AbortSignal.timeout(20000));
+      const selected = catalog.find(model => model.id === modelIdentifier);
+      if (!selected) return res.status(404).json({ ok: false, code: 'MODEL_NOT_DISCOVERED', error: 'The requested model was not returned by the provider live catalogue.' });
+      const startedAt = Date.now();
+      const response = await adapter.chatCompletions({ model: selected.id, messages: [{ role: 'user', content: 'Reply with OK.' }], max_tokens: 8, temperature: 0, stream: false }, AbortSignal.timeout(30000));
+      const payload = await response.json().catch(() => ({}));
+      const normalized = normalizeProviderResponse(provider.type, payload);
+      if (!response.ok || !normalized.text) return res.status(422).json({ ok: false, code: 'LIVE_INFERENCE_FAILED', error: 'The provider did not return a usable live response.' });
+      activateVerifiedProviderModel(provider, selected.id, selected.name, selected.contextLength, undefined, selected.capabilities);
+      account.verifiedModels = [...new Set([...(account.verifiedModels || []), selected.id])]; account.lastTestedAt = new Date().toISOString(); account.lastTestStatus = 'passed'; account.lastTestMessage = `Live inference check passed using ${selected.id}.`; account.enabled = true; account.state = 'active'; account.defaultModelIdentifier = account.defaultModelIdentifier || selected.id; persistProviderAccounts();
+      return res.json({ ok: true, modelIdentifier: selected.id, latencyMs: Date.now() - startedAt, responseId: normalized.id || null, usage: { inputTokens: normalized.inputTokens ?? null, outputTokens: normalized.outputTokens ?? null, reported: normalized.inputTokens !== undefined || normalized.outputTokens !== undefined } });
+    } catch (error) { account.lastTestStatus = 'failed'; account.lastTestMessage = error instanceof Error ? error.message.slice(0, 220) : 'Live model check failed.'; account.state = 'error'; account.enabled = false; persistProviderAccounts(); return res.status(422).json({ ok: false, code: 'LIVE_INFERENCE_FAILED', error: account.lastTestMessage }); }
+  });
   app.patch('/api/v1/provider-accounts/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
     const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' });
+    if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
     if (req.body.enabled === false) { account.enabled = false; account.state = 'paused'; }
     else if (req.body.enabled === true && account.lastTestStatus === 'passed') { account.enabled = true; account.state = 'active'; }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'byokOnly')) account.byokOnly = req.body.byokOnly === true;
     if (Object.prototype.hasOwnProperty.call(req.body, 'defaultModelIdentifier')) {
       const requestedDefault = typeof req.body.defaultModelIdentifier === 'string' ? req.body.defaultModelIdentifier.trim() : '';
       if (!requestedDefault) account.defaultModelIdentifier = undefined;
       else if (account.lastTestStatus !== 'passed' || !account.verifiedModels?.includes(requestedDefault)) return res.status(400).json({ error: 'The default model must be one of this account\'s live-verified models.' });
       else account.defaultModelIdentifier = requestedDefault;
     }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'allowedModels')) {
+      if (!Array.isArray(req.body.allowedModels) || req.body.allowedModels.some((value: unknown) => typeof value !== 'string' || !account.verifiedModels?.includes(value))) return res.status(400).json({ error: 'Allowed models must be selected from this account\'s live-verified models.' });
+      account.allowedModels = [...new Set((req.body.allowedModels as unknown[]).filter((value): value is string => typeof value === 'string'))];
+      if (account.defaultModelIdentifier && !account.allowedModels.includes(account.defaultModelIdentifier)) account.defaultModelIdentifier = undefined;
+    }
     persistProviderAccounts(); res.json(publicProviderAccount(account));
   });
   app.delete('/api/v1/provider-accounts/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
     const account = providerAccounts.find(item => item.id === req.params.id);
     if (!account) return res.status(404).json({ error: 'Provider account not found.' });
+    if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
     providerAccounts = providerAccounts.filter(item => item.id !== req.params.id);
     const provider = providers.find(item => item.id === account.providerId);
     const replacement = providerAccounts.find(item => item.providerId === account.providerId);
@@ -3977,9 +4054,11 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
     providers.forEach(p => {
 
-      p.modelsCount = models.filter(m => m.providerId === p.id).length;
+      // Provider cards are operational status, so count only models that have
+      // passed a live verification and still have a usable managed credential.
+      p.modelsCount = models.filter(m => m.providerId === p.id && isLiveModelRouteable(m)).length;
 
-      p.freeModelsCount = models.filter(m => m.providerId === p.id && m.isFree).length;
+      p.freeModelsCount = models.filter(m => m.providerId === p.id && m.isFree && isLiveModelRouteable(m)).length;
 
     });
 
@@ -4065,19 +4144,11 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
 
 
-    // If autoProvisionModels is requested or preset provided
-
-    if (req.body.autoProvisionModels) {
-
-      const presetModels = getPresetModelsForProvider(newProvider);
-
-      presetModels.forEach(m => models.unshift(m));
-
-      newProvider.modelsCount = presetModels.length;
-
-      newProvider.freeModelsCount = presetModels.filter(m => m.isFree).length;
-
-    }
+    // A provider connection is not operational until its live catalogue and
+    // at least one real inference have been verified. Never seed models from
+    // a static catalogue during connection creation.
+    newProvider.modelsCount = 0;
+    newProvider.freeModelsCount = 0;
 
 
 
@@ -4158,294 +4229,76 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
   // Dedicated Telemetry Data per Provider
 
   app.get('/api/v1/providers/:id/telemetry', requireAuthentication, (req: AuthenticatedRequest, res) => {
-
     const provider = providers.find(p => p.id === req.params.id);
-
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
-
-
-
-    const providerModels = models.filter(m => m.providerId === provider.id);
-
-    const providerLogs = auditLogs.filter(l => l.providerId === provider.id || (l.providerName && l.providerName.toLowerCase().includes(provider.name.toLowerCase().slice(0, 5))));
-
-    // Live data exists only when the provider has recorded request activity in
-    // the audit ledger. Absent that, every derived figure below is synthetic
-    // and must be labelled as such rather than presented as observed.
-    const hasLiveLogs = providerLogs.length > 0 || (provider.totalRequests || 0) > 0;
-
-    const totalReqs = provider.totalRequests || (hasLiveLogs ? providerLogs.length * 120 + 350 : 2400);
-
-    const successReqs = Math.floor(totalReqs * (1 - (provider.errorRate || 0.02)));
-
-    const failReqs = totalReqs - successReqs;
-
-    const fallbackCount = providerLogs.filter(l => l.fallbackAttempted || l.status === 'FALLBACK_SUCCESS').length || Math.floor(totalReqs * 0.04);
-
-
-
-    const totalTokens = provider.tokensTotal || totalReqs * 2150;
-
-    const inTokens = Math.floor(totalTokens * 0.65);
-
-    const outTokens = totalTokens - inTokens;
-
-    const estCost = provider.costTotal !== undefined ? provider.costTotal : Number(((totalTokens / 1000) * 0.0006).toFixed(2));
-
-    const freeTierSavings = provider.hasFreeTier ? Number(((totalTokens / 1000) * 0.002).toFixed(2)) : 0.0;
-
-
-
-    // Generate 12-hour chronological telemetry data points
-
-    const baseHour = new Date();
-
-    const hourlyMetrics = Array.from({ length: 12 }).map((_, i) => {
-
-      const d = new Date(baseHour.getTime() - (11 - i) * 3600000);
-
-      const timeStr = d.toTimeString().slice(0, 5);
-
-      const reqVariance = 0.7 + Math.sin(i / 2) * 0.4 + Math.random() * 0.2;
-
-      const hourlyReqs = Math.max(20, Math.floor((totalReqs / 24) * reqVariance));
-
-      const hourlyLatency = Math.max(30, Math.floor((provider.latencyMs || 150) + (Math.random() * 40 - 20)));
-
-      const hourlyTokens = hourlyReqs * Math.floor(1800 + Math.random() * 600);
-
-      const hourlyErrors = Math.random() > 0.7 ? Math.floor(Math.random() * 4) : 0;
-
-      const hourlyCost = Number(((hourlyTokens / 1000) * (provider.hasFreeTier ? 0.0001 : 0.0012)).toFixed(3));
-
-
-
-      return {
-
-        time: timeStr,
-
-        requests: hourlyReqs,
-
-        latency: hourlyLatency,
-
-        tokens: hourlyTokens,
-
-        errors: hourlyErrors,
-
-        cost: hourlyCost
-
-      };
-
-    });
-
-
-
-    // Model breakdown metrics for this provider
-
-    const modelMetrics = providerModels.map(m => {
-
-      const mReqs = Math.max(50, Math.floor(totalReqs / (providerModels.length || 1) * (0.6 + Math.random() * 0.8)));
-
-      const mTokens = mReqs * Math.floor(2200 + Math.random() * 800);
-
-      const mCost = m.isFree ? 0 : Number(((mTokens / 1000) * (m.costPer1kOutput || 0.001)).toFixed(2));
-
-      return {
-
-        modelId: m.id,
-
-        modelName: m.displayName || m.modelIdentifier,
-
-        requests: mReqs,
-
-        avgLatencyMs: m.averageLatencyMs || provider.latencyMs || 150,
-
-        tokensConsumed: mTokens,
-
-        isFree: Boolean(m.isFree),
-
-        cost: mCost
-
-      };
-
-    });
-
-
-
-    // Recent telemetry event feed
-
-    const recentEvents = [
-
-      {
-
-        id: `ev-${Date.now()}-1`,
-
-        timestamp: 'Just now',
-
-        type: 'success' as const,
-
-        model: providerModels[0]?.displayName || 'Primary Model',
-
-        latencyMs: provider.latencyMs || 84,
-
-        tokens: 384,
-
-        message: 'HTTP 200 OK â€” Ingress payload processed within SLA target.'
-
-      },
-
-      {
-
-        id: `ev-${Date.now()}-2`,
-
-        timestamp: '4m ago',
-
-        type: 'health_check' as const,
-
-        model: 'Probe Health Daemon',
-
-        latencyMs: (provider.latencyMs || 84) - 5,
-
-        tokens: 32,
-
-        message: 'Routine TCP socket & auth handshake validated (Latency nominal).'
-
-      },
-
-      {
-
-        id: `ev-${Date.now()}-3`,
-
-        timestamp: '18m ago',
-
-        type: provider.errorRate > 0.08 ? ('error' as const) : ('success' as const),
-
-        model: providerModels[1]?.displayName || providerModels[0]?.displayName || 'Model Node',
-
-        latencyMs: (provider.latencyMs || 84) + 45,
-
-        tokens: 1240,
-
-        message: provider.errorRate > 0.08 ? 'HTTP 429 Rate Limit Warning â€” Throttled payload.' : 'HTTP 200 OK â€” Batch completion dispatched.'
-
-      }
-
-    ];
-
-
-
+    const providerLogs = auditLogs.filter(log => log.providerId === provider.id);
+    const successful = providerLogs.filter(log => log.status === 'SUCCESS' || log.status === 'FALLBACK_SUCCESS');
+    const failed = providerLogs.filter(log => log.status !== 'SUCCESS' && log.status !== 'FALLBACK_SUCCESS');
+    const durations = providerLogs.map(log => Math.max(0, Math.round((Number(log.durationSeconds) || 0) * 1000))).filter(value => value > 0);
+    const sortedDurations = [...durations].sort((a, b) => a - b);
+    const percentile = (fraction: number) => sortedDurations.length ? sortedDurations[Math.min(sortedDurations.length - 1, Math.floor((sortedDurations.length - 1) * fraction))] : 0;
+    const average = durations.length ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length) : 0;
+    const modelGroups = new Map<string, { requests: number; tokens: number; latency: number; name: string }>();
+    for (const log of providerLogs) {
+      const key = log.modelId || log.modelIdentifier;
+      const current = modelGroups.get(key) || { requests: 0, tokens: 0, latency: 0, name: log.modelIdentifier || log.modelId };
+      current.requests += 1;
+      current.tokens += (Number(log.inputTokens) || 0) + (Number(log.outputTokens) || 0);
+      current.latency += Math.max(0, Math.round((Number(log.durationSeconds) || 0) * 1000));
+      modelGroups.set(key, current);
+    }
+    const modelMetrics = [...modelGroups.entries()].map(([modelId, metric]) => ({
+      modelId, modelName: metric.name, requests: metric.requests, avgLatencyMs: Math.round(metric.latency / metric.requests),
+      tokensConsumed: metric.tokens, isFree: Boolean(models.find(model => model.id === modelId)?.isFree), cost: 0,
+    }));
+    const recentEvents = providerLogs.slice(0, 100).map(log => ({
+      id: log.id, timestamp: log.timestamp,
+      type: log.status === 'FALLBACK_SUCCESS' ? 'fallback' as const : log.status === 'SUCCESS' ? 'success' as const : 'error' as const,
+      model: log.modelIdentifier || log.modelId, latencyMs: Math.max(0, Math.round((Number(log.durationSeconds) || 0) * 1000)),
+      tokens: (Number(log.inputTokens) || 0) + (Number(log.outputTokens) || 0),
+      message: log.status === 'SUCCESS' || log.status === 'FALLBACK_SUCCESS' ? 'Recorded provider transaction.' : 'Recorded provider outcome: ' + log.status + '.',
+    }));
+    const hasLiveLogs = providerLogs.length > 0;
     const telemetryData: ProviderTelemetryData = {
-
-      providerId: provider.id,
-
-      providerName: provider.name,
-
-      providerType: provider.type,
-
-      provenance: hasLiveLogs ? 'LIVE' : 'SYNTHETIC',
-
-      uptimePercent: provider.uptimePercent || 99.98,
-
-      avgLatencyMs: provider.latencyMs || 120,
-
-      p95LatencyMs: provider.p95LatencyMs || (provider.latencyMs ? Math.round(provider.latencyMs * 1.5) : 240),
-
-      p99LatencyMs: provider.latencyMs ? Math.round(provider.latencyMs * 2.2) : 380,
-
-      errorRatePercent: Number(((provider.errorRate || 0.02) * 100).toFixed(2)),
-
-      totalRequests: totalReqs,
-
-      successfulRequests: successReqs,
-
-      failedRequests: failReqs,
-
-      fallbackCount: fallbackCount,
-
-      tokensTotal: totalTokens,
-
-      inputTokens: inTokens,
-
-      outputTokens: outTokens,
-
-      avgTokensPerSec: provider.type === 'groq' ? 480 : provider.type === 'ollama' ? 85 : 120,
-
-      estimatedCostTotal: estCost,
-
-      freeTierSavings: freeTierSavings,
-
-      hourlyMetrics,
-
-      modelMetrics,
-
-      recentEvents
-
+      providerId: provider.id, providerName: provider.name, providerType: provider.type,
+      provenance: hasLiveLogs ? 'LIVE' : 'UNAVAILABLE',
+      unavailableReason: hasLiveLogs ? undefined : 'No live provider transactions have been recorded.',
+      uptimePercent: 0, avgLatencyMs: average, p95LatencyMs: percentile(0.95), p99LatencyMs: percentile(0.99),
+      errorRatePercent: providerLogs.length ? Number(((failed.length / providerLogs.length) * 100).toFixed(2)) : 0,
+      totalRequests: providerLogs.length, successfulRequests: successful.length, failedRequests: failed.length,
+      fallbackCount: providerLogs.filter(log => log.fallbackAttempted || log.status === 'FALLBACK_SUCCESS').length,
+      tokensTotal: providerLogs.reduce((sum, log) => sum + (Number(log.inputTokens) || 0) + (Number(log.outputTokens) || 0), 0),
+      inputTokens: providerLogs.reduce((sum, log) => sum + (Number(log.inputTokens) || 0), 0),
+      outputTokens: providerLogs.reduce((sum, log) => sum + (Number(log.outputTokens) || 0), 0),
+      avgTokensPerSec: 0, estimatedCostTotal: 0, freeTierSavings: 0, hourlyMetrics: [], modelMetrics, recentEvents,
     };
-
-
-
-    res.json(telemetryData);
-
+    return res.json(telemetryData);
   });
-
-
-
-  // Run live synthetic benchmark on provider
-
+  // Provider benchmark is a real connection probe; no synthetic latency or throughput is reported.
   app.post('/api/v1/providers/:id/benchmark', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req: AuthenticatedRequest, res) => {
-
     const provider = providers.find(p => p.id === req.params.id);
-
     if (!provider) return res.status(404).json({ error: 'Provider not found' });
-
-
-
-    const startTime = Date.now();
-
-    await new Promise(r => setTimeout(r, 220 + Math.random() * 180));
-
-    const liveLatency = provider.type === 'groq' ? Math.floor(55 + Math.random() * 30) :
-
-      provider.type === 'ollama' ? Math.floor(110 + Math.random() * 40) :
-
-      provider.type === 'openai' ? Math.floor(180 + Math.random() * 80) :
-
-      Math.floor(220 + Math.random() * 90);
-
-
-
-    provider.latencyMs = liveLatency;
-
-    provider.p95LatencyMs = Math.round(liveLatency * 1.45);
-
-    provider.lastTested = new Date().toISOString().replace('T', ' ').slice(0, 19);
-
-    provider.totalRequests = (provider.totalRequests || 0) + 1;
-
-
-
-    res.json({
-
-      success: true,
-
-      providerId: provider.id,
-
-      liveLatencyMs: liveLatency,
-
-      p95LatencyMs: provider.p95LatencyMs,
-
-      tokensPerSecondBenchmark: provider.type === 'groq' ? 512 : provider.type === 'ollama' ? 92 : 138,
-
-      timestamp: provider.lastTested,
-
-      status: provider.status
-
-    });
-
+    const account = providerAccounts.find(item => item.providerId === provider.id && item.enabled && item.state === 'active');
+    if (!account && provider.type !== 'ollama') return res.status(422).json({ ok: false, code: 'CREDENTIAL_REQUIRED', error: 'A verified provider account is required.' });
+    let key = '';
+    try { key = account ? decryptProviderSecret(account.encryptedKey) : ''; } catch { return res.status(422).json({ ok: false, code: 'CREDENTIAL_UNAVAILABLE', error: 'The provider credential could not be decrypted.' }); }
+    const startedAt = Date.now();
+    try {
+      const adapter = createProviderAdapter(provider, key);
+      const catalog = await adapter.listModels(AbortSignal.timeout(20000));
+      const requested = typeof req.body?.modelIdentifier === 'string' ? req.body.modelIdentifier : '';
+      const model = catalog.find(item => item.id === requested) || catalog.find(item => account?.verifiedModels?.includes(item.id)) || catalog.find(item => item.capabilities.includes('chat'));
+      if (!model) return res.status(422).json({ ok: false, code: 'NO_MODEL_AVAILABLE', error: 'The provider returned no chat-capable model.' });
+      const response = await adapter.chatCompletions({ model: model.id, messages: [{ role: 'user', content: 'Reply with OK.' }], max_tokens: 8, temperature: 0, stream: false }, AbortSignal.timeout(30000));
+      const payload = await response.json().catch(() => ({}));
+      const normalized = normalizeProviderResponse(provider.type, payload);
+      if (!response.ok || !normalized.text) return res.status(422).json({ ok: false, code: 'LIVE_INFERENCE_FAILED', error: 'The provider did not return a usable live response.' });
+      return res.json({ ok: true, providerId: provider.id, modelIdentifier: model.id, liveLatencyMs: Date.now() - startedAt, responseId: normalized.id || null, usage: { inputTokens: normalized.inputTokens ?? null, outputTokens: normalized.outputTokens ?? null, reported: normalized.inputTokens !== undefined || normalized.outputTokens !== undefined }, source: 'LIVE_PROVIDER_TRANSACTION' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 240) : 'Live provider benchmark failed.';
+      return res.status(422).json({ ok: false, code: 'LIVE_INFERENCE_FAILED', error: message });
+    }
   });
-
-
-
   // Test Connection performs a real authenticated catalog and inference probe.
   app.post('/api/v1/providers/:id/test', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req: AuthenticatedRequest, res) => {
     const provider = providers.find(p => p.id === req.params.id);
@@ -4462,9 +4315,9 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
       const catalog = await adapter.listModels(AbortSignal.timeout(15000));
       discovered = catalog.map(model => model.id).filter(Boolean);
       const verified = new Set(managed?.verifiedModels || []);
-      const model = catalog.find(item => verified.has(item.id))
-        || catalog.find(item => models.some(entry => entry.providerId === provider.id && entry.modelIdentifier === item.id && entry.enabled))
-        || catalog[0];
+      const model = catalog.find(item => verified.has(item.id) && item.capabilities.includes('chat'))
+        || catalog.find(item => item.capabilities.includes('chat') && models.some(entry => entry.providerId === provider.id && entry.modelIdentifier === item.id && entry.enabled))
+        || catalog.find(item => item.capabilities.includes('chat'));
       if (!model) throw new Error('Provider returned no available models.');
       const probe = await adapter.chatCompletions({ model: model.id, messages: [{ role: 'user', content: 'Reply with OK.' }], max_tokens: 8, temperature: 0, stream: false }, AbortSignal.timeout(25000));
       const payload = await probe.json().catch(() => ({}));
@@ -4474,7 +4327,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
       }
       sample = normalizeProviderResponse(provider.type, payload).text;
       if (!sample) throw new Error('Provider returned an empty inference response.');
-      activateVerifiedProviderModel(provider, model.id, model.name, model.contextLength);
+      activateVerifiedProviderModel(provider, model.id, model.name, model.contextLength, undefined, model.capabilities);
       const latencyMs = Date.now() - started; provider.status = 'online'; provider.latencyMs = latencyMs; provider.lastTested = timestamp;
       (provider as any).lastConnectionTest = { success: true, timestamp, latencyMs };
       if (managed) {
@@ -5967,8 +5820,16 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
 
 
-  app.get(['/v1/models', '/api/v1/models'], authenticateGatewayTenantForScope('read:inference'), (_req: any, res) => {
-    const routeable = models.filter(model => isLiveModelRouteable(model));
+  app.get(['/v1/models', '/api/v1/models'], authenticateGatewayTenantForScope('read:inference'), async (req: any, res) => {
+    const tenantId = req.gatewayTenantId as string;
+    const key = req.gatewayApiKeyId ? apiKeys.find(item => item.id === req.gatewayApiKeyId) : undefined;
+    const routeable = models.filter(model => {
+      if (!isLiveModelRouteable(model, tenantId)) return false;
+      if (!key) return true;
+      const app = applications.find(item => item.id === key.appId);
+      if (!app) return false;
+      return validateApiKeyBoundary({ key, applicationId: app.id, environmentId: app.environmentId || app.environment, providerId: model.providerId, modelId: model.id }).allowed;
+    });
     const autoModel = routeable.length ? [{
       id: 'altil-auto',
       modelIdentifier: 'altil-auto',
@@ -5983,7 +5844,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
 
 
-  app.get('/v1/health', (_req, res) => { const activeModelCount = models.filter(isLiveModelRouteable).length; const eligibleProviders = providers.filter(provider => provider.enabled && provider.status === 'online' && providerHasLiveAdapter(provider) && providerHasLiveCredentials(provider)).length; res.status(activeModelCount ? 200 : 503).json({ status: activeModelCount ? 'ok' : 'degraded', service: 'ALTIL Governed AI Gateway', timestamp: new Date().toISOString(), modelCatalog: { source: modelCatalogStatus.source, lastUpdatedAt: modelCatalogStatus.lastCompletedAt || null, lastError: modelCatalogStatus.error || null }, activeModelCount, eligibleProviderCount: eligibleProviders, readinessMessage: activeModelCount ? undefined : 'No enabled provider has a supported live adapter and valid credentials, or no verified model has available quota.' }); });
+  app.get('/v1/health', (_req, res) => { const activeModelCount = models.filter(model => isLiveModelRouteable(model)).length; const eligibleProviders = providers.filter(provider => provider.enabled && provider.status === 'online' && providerHasLiveAdapter(provider) && providerHasLiveCredentials(provider)).length; res.status(activeModelCount ? 200 : 503).json({ status: activeModelCount ? 'ok' : 'degraded', service: 'ALTIL Governed AI Gateway', timestamp: new Date().toISOString(), modelCatalog: { source: modelCatalogStatus.source, lastUpdatedAt: modelCatalogStatus.lastCompletedAt || null, lastError: modelCatalogStatus.error || null }, activeModelCount, eligibleProviderCount: eligibleProviders, readinessMessage: activeModelCount ? undefined : 'No enabled provider has a supported live adapter and valid credentials, or no verified model has available quota.' }); });
 
 
 
@@ -6316,11 +6177,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
       prompt = '',
 
-      input = '',
-
-      simulatePrimaryFailure = false,
-
-      simulateProviderFailure = false
+      input = ''
 
     } = req.body;
 
@@ -6395,8 +6252,6 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
     }
 
 
-
-    const isFailureSimulated = simulatePrimaryFailure || simulateProviderFailure;
 
     const queryText = prompt || input || 'Hello from Introsoft application';
 
@@ -7070,7 +6925,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
 
 
-    const isRouteable = isLiveModelRouteable;
+    const isRouteable = (model: AIModel | undefined) => isLiveModelRouteable(model, callerTenantId);
 
     const requestedPrimary = namedRequestedModel || models.find(m => m.id === matchingRoute?.primaryModelId);
 
@@ -7100,6 +6955,14 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
     }
 
     const primaryProvider = providers.find(p => p.id === primaryModel.providerId) || providers[0];
+
+    // OpenRouter and the OpenAI-compatible adapters expose the normalized SSE
+    // contract. Native provider event formats remain unsupported until they
+    // have a dedicated normalizer; never pretend a buffered response streamed.
+    const normalizedSseProviderTypes = new Set(['openai', 'groq', 'deepseek', 'mistral', 'together', 'openai_compatible', 'openrouter']);
+    if (publicChatRequest?.stream === true && !normalizedSseProviderTypes.has(primaryProvider.type)) {
+      return res.status(422).json({ success: false, code: 'UNSUPPORTED_CAPABILITY', error: 'Streaming is not available for this provider connection yet.', requestId });
+    }
 
     if (authenticatedCaller.type === 'api_key' && authenticatedCaller.keyRecord) {
       const boundary = validateApiKeyBoundary({ key: authenticatedCaller.keyRecord, applicationId: appRecord.id, environmentId: appRecord.environmentId || appRecord.environment, providerId: primaryProvider.id, modelId: primaryModel.id });
@@ -7188,7 +7051,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
       status: 'completed',
 
-      details: `Mapped capability "${chosenCapability}" -> Primary Model: [${primaryModel.displayName}] (${primaryProvider.name}). Fallback chain: ${fallbackModel1?.displayName || 'Groq Llama 3.3'} -> Gemini Cloud.`,
+      details: `Mapped capability "${chosenCapability}" -> Primary Model: [${primaryModel.displayName}] (${primaryProvider.name}). Fallback chain: ${fallbackModel1 ? `${fallbackModel1.displayName} (${fallbackProvider1?.name || 'provider unavailable'})` : 'none configured'}.`,
 
       durationMs: 8
 
@@ -7212,7 +7075,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
 
 
-    if (!isFailureSimulated && primaryProvider.status === 'online' && primaryModel.enabled) {
+    if (primaryProvider.status === 'online' && primaryModel.enabled) {
 
       steps.push({
 
@@ -7231,7 +7094,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
       // OpenAI-compatible gateways (including OpenRouter and discovered free models) are called live.
 
       if (!dispatchSuccess && publicChatRequest && primaryProvider.type === 'openrouter') {
-        const runtimeKey = liveProviderKey(primaryProvider, primaryModel.modelIdentifier);
+        const runtimeKey = liveProviderKey(primaryProvider, primaryModel.modelIdentifier, callerTenantId);
         if (!runtimeKey || /placeholder|example|altil_live/i.test(runtimeKey)) return res.status(503).json({ error: { code: 'UPSTREAM_NOT_CONFIGURED', message: 'OpenRouter is not configured for this ALTIL runtime.' }, requestId });
         const sanitizePublicText = (text: string) => scanAndSanitizePrompt(text, { popiaRules: activePopiaRules, gdprRules: activeGdprRules }).sanitizedPrompt;
         const governedRequest = dcrRequired
@@ -7301,6 +7164,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
               body: upstream.body,
               signal: controller.signal,
               write: async () => undefined,
+              previewLimit: 1024 * 1024,
             });
             clearTimeout(timeout); res.off('close', onResponseClose);
             responseText = relay.outputPreview;
@@ -7340,15 +7204,83 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
         }
       }
 
+      const governedMessages = publicChatRequest
+        ? (dcrRequired ? [{ role: 'user', content: gatewayProviderPrompt }] : publicChatRequest.messages)
+        : undefined;
+
+      if (!dispatchSuccess && publicChatRequest?.stream === true && ['openai', 'groq', 'deepseek', 'mistral', 'together', 'openai_compatible'].includes(primaryProvider.type)) {
+
+        try {
+          const runtimeKey = liveProviderKey(primaryProvider, primaryModel.modelIdentifier, callerTenantId);
+          if (!runtimeKey) throw new Error('The selected provider connection has no usable live credential.');
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(new Error('Upstream request timed out.')), primaryProvider.timeoutMs || 60000);
+          const startedAt = Date.now();
+          let disconnected = false;
+          const onClose = () => { if (!res.writableEnded) { disconnected = true; controller.abort(new Error('Client disconnected.')); } };
+          res.once('close', onClose);
+          try {
+            const upstream = await createProviderAdapter(primaryProvider, runtimeKey).chatCompletions({
+              model: primaryModel.modelIdentifier,
+              messages: governedMessages || [{ role: 'user', content: gatewayProviderPrompt }],
+              max_tokens: Number(req.body?.max_tokens) || primaryModel.maxOutputTokens || 1024,
+              temperature: 0.2,
+              stream: true,
+            }, controller.signal);
+            if (!upstream.ok) {
+              const body = await upstream.json().catch(() => ({})) as any;
+              const detail = String(body?.error?.message || body?.message || `HTTP ${upstream.status}`).replaceAll(runtimeKey, '[REDACTED]').slice(0, 220);
+              throw new Error(`${classifyProviderError(upstream.status, detail)}: ${detail}`);
+            }
+            if (!upstream.body || !String(upstream.headers.get('content-type') || '').toLowerCase().includes('text/event-stream')) {
+              throw new Error('UNSUPPORTED_CAPABILITY: The provider did not return a server-sent event stream.');
+            }
+            if (!responseGateRequired) {
+              res.status(200).setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+              res.setHeader('Cache-Control', 'no-cache, no-transform');
+              res.setHeader('Connection', 'keep-alive');
+              res.setHeader('X-Accel-Buffering', 'no');
+              res.setHeader('X-Request-Id', requestId);
+              res.flushHeaders?.();
+            }
+            const relay = await relaySseStream({
+              body: upstream.body,
+              signal: controller.signal,
+              write: responseGateRequired ? async () => undefined : chunk => new Promise<void>((resolve, reject) => {
+                if (disconnected || res.destroyed) return reject(new Error('Client disconnected.'));
+                const accepted = res.write(Buffer.from(chunk));
+                if (accepted) return resolve();
+                res.once('drain', resolve); res.once('error', reject); res.once('close', () => reject(new Error('Client disconnected.')));
+              }),
+              ...(responseGateRequired ? { previewLimit: 1024 * 1024 } : {}),
+            });
+            responseText = relay.outputPreview;
+            providerUsage = { inputTokens: relay.inputTokens ?? Math.ceil(sanitizedPrompt.length / 4), outputTokens: relay.outputTokens ?? Math.ceil(relay.outputCharacters / 4) };
+            req.altilUsageReported = relay.usageReported;
+            req.altilStreamUsageReported = relay.usageReported;
+            req.altilStreamFirstTokenMs = relay.firstTokenAt ? Math.max(0, relay.firstTokenAt - startedAt) : undefined;
+            req.altilStreamElapsedMs = Date.now() - startedAt;
+            if (!responseGateRequired) req.altilResponseStreamed = true;
+            dispatchSuccess = true;
+          } finally {
+            clearTimeout(timeout); res.off('close', onClose);
+          }
+        } catch (error) {
+          if (res.headersSent || res.destroyed) { if (!res.writableEnded) res.end(); return; }
+          recordModelEvent({ modelId: primaryModel.id, modelIdentifier: primaryModel.modelIdentifier, action: 'live_stream_failed', detail: String(error instanceof Error ? error.message : 'Streaming request failed').slice(0, 220), source: primaryProvider.name });
+        }
+      }
+
       if (!dispatchSuccess && ['openai', 'groq', 'openrouter', 'anthropic', 'ollama', 'deepseek', 'mistral', 'together', 'openai_compatible'].includes(primaryProvider.type)) {
 
         try {
 
-          const live = await callOpenAiCompatibleModel(primaryProvider, primaryModel, `Application: ${appRecord.name}\nCapability: ${chosenCapability}\n\n${gatewayProviderPrompt}`, Number(req.body?.max_tokens), 0, publicChatRequest?.messages);
+          const live = await callOpenAiCompatibleModel(primaryProvider, primaryModel, `Application: ${appRecord.name}\nCapability: ${chosenCapability}\n\n${gatewayProviderPrompt}`, Number(req.body?.max_tokens), 0, governedMessages, callerTenantId);
 
           responseText = live.text;
 
           providerUsage = { inputTokens: live.inputTokens, outputTokens: live.outputTokens };
+          req.altilUsageReported = live.usageReported;
 
           dispatchSuccess = true;
 
@@ -7382,7 +7314,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
 
 
-    // 5. Fallback Execution (if primary failed or simulation requested)
+    // 5. Fallback Execution after an actual primary provider failure
 
     if (!dispatchSuccess) {
 
@@ -7396,7 +7328,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
         status: 'failed',
 
-        details: `Primary provider ${primaryProvider.name} timed out / simulated unreachable. Triggering automated fallback route...`,
+        details: `Primary provider ${primaryProvider.name} failed its live request. Triggering the configured fallback route...`,
 
         durationMs: 450
 
@@ -7440,11 +7372,12 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
           if (['openai', 'groq', 'openrouter', 'anthropic', 'gemini', 'ollama', 'deepseek', 'mistral', 'together', 'openai_compatible'].includes(candidateProvider.type)) {
 
-            const live = await callOpenAiCompatibleModel(candidateProvider, candidate, `Application: ${appRecord.name}\nCapability: ${chosenCapability}\n\n${dcrRequired ? gatewayProviderPrompt : candidateCompliance.sanitizedPrompt}`, Number(req.body?.max_tokens));
+            const live = await callOpenAiCompatibleModel(candidateProvider, candidate, `Application: ${appRecord.name}\nCapability: ${chosenCapability}\n\n${dcrRequired ? gatewayProviderPrompt : candidateCompliance.sanitizedPrompt}`, Number(req.body?.max_tokens), 0, undefined, callerTenantId);
 
             candidateText = live.text;
 
             providerUsage = { inputTokens: live.inputTokens, outputTokens: live.outputTokens };
+            req.altilUsageReported = live.usageReported;
 
           } else continue;
 
@@ -7612,6 +7545,8 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
       inputTokens: inputTokensEst,
 
       outputTokens: outputTokensEst,
+
+      usageEstimated: req.altilUsageReported !== true,
 
       costEstimated: Number((inputTokensEst * finalModel.costPer1kInput / 1000 + outputTokensEst * finalModel.costPer1kOutput / 1000).toFixed(4)),
 
@@ -8597,72 +8532,6 @@ Provide a structured, highly actionable diagnostic breakdown formatted cleanly i
     }
 
   });
-
-}
-
-
-
-function generateSimulatedResponse(appName: string, capability: string, prompt: string, modelName: string, providerName: string): string {
-
-  switch (capability) {
-
-    case 'security_analysis':
-
-      return `[ALTIL Security Audit Engine via ${modelName}]\n\nAnalysis Assessment:\nâ€¢ Ingress Payload Integrity: 100% Validated\nâ€¢ Threat Classification: Nominal (Zero CVE signatures detected)\nâ€¢ Authentication Token: Cryptographically signed & non-expired\nâ€¢ Recommendation: Permit transaction pipeline to proceed without elevation.`;
-
-    case 'financial_summary':
-
-      return `[ALTIL Financial Governance Engine via ${modelName}]\n\nFinancial Metric Summary for ${appName}:\nâ€¢ Variance Analysis: Baseline aligned with Q3 operational benchmarks\nâ€¢ Exposure Index: Low risk ratio (0.14)\nâ€¢ Compliance Status: Strict adherence to FCA and internal liquidity thresholds confirmed.`;
-
-    case 'document_analysis':
-
-      return `[ALTIL Document Extraction Core via ${modelName}]\n\nDocument Summary & Structured Findings:\nâ€¢ Primary Subject: High-level architectural specifications for ${appName}\nâ€¢ Key Clauses: Zero-trust inter-service authentication, automatic provider redundancy, sub-second SLAs\nâ€¢ Action Items: Verified all governance rules.`;
-
-    case 'code_generation':
-
-      return `// Generated by ALTIL Code Synthesizer (${modelName})\nexport async function requestAltilInference(capability: string, payload: unknown) {\n  const response = await fetch('/api/v1/orchestrate', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ALTIL-KEY' },\n    body: JSON.stringify({ capability, input: payload })\n  });\n  return response.json();\n}`;
-
-    case 'fast_chat':
-
-      return `Hello! I am the ALTIL-governed AI assistant serving ${appName}. I am orchestrated through ${providerName} (${modelName}) with guaranteed high availability and data privacy. How can I assist your workflow today?`;
-
-    default:
-
-      return `[ALTIL Governed AI Response]\n\nProcessed query for ${appName} via ${providerName} (${modelName}).\n\nResult:\n"${prompt.slice(0, 100)}..."\n\nExecution was routed dynamically based on optimal latency, cost constraints, and enterprise security guardrails.`;
-
-  }
-
-}
-
-
-
-function generateIntelligentAnswer(prompt: string, appName: string, modelName: string, providerName: string): string {
-
-  const p = prompt.toLowerCase();
-
-  const header = `[AI Inference via ${providerName} (${modelName})]`;
-
-  if (p.includes('popia')) {
-
-    return `${header}\n\n**POPIA (Protection of Personal Information Act No. 4 of 2013)** is South Africa's foundational data privacy law. It regulates how public and private bodies process personal information and establishes stringent statutory requirements for data governance.\n\nKey Principles of POPIA:\n1. **Accountability**: Responsible parties must ensure statutory compliance across all operations.\n2. **Processing Limitation**: Personal data must be processed lawfully and in a non-excessive manner.\n3. **Purpose Specification**: Data collection must be for a specific, explicitly defined, and lawful purpose.\n4. **Security Safeguards**: Organizations must secure the integrity and confidentiality of personal information against unauthorized access, loss, or damage.\n\n*Orchestrated securely through ALTIL AI Governance Layer.*`;
-
-  } else if (p.includes('tax') || p.includes('sars') || p.includes('south africa') || p.includes('law')) {
-
-    return `${header}\n\n**South African Tax Law & Regulatory Framework:**\n\nIn South Africa, taxation is governed by statutes enacted by Parliament and administered by the **South African Revenue Service (SARS)** under the oversight of National Treasury:\n\n1. **The Income Tax Act No. 58 of 1962**: The core legislation governing income tax for resident and non-resident individuals, companies, and trusts, operating on a residency-based taxation system for residents and source-based for non-residents.\n2. **Value-Added Tax (VAT) Act No. 89 of 1991**: Imposes an indirect tax on the consumption of goods and services in South Africa, currently levied at a standard rate of 15%.\n3. **Tax Administration Act No. 28 of 2011 (TAA)**: Streamlines administrative provisions across various tax acts, defining SARS audit powers, dispute resolution mechanisms, and taxpayer rights.\n4. **Customs and Excise Act No. 91 of 1964**: Regulates custom duties, import controls, and excise levies on specific manufactured goods.\n\n*Processed in real-time via ALTIL AI Gateway & ${providerName} Inference Engine.*`;
-
-  } else if (p.includes('gdpr')) {
-
-    return `${header}\n\n**GDPR (General Data Protection Regulation - Regulation (EU) 2016/679)** is the benchmark data privacy and security regulation in European Union law.\n\nCore Pillars:\nâ€¢ Lawfulness, fairness, and transparency\nâ€¢ Purpose limitation & Data minimization\nâ€¢ Strict data subject rights (access, erasure, portability)\nâ€¢ Mandatory breach notification within 72 hours\n\n*Governed by ALTIL Compliance Pipeline.*`;
-
-  } else if (p.includes('zero trust') || p.includes('security')) {
-
-    return `${header}\n\n**Zero Trust Architecture (ZTA)** is an enterprise security paradigm centered on the mantra "never trust, always verify."\n\nCore Tenets:\n1. Continuous identity verification and device telemetry checks.\n2. Least-privilege access enforcement.\n3. Micro-segmentation and robust encryption at rest and in transit.\n\n*Validated by ALTIL Security Guardrail Engine.*`;
-
-  } else {
-
-    return `${header}\n\nIn response to your query:\n> "${prompt}"\n\nBased on enterprise document analysis and contextual routing through ${providerName} (${modelName}) on behalf of ${appName}, the system has processed your request successfully under strict enterprise governance rules.\n\nâ€¢ **Analysis Result**: The inquiry has been fully evaluated against regulatory and operational benchmarks with high contextual relevance.\nâ€¢ **Operational Status**: Compliant with operational SLAs and data privacy boundaries.\nâ€¢ **Execution Path**: Routed via optimal provider infrastructure with zero data leakage.`;
-
-  }
 
 }
 

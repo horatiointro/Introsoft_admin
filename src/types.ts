@@ -100,6 +100,9 @@ export interface ProviderTelemetryData {
   providerId: string;
   providerName: string;
   providerType: ProviderType;
+  /** Provenance of this payload. No live activity is represented as unavailable. */
+  provenance?: 'LIVE' | 'CALCULATED' | 'UNAVAILABLE';
+  unavailableReason?: string;
   uptimePercent: number;
   avgLatencyMs: number;
   p95LatencyMs: number;
@@ -535,6 +538,7 @@ export interface AuditLog {
   fallbackModelIdentifier?: string;
   inputTokens?: number;
   outputTokens?: number;
+  usageEstimated?: boolean;
   tokensConsumed?: number;
   costEstimated?: number;
   policyApplied?: string;

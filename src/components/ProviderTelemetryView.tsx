@@ -45,6 +45,8 @@ import {
 } from 'recharts';
 import { AIProvider, AIModel, ProviderTelemetryData } from '../types';
 
+const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
+
 interface ProviderTelemetryViewProps {
   providers: AIProvider[];
   models: AIModel[];
@@ -65,6 +67,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
   onRunTest
 }) => {
   const [telemetry, setTelemetry] = useState<ProviderTelemetryData | null>(null);
+  const [telemetryProvenance, setTelemetryProvenance] = useState<'LIVE' | 'CALCULATED' | 'UNAVAILABLE'>('UNAVAILABLE');
   const [loading, setLoading] = useState(false);
   const [benchmarking, setBenchmarking] = useState(false);
   const [benchmarkResult, setBenchmarkResult] = useState<any>(null);
@@ -72,103 +75,29 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
   const [activeChartTab, setActiveChartTab] = useState<'latency' | 'traffic' | 'tokens'>('latency');
 
   const currentProvider = providers.find(p => p.id === selectedProviderId) || providers[0];
-  const providerModels = models.filter(m => m.providerId === currentProvider?.id);
+  const providerModels = models.filter(m => m.providerId === currentProvider?.id && m.enabled && m.status === 'online' && m.verificationStatus === 'verified' && Boolean(m.lastVerifiedAt));
 
   // Fetch telemetry when selected provider changes
   const fetchTelemetry = async (provId: string) => {
     if (!provId) return;
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/v1/providers/${provId}/telemetry`);
+      const res = await apiFetch(`${API_BASE}/providers/${provId}/telemetry`);
       if (res.ok) {
         const data: ProviderTelemetryData = await res.json();
         setTelemetry(data);
+        // Trust the server's provenance marker. Without live audit data the
+        // server returns UNAVAILABLE rather than fabricating a live response.
+        setTelemetryProvenance(data.provenance || 'UNAVAILABLE');
       } else {
-        // Generate fallback synthetic telemetry if backend is cold
-        generateFallbackTelemetry(provId);
+        // No live event source is available; keep the panel explicitly unavailable.
+        setTelemetry(null); setTelemetryProvenance('UNAVAILABLE');
       }
     } catch {
-      generateFallbackTelemetry(provId);
+      setTelemetry(null); setTelemetryProvenance('UNAVAILABLE');
     } finally {
       setLoading(false);
     }
-  };
-
-  const generateFallbackTelemetry = (provId: string) => {
-    const prov = providers.find(p => p.id === provId) || providers[0];
-    if (!prov) return;
-
-    const provMods = models.filter(m => m.providerId === prov.id);
-    const baseLat = prov.latencyMs || (prov.type === 'groq' ? 84 : 220);
-    const totalReqs = prov.totalRequests || 4500;
-
-    const hourly = Array.from({ length: 12 }).map((_, i) => {
-      const h = `${(8 + i) % 24}:00`;
-      const reqs = Math.floor(180 + Math.sin(i / 2) * 90 + Math.random() * 40);
-      const lat = Math.floor(baseLat + Math.random() * 30 - 15);
-      const toks = reqs * 2100;
-      return {
-        time: h,
-        requests: reqs,
-        latency: Math.max(20, lat),
-        tokens: toks,
-        errors: Math.random() > 0.8 ? 2 : 0,
-        cost: Number(((toks / 1000) * (prov.hasFreeTier ? 0.0001 : 0.001)).toFixed(3))
-      };
-    });
-
-    const modelMetrics = provMods.map(m => ({
-      modelId: m.id,
-      modelName: m.displayName || m.modelIdentifier,
-      requests: Math.floor(totalReqs / (provMods.length || 1)),
-      avgLatencyMs: m.averageLatencyMs || baseLat,
-      tokensConsumed: Math.floor(totalReqs * 1800 / (provMods.length || 1)),
-      isFree: Boolean(m.isFree),
-      cost: m.isFree ? 0 : 2.45
-    }));
-
-    setTelemetry({
-      providerId: prov.id,
-      providerName: prov.name,
-      providerType: prov.type,
-      uptimePercent: prov.uptimePercent || 99.98,
-      avgLatencyMs: baseLat,
-      p95LatencyMs: prov.p95LatencyMs || Math.round(baseLat * 1.45),
-      p99LatencyMs: Math.round(baseLat * 2.1),
-      errorRatePercent: Number(((prov.errorRate || 0.02) * 100).toFixed(2)),
-      totalRequests: totalReqs,
-      successfulRequests: Math.floor(totalReqs * 0.98),
-      failedRequests: Math.floor(totalReqs * 0.02),
-      fallbackCount: Math.floor(totalReqs * 0.03),
-      tokensTotal: prov.tokensTotal || totalReqs * 2400,
-      inputTokens: Math.floor((prov.tokensTotal || totalReqs * 2400) * 0.65),
-      outputTokens: Math.floor((prov.tokensTotal || totalReqs * 2400) * 0.35),
-      avgTokensPerSec: prov.type === 'groq' ? 480 : prov.type === 'ollama' ? 85 : 120,
-      estimatedCostTotal: prov.costTotal ?? 3.45,
-      freeTierSavings: prov.hasFreeTier ? 42.80 : 0,
-      hourlyMetrics: hourly,
-      modelMetrics,
-      recentEvents: [
-        {
-          id: 'ev-1',
-          timestamp: 'Just now',
-          type: 'success',
-          model: provMods[0]?.displayName || 'Primary Model',
-          latencyMs: baseLat,
-          tokens: 412,
-          message: 'HTTP 200 OK — Ingress query completed within SLA target.'
-        },
-        {
-          id: 'ev-2',
-          timestamp: '3m ago',
-          type: 'health_check',
-          model: 'Diagnostics Probe',
-          latencyMs: baseLat - 10,
-          tokens: 28,
-          message: 'TCP keep-alive & Auth Bearer verified.'
-        }
-      ]
-    });
   };
 
   useEffect(() => {
@@ -182,7 +111,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
     setBenchmarking(true);
     setBenchmarkResult(null);
     try {
-      const res = await apiFetch(`/api/v1/providers/${currentProvider.id}/benchmark`, {
+      const res = await apiFetch(`${API_BASE}/providers/${currentProvider.id}/benchmark`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -220,11 +149,11 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
               <span>Provider Telemetry & Real-Time Performance</span>
             </h1>
             <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              Live Observability
+              {telemetryProvenance === 'LIVE' ? 'LIVE OBSERVABILITY' : telemetryProvenance === 'CALCULATED' ? 'CALCULATED FROM LIVE EVENTS' : 'UNAVAILABLE'}
             </span>
           </div>
           <p className="text-xs text-[#888888] mt-0.5">
-            Deep telemetry analytics, latency percentiles, SLA uptime metrics, and model-level throughput profiling.
+            Deep telemetry analytics, latency percentiles, SLA uptime metrics, and model-level throughput profiling. Values are shown only when recorded from live provider transactions.
           </p>
         </div>
 
@@ -237,7 +166,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors shadow-sm disabled:opacity-50"
           >
             <Zap className={`w-3.5 h-3.5 ${benchmarking ? 'animate-spin' : ''}`} />
-            <span>{benchmarking ? 'Benchmarking Socket...' : 'Live Benchmark Probe'}</span>
+            <span>{benchmarking ? 'Running live provider probe...' : 'Run live provider probe'}</span>
           </button>
 
           {onOpenPlaygroundWithProvider && (
@@ -340,7 +269,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
                 </span>
                 {currentProvider.hasFreeTier && (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                    Free Models Active ({currentProvider.freeModelsCount || providerModels.filter(m => m.isFree).length})
+                    Verified free models ({providerModels.filter(m => m.isFree && m.verificationStatus === 'verified').length})
                   </span>
                 )}
                 <span
@@ -368,7 +297,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
                 <span>•</span>
                 <span>Priority: Tier #{currentProvider.priority}</span>
                 <span>•</span>
-                <span>Last Probe: {currentProvider.lastTested || 'Recent'}</span>
+                <span>Last live check: {currentProvider.lastTested || 'Unavailable'}</span>
               </div>
             </div>
           </div>
@@ -384,7 +313,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
             <div className="p-2 px-3 rounded bg-[#0a0a0a] border border-[#222222] text-center">
               <div className="text-[9px] text-[#666666] uppercase">Uptime SLA</div>
               <div className="text-sm font-bold text-green-400">
-                {currentProvider.uptimePercent || 99.98}%
+                {telemetry?.provenance === 'LIVE' ? `${telemetry.uptimePercent}%` : 'Unavailable'}
               </div>
             </div>
             <div className="p-2 px-3 rounded bg-[#0a0a0a] border border-[#222222] text-center">
@@ -401,7 +330,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-blue-400" />
               <span>
-                Live Benchmark Completed: Latency <strong className="text-white">{benchmarkResult.liveLatencyMs}ms</strong> (p95: {benchmarkResult.p95LatencyMs}ms) • Inference Speed: <strong className="text-white">{benchmarkResult.tokensPerSecondBenchmark} tok/s</strong>
+                Live provider probe completed: Latency <strong className="text-white">{benchmarkResult.liveLatencyMs}ms</strong> · Model <strong className="text-white">{benchmarkResult.modelIdentifier}</strong>
               </span>
             </div>
             <span className="text-[10px] text-blue-400/80">{benchmarkResult.timestamp}</span>
@@ -419,10 +348,10 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
           </div>
           <div className="mt-1.5 flex items-baseline gap-1.5">
             <span className="text-xl font-bold font-mono text-white">
-              {telemetry?.avgLatencyMs || currentProvider.latencyMs || 84}ms
+              {telemetry?.provenance === 'LIVE' ? `${telemetry.avgLatencyMs}ms` : 'Unavailable'}
             </span>
             <span className="text-xs font-mono text-[#888888]">
-              / {telemetry?.p95LatencyMs || currentProvider.p95LatencyMs || 140}ms
+              / {telemetry?.provenance === 'LIVE' ? `${telemetry.p95LatencyMs}ms` : 'Unavailable'}
             </span>
           </div>
           <div className="mt-2 text-[10px] font-mono flex items-center justify-between text-green-400">
@@ -442,12 +371,12 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
               {telemetry?.uptimePercent || currentProvider.uptimePercent || 99.98}%
             </span>
             <span className="text-xs font-mono text-[#888888]">
-              ({telemetry?.errorRatePercent || 0.02}% err)
+              ({telemetry?.provenance === 'LIVE' ? `${telemetry.errorRatePercent}% err` : 'unavailable'})
             </span>
           </div>
           <div className="mt-2 text-[10px] font-mono text-[#888888] flex items-center justify-between">
             <span>MTBF: 720 hrs</span>
-            <span className="text-green-400">Optimal</span>
+            <span className="text-slate-400">Unavailable</span>
           </div>
         </div>
 
@@ -459,15 +388,15 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
           </div>
           <div className="mt-1.5 flex items-baseline gap-1.5">
             <span className="text-xl font-bold font-mono text-white">
-              {(telemetry?.totalRequests || currentProvider.totalRequests || 14605).toLocaleString()}
+              {(telemetry?.provenance === 'LIVE' ? telemetry.totalRequests : 0).toLocaleString()}
             </span>
             <span className="text-xs font-mono text-purple-400 font-semibold">
-              RPM ~{currentProvider.rateLimitRpm ? Math.round(currentProvider.rateLimitRpm * 0.4) : 180}
+              Rate limit: {currentProvider.rateLimitRpm ? `${currentProvider.rateLimitRpm} RPM` : 'Unavailable'}
             </span>
           </div>
           <div className="mt-2 text-[10px] font-mono text-[#888888] flex items-center justify-between">
-            <span>Fallbacks: {telemetry?.fallbackCount || 24}</span>
-            <span className="text-purple-400">99.8% Success</span>
+            <span>Fallbacks: {telemetry?.provenance === 'LIVE' ? telemetry.fallbackCount : 'Unavailable'}</span>
+            <span className="text-slate-400">Success: {telemetry?.provenance === 'LIVE' ? `${telemetry.successfulRequests}/${telemetry.totalRequests}` : 'Unavailable'}</span>
           </div>
         </div>
 
@@ -479,13 +408,13 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
           </div>
           <div className="mt-1.5 flex items-baseline gap-1.5">
             <span className="text-xl font-bold font-mono text-white">
-              {telemetry?.avgTokensPerSec || (currentProvider.type === 'groq' ? 480 : 95)}
+              {telemetry?.provenance === 'LIVE' && telemetry.avgTokensPerSec > 0 ? telemetry.avgTokensPerSec : 'Unavailable'}
             </span>
             <span className="text-xs font-mono text-[#888888]">tok/s</span>
           </div>
           <div className="mt-2 text-[10px] font-mono text-[#888888] flex items-center justify-between">
-            <span>Total: {((telemetry?.tokensTotal || 29800000) / 1000000).toFixed(1)}M tok</span>
-            <span className="text-orange-400">High Velocity</span>
+            <span>Total: {telemetry?.provenance === 'LIVE' ? `${(telemetry.tokensTotal / 1000000).toFixed(1)}M tok` : 'Unavailable'}</span>
+            <span className="text-slate-400">Live usage only</span>
           </div>
         </div>
 
@@ -497,7 +426,7 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
           </div>
           <div className="mt-1.5 flex items-baseline gap-1.5">
             <span className="text-xl font-bold font-mono text-emerald-400">
-              ${(telemetry?.estimatedCostTotal ?? currentProvider.costTotal ?? 3.12).toFixed(2)}
+              {telemetry?.provenance === 'LIVE' ? `$${telemetry.estimatedCostTotal.toFixed(2)}` : 'Unavailable'}
             </span>
             {currentProvider.hasFreeTier && (
               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -506,8 +435,8 @@ export const ProviderTelemetryView: React.FC<ProviderTelemetryViewProps> = ({
             )}
           </div>
           <div className="mt-2 text-[10px] font-mono text-[#888888] flex items-center justify-between">
-            <span>Saved: ${(telemetry?.freeTierSavings || (currentProvider.hasFreeTier ? 48.20 : 0)).toFixed(2)}</span>
-            <span className="text-emerald-400">Optimal ROI</span>
+            <span>Saved: {telemetry?.provenance === 'LIVE' ? `$${telemetry.freeTierSavings.toFixed(2)}` : 'Unavailable'}</span>
+            <span className="text-slate-400">Derived only from live usage</span>
           </div>
         </div>
       </div>

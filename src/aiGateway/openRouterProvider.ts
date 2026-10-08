@@ -36,12 +36,15 @@ function normalizeModel(value: unknown): NormalizedProviderModel | undefined {
   const inputModalities = stringArray(architecture.input_modalities);
   const outputModalities = stringArray(architecture.output_modalities);
   const supportedParameters = stringArray(model.supported_parameters);
-  const capabilities = new Set<AIProviderCapability>(['models', 'chat']);
+  const embeddingModel = /embedding|embed/i.test(id);
+  const capabilities = new Set<AIProviderCapability>(['models']);
+  if (!embeddingModel) capabilities.add('chat');
   if (supportedParameters.includes('tools') || supportedParameters.includes('tool_choice')) capabilities.add('tools');
   if (supportedParameters.includes('response_format')) capabilities.add('structured_outputs');
   if (supportedParameters.some(parameter => /reason/i.test(parameter))) capabilities.add('reasoning');
   if (inputModalities.includes('image')) capabilities.add('vision');
   if (outputModalities.includes('image')) capabilities.add('image_generation');
+  if (embeddingModel) capabilities.add('embeddings');
 
   const contextLength = Number(model.context_length);
   const pricing = Object.fromEntries(Object.entries(asRecord(model.pricing)).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
@@ -62,6 +65,7 @@ function normalizeModel(value: unknown): NormalizedProviderModel | undefined {
     supportedParameters: Object.freeze(supportedParameters),
     ...(Object.keys(providerInformation).length ? { providerInformation: Object.freeze(providerInformation) } : {}),
     capabilities: Object.freeze([...capabilities]),
+    ...(embeddingModel ? { supportsEmbeddings: true } : {}),
     ...(Object.keys(limits).length ? { limits: Object.freeze(limits) } : {}),
     upstreamMetadata: Object.freeze({ ...model }),
   });

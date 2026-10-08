@@ -81,10 +81,11 @@ function url(base: URL, suffix: string): URL {
 }
 
 function providerCapabilities(type: ProviderType): ReadonlySet<AIProviderCapability> {
-  if (type === 'anthropic') return new Set(['models', 'chat', 'streaming', 'vision', 'tools', 'structured_outputs', 'reasoning']);
-  if (type === 'gemini') return new Set(['models', 'chat', 'streaming', 'vision', 'tools', 'structured_outputs', 'reasoning']);
-  if (type === 'ollama') return new Set(['models', 'chat', 'streaming', 'vision', 'tools', 'structured_outputs', 'embeddings']);
-  return new Set(['models', 'chat', 'streaming', 'responses', 'embeddings', 'vision', 'tools', 'structured_outputs', 'reasoning']);
+  // The connector contract exposes only capabilities guaranteed by the
+  // endpoint itself. Model-specific capabilities come from live metadata.
+  // Unknown capabilities must remain unknown rather than being advertised.
+  if (type === 'ollama') return new Set(['models', 'chat']);
+  return new Set(['models', 'chat']);
 }
 
 abstract class BaseAdapter implements AIProviderAdapter {
@@ -194,9 +195,20 @@ function normalizeModel(value: unknown, provider: Pick<AIProvider, 'id' | 'type'
   const architecture = record(item.architecture); const inputModalities = strings(architecture.input_modalities).length ? strings(architecture.input_modalities) : ['text'];
   const outputModalities = strings(architecture.output_modalities).length ? strings(architecture.output_modalities) : ['text'];
   const supportedParameters = strings(item.supported_parameters);
-  const capabilities = new Set<AIProviderCapability>(['models', 'chat']); if (supportedParameters.includes('tools')) capabilities.add('tools'); if (inputModalities.includes('image')) capabilities.add('vision'); if (supportedParameters.some(p => /reason/i.test(p))) capabilities.add('reasoning');
+  const embeddingModel = /embedding|embed/i.test(String(item.id || item.name || ''));
+  const capabilities = new Set<AIProviderCapability>(['models']);
+  if (!embeddingModel) capabilities.add('chat');
+  const supportsTools = supportedParameters.includes('tools') || supportedParameters.includes('tool_choice');
+  const supportsVision = inputModalities.includes('image');
+  const supportsEmbeddings = /embedding/i.test(String(item.id || '')) || /embedding/i.test(String(item.name || ''));
+  const supportsReasoning = supportedParameters.some(p => /reason/i.test(p));
+  if (supportsTools) capabilities.add('tools');
+  if (supportsVision) capabilities.add('vision');
+  if (supportsEmbeddings || embeddingModel) capabilities.add('embeddings');
+  if (supportsReasoning) capabilities.add('reasoning');
+  if (item.supports_streaming === true || supportedParameters.includes('stream')) capabilities.add('streaming');
   const contextLength = Number(item.context_length || item.contextWindow || item.inputTokenLimit);
-  return { id, canonicalSlug: typeof item.canonical_slug === 'string' ? item.canonical_slug : id, name: typeof item.name === 'string' ? item.name : typeof item.displayName === 'string' ? item.displayName : id, ...(typeof item.description === 'string' ? { description: item.description } : {}), ...(Number.isSafeInteger(contextLength) && contextLength > 0 ? { contextLength } : {}), inputModalities, outputModalities, architecture, supportedParameters, capabilities: [...capabilities], upstreamMetadata: { ...item, providerId: provider.id, providerType: provider.type } };
+  return { id, canonicalSlug: typeof item.canonical_slug === 'string' ? item.canonical_slug : id, name: typeof item.name === 'string' ? item.name : typeof item.displayName === 'string' ? item.displayName : id, ...(typeof item.description === 'string' ? { description: item.description } : {}), ...(Number.isSafeInteger(contextLength) && contextLength > 0 ? { contextLength } : {}), inputModalities, outputModalities, architecture, supportedParameters, capabilities: [...capabilities], ...(item.supports_streaming === true || supportedParameters.includes('stream') ? { supportsStreaming: true } : {}), ...(supportsTools ? { supportsTools: true } : {}), ...(supportsVision ? { supportsVision: true } : {}), ...(supportsEmbeddings || embeddingModel ? { supportsEmbeddings: true } : {}), ...(supportsReasoning ? { supportsReasoning: true } : {}), upstreamMetadata: { ...item, providerId: provider.id, providerType: provider.type } };
 }
 
 export function createProviderAdapter(provider: Pick<AIProvider, 'id' | 'type' | 'endpoint' | 'customHeaders'>, apiKey = '', fetcher?: FetchLike): AIProviderAdapter {
