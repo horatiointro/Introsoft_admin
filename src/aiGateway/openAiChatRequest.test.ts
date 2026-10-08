@@ -15,6 +15,13 @@ test('chat validation preserves roles and required compatible fields while rejec
   assert.throws(() => validateOpenAiChatRequest({ model: 'm', messages: [{ role: 'user', content: 'x' }], frequency_penalty: 3 }), /frequency_penalty must be between/);
 });
 
+test('chat validation accepts bounded image modalities and keeps them separate from text sanitization', () => {
+  const request = validateOpenAiChatRequest({ model: 'vision-model', messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this.' }, { type: 'image_url', image_url: { url: 'https://example.invalid/image.png', detail: 'low' } }, { type: 'input_image', image_url: 'data:image/png;base64,AAAA' }] }] });
+  assert.equal(Array.isArray(request.messages[0].content), true);
+  assert.equal((request.messages[0].content as readonly any[])[1].type, 'image_url');
+  assert.throws(() => validateOpenAiChatRequest({ model: 'm', messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: '' } }] }] }), /image_url requires/);
+});
+
 test('upstream request keeps compatible parameters and message roles, sanitizes text, and clamps output to model limits', () => {
   const request = validateOpenAiChatRequest({ model: 'requested', messages: [{ role: 'system', content: 'system data' }, { role: 'user', content: [{ type: 'text', text: 'private text' }] }], stream: false, temperature: 0.4, top_p: 0.9, max_tokens: 900, stop: 'END', app_id: 'internal-app' });
   const upstream = toOpenRouterChatRequest({ request, modelId: 'selected-model', maxOutputTokens: 128, sanitizeText: text => text.replace('private', '[masked]') });

@@ -28,6 +28,71 @@ tags:
   - name: Communications
   - name: Mobile devices
 paths:
+  /api/v1/policies/{id}/evidence:
+    post:
+      tags: [Governed AI]
+      summary: Record customer policy provenance for review
+      description: Stores only a safe external source reference, SHA-256 hash, and allow-listed machine rules. Raw policy documents and credentials are never persisted. Mandatory-baseline conflicts are rejected before approval.
+      security: [{BearerSession: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceReference, contentHash, extractedRules]
+              properties:
+                evidenceKind: {type: string, enum: [ORIGINAL_DOCUMENT, MACHINE_EXTRACTION], default: ORIGINAL_DOCUMENT}
+                sourceReference: {type: string, maxLength: 256, description: External document reference only; do not send raw documents or secrets.}
+                contentHash: {type: string, pattern: '^[a-fA-F0-9]{64}$', description: SHA-256 hash of the source document.}
+                contentType: {type: string, maxLength: 128}
+                extractionVersion: {type: string, maxLength: 64}
+                extractedRules: {type: object, description: Allow-listed candidate policy rules only.}
+      responses:
+        '202': {description: Evidence persisted and is pending owner approval}
+        '400': {description: Unsafe reference, invalid hash, or unsupported extracted rule}
+        '404': {description: Policy is outside the caller's authorized scope}
+        '409': {description: Imported policy conflicts with the mandatory baseline}
+        '503': {description: Durable evidence persistence unavailable}
+  /api/v1/policies/{id}/evidence/{evidenceId}/approve:
+    post:
+      tags: [Governed AI]
+      summary: Record owner approval for policy evidence
+      description: Appends an approval decision. Approval does not alter the active policy until the explicit activation operation.
+      security: [{BearerSession: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: evidenceId, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approvalReference]
+              properties:
+                approvalReference: {type: string, maxLength: 256}
+      responses:
+        '200': {description: Owner approval recorded}
+        '400': {description: Invalid approval reference}
+        '404': {description: Policy or evidence is outside the caller's authorized scope}
+        '409': {description: Evidence is not eligible for approval}
+  /api/v1/policies/{id}/evidence/{evidenceId}/activate:
+    post:
+      tags: [Governed AI]
+      summary: Activate an approved policy evidence snapshot
+      description: Rechecks mandatory baseline conflicts, persists a new policy snapshot through the existing policy repository, and appends an activation review.
+      security: [{BearerSession: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: evidenceId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Activated policy snapshot}
+        '404': {description: Policy or evidence is outside the caller's authorized scope}
+        '409': {description: Approval is missing or the current baseline now conflicts}
+        '503': {description: Durable policy activation unavailable}
   /api/v1/applications:
     get:
       tags: [Developers]
@@ -207,6 +272,35 @@ paths:
         '401': {description: ALTIL session required}
         '404': {description: Credential not found in caller scope}
         '503': {description: Durable revocation could not be confirmed}
+  /api/v1/api-keys/{id}/rotate:
+    post:
+      tags: [Developers]
+      summary: Rotate a credential
+      description: Requires apikeys.create and apikeys.revoke for the owning organization. Returns the replacement secret once, records replacementOf, and keeps the predecessor active only for the requested overlap window unless compromised=true.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                overlapDays: {type: integer, minimum: 0, maximum: 30, default: 1}
+                compromised: {type: boolean, default: false}
+      responses:
+        '201':
+          description: Replacement credential and one-time secret
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeveloperCredentialIssuedOnce'}
+        '401': {description: ALTIL session required}
+        '403': {description: Credential creation/revocation permission or organization scope denied}
+        '404': {description: Credential not found in caller scope}
+        '409': {description: Only active credentials can be rotated}
+        '503': {description: Durable rotation could not be confirmed}
   /api/v1/api-keys/{id}:
     delete:
       tags: [Developers]
@@ -225,6 +319,582 @@ paths:
         '401': {description: ALTIL session required}
         '404': {description: Credential not found in caller scope}
         '503': {description: Durable deletion could not be confirmed}
+  /api/v1/pem/entities:
+    get:
+      tags: [Governed AI]
+      summary: Read customer-scoped PEM entities
+      description: Returns opaque pseudonyms and entity metadata for the explicitly authorized tenant. Deterministic identifiers and original content are never returned.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: PEM entity inventory}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+        '503': {description: PEM persistence unavailable}
+  /api/v1/pem/entities/resolve:
+    post:
+      tags: [Governed AI]
+      summary: Resolve or create a customer-scoped PEM entity
+      description: Uses deterministic identifiers only. The response exposes an opaque entity and pseudonym, never the submitted identifiers.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, entityType, deterministicIdentifiers]
+              properties:
+                customerId: {type: string}
+                entityType: {type: string}
+                deterministicIdentifiers: {type: object, additionalProperties: {type: string}}
+                classification: {type: string}
+                confidence: {type: number, minimum: 0, maximum: 1}
+                evidence: {type: object, additionalProperties: true}
+      responses:
+        '200': {description: Existing PEM entity matched}
+        '201': {description: New PEM entity created}
+        '400': {description: Invalid or ambiguous deterministic resolution}
+        '401': {description: ALTIL session required}
+        '403': {description: Entity scope or security/compliance role denied}
+  /api/v1/pem/entities/candidates:
+    post:
+      tags: [Governed AI]
+      summary: Find descriptive PEM candidates for human review
+      description: Returns advisory candidates using hashed descriptive signals. This endpoint never creates, merges or authorizes an identity.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, entityType, descriptiveAttributes]
+              properties:
+                customerId: {type: string}
+                entityType: {type: string}
+                descriptiveAttributes: {type: object, additionalProperties: {type: string}}
+                minimumConfidence: {type: number, minimum: 0, maximum: 1, default: 0.5}
+      responses:
+        '200': {description: Review-required candidates; no identity decision was made}
+        '400': {description: Invalid candidate request}
+        '401': {description: ALTIL session required}
+        '403': {description: Entity scope or security/compliance role denied}
+  /api/v1/pem/entities/{id}:
+    get:
+      tags: [Governed AI]
+      summary: Read one PEM entity
+      description: Returns an authorized entity and opaque pseudonym history without deterministic identifiers or original content.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: PEM entity details}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+        '404': {description: Entity not found in caller scope}
+  /api/v1/pem/relationships:
+    get:
+      tags: [Governed AI]
+      summary: Read persisted PEM relationships
+      description: Returns explicitly persisted, customer-scoped relationships with evidence status and effective dates.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: PEM relationships}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+        '503': {description: PEM persistence unavailable}
+    post:
+      tags: [Governed AI]
+      summary: Record an explicitly evidenced PEM relationship
+      description: Relationships are customer-scoped and must identify their evidence kind. Inferred relationships remain provisional.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, sourceEntityId, targetEntityId, relationshipType, evidenceKind, confidence]
+              properties:
+                customerId: {type: string}
+                sourceEntityId: {type: string}
+                targetEntityId: {type: string}
+                relationshipType: {type: string}
+                evidenceKind: {type: string, enum: [DETERMINISTIC, INFERRED, HUMAN_CONFIRMED]}
+                confidence: {type: number, minimum: 0, maximum: 1}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time}
+                evidence: {type: object, additionalProperties: true}
+      responses:
+        '201': {description: PEM relationship recorded}
+        '400': {description: Invalid relationship or entity scope}
+        '401': {description: ALTIL session required}
+        '403': {description: Relationship scope or security/compliance role denied}
+  /api/v1/pem/relationships/{id}/review:
+    post:
+      tags: [Governed AI]
+      summary: Confirm or reject a PEM relationship
+      description: Records a reviewer decision without deleting or rewriting the original relationship evidence.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, decision]
+              properties:
+                customerId: {type: string}
+                decision: {type: string, enum: [ACTIVE, REJECTED]}
+                reason: {type: string}
+      responses:
+        '200': {description: Relationship review recorded}
+        '400': {description: Invalid review or relationship not found}
+        '401': {description: ALTIL session required}
+        '403': {description: Relationship scope or security/compliance role denied}
+  /api/v1/pem/entities/{id}/compromise:
+    post:
+      tags: [Governed AI]
+      summary: Rotate a compromised PEM pseudonym
+      description: Retires the compromised pseudonym, preserves entity history and returns the replacement opaque pseudonym once.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string}
+      responses:
+        '201': {description: Replacement pseudonym created}
+        '400': {description: Invalid compromise request}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope denied}
+        '404': {description: Entity not found in caller scope}
+  /api/v1/pem/entities/{id}/corrections:
+    get:
+      tags: [Governed AI]
+      summary: Read append-only PEM identity correction history
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Versioned correction history}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+    post:
+      tags: [Governed AI]
+      summary: Record a reviewed identity correction
+      description: Corrections append immutable history and never rewrite historical evidence.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, correctionType, reason]
+              properties:
+                customerId: {type: string}
+                correctionType: {type: string, enum: [ATTRIBUTE_CORRECTION, IDENTITY_RESOLUTION_ERROR, SAME_AS]}
+                correctedEntityId: {type: string}
+                reason: {type: string}
+                evidence: {type: object, additionalProperties: true}
+      responses:
+        '201': {description: Correction recorded}
+        '400': {description: Invalid correction}
+        '401': {description: ALTIL session required}
+        '403': {description: Correction scope or security/compliance role denied}
+  /api/v1/pem/documents:
+    get:
+      tags: [Governed AI]
+      summary: Read customer-scoped PEM document evidence metadata
+      description: Returns document hashes and metadata only. Original content is held behind the protected content-store boundary.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: PEM document metadata inventory}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+        '503': {description: PEM persistence unavailable}
+    post:
+      tags: [Governed AI]
+      summary: Record PEM document metadata
+      description: Records an immutable content hash and evidence metadata; raw document content is never accepted by this endpoint.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, contentHash, source]
+              properties:
+                customerId: {type: string}
+                organizationId: {type: string}
+                matterId: {type: string}
+                contentHash: {type: string, pattern: '^[a-fA-F0-9]{64}$'}
+                documentVersion: {type: integer, minimum: 1}
+                source: {type: string}
+                classification: {type: string}
+                retentionPolicyId: {type: string}
+                legalHold: {type: boolean}
+                metadata: {type: object, additionalProperties: true}
+      responses:
+        '201': {description: Document metadata recorded}
+        '400': {description: Invalid document metadata}
+        '401': {description: ALTIL session required}
+        '403': {description: Document scope is not authorized}
+  /api/v1/pem/documents/{id}:
+    get:
+      tags: [Governed AI]
+      summary: Read one PEM document and evidence references
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Document hash and evidence metadata}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+        '404': {description: Document not found in caller scope}
+  /api/v1/pem/documents/{id}/content:
+    get:
+      tags: [Governed AI]
+      summary: Read authorized original document content
+      description: Returns original bytes only from the configured encrypted/customer-managed content-store boundary. Raw content is never returned in metadata APIs.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Original content bytes; content type and SHA-256 are returned in response headers}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+        '404': {description: Original content not available in caller scope}
+        '503': {description: Protected content store unavailable}
+    post:
+      tags: [Governed AI]
+      summary: Store original document content behind the protected content boundary
+      description: Accepts base64 bytes only after the registered document SHA-256 is verified. The raw bytes are encrypted by the configured content-store adapter and are never written to ordinary PEM metadata tables.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentBase64]
+              properties:
+                contentBase64: {type: string, format: byte, maxLength: 14000000}
+                contentType: {type: string, maxLength: 128}
+                source: {type: string, maxLength: 128}
+      responses:
+        '201': {description: Original content stored}
+        '200': {description: Existing original content replaced after hash verification}
+        '400': {description: Invalid base64 content}
+        '401': {description: ALTIL session required}
+        '403': {description: Document scope is not authorized}
+        '404': {description: Document not found in caller scope}
+        '409': {description: Hash mismatch or legal hold prevents replacement}
+        '503': {description: Protected content store unavailable}
+    delete:
+      tags: [Governed AI]
+      summary: Delete original document content while retaining its evidence hash
+      description: Deletion is refused while the document is under legal hold. Document metadata, evidence references and content hash remain durable after raw content deletion.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Original content deleted and evidence hash retained}
+        '401': {description: ALTIL session required}
+        '403': {description: Document scope is not authorized}
+        '404': {description: Original content not found in caller scope}
+        '409': {description: Legal hold prevents deletion}
+  /api/v1/pem/documents/{id}/legal-hold:
+    patch:
+      tags: [Governed AI]
+      summary: Set or release an original-content legal hold
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legalHold]
+              properties:
+                legalHold: {type: boolean}
+      responses:
+        '200': {description: Legal hold updated}
+        '400': {description: legalHold must be boolean}
+        '401': {description: ALTIL session required}
+        '403': {description: Document scope is not authorized}
+        '404': {description: Document not found in caller scope}
+        '409': {description: Legal hold operation could not be completed}
+  /api/v1/pem/documents/{id}/evidence:
+    post:
+      tags: [Governed AI]
+      summary: Record page/section evidence for a PEM document
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entityId, detectionMethod, confidence, resolverVersion]
+              properties:
+                entityId: {type: string}
+                pageNumber: {type: integer}
+                sectionName: {type: string}
+                paragraphRef: {type: string}
+                characterStart: {type: integer}
+                characterEnd: {type: integer}
+                detectionMethod: {type: string}
+                confidence: {type: number, minimum: 0, maximum: 1}
+                resolverVersion: {type: string}
+                transactionId: {type: string}
+      responses:
+        '201': {description: Document evidence recorded}
+        '400': {description: Invalid evidence metadata}
+        '401': {description: ALTIL session required}
+        '403': {description: Evidence scope is not authorized}
+        '404': {description: Document not found in caller scope}
+  /api/v1/pem/policy-evidence:
+    get:
+      tags: [Governed AI]
+      summary: Read customer policy interpretation evidence
+      description: Returns versioned machine-readable policy decisions, including explicit uncertainty states.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Policy evidence inventory}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+        '503': {description: Policy evidence persistence unavailable}
+    post:
+      tags: [Governed AI]
+      summary: Record customer policy interpretation evidence
+      description: Records a policy interpretation for review or activation. Uncertain interpretations require an uncertainty reason.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, policyCode, policyVersion, interpretation, decision]
+              properties:
+                customerId: {type: string}
+                policyCode: {type: string}
+                policyVersion: {type: string}
+                sourceDocumentId: {type: string}
+                interpretation: {type: object, additionalProperties: true}
+                decision: {type: string, enum: [PENDING_REVIEW, ACTIVE, REJECTED, UNCERTAIN]}
+                uncertaintyReason: {type: string}
+      responses:
+        '201': {description: Policy evidence recorded}
+        '400': {description: Invalid policy evidence}
+        '401': {description: ALTIL session required}
+        '403': {description: Policy evidence scope or security/compliance role denied}
+  /api/v1/pem/retention-policies:
+    get:
+      tags: [Governed AI]
+      summary: Read customer retention policies
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Retention policy inventory}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+        '503': {description: Retention policy persistence unavailable}
+    post:
+      tags: [Governed AI]
+      summary: Record a customer retention policy
+      description: Retention periods are versioned and legal holds remain authoritative. Customer policy cannot weaken mandatory minimums enforced by the service.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, policyCode, version]
+              properties:
+                customerId: {type: string}
+                policyCode: {type: string}
+                version: {type: string}
+                originalContentDays: {type: integer, minimum: 0}
+                documentEvidenceDays: {type: integer, minimum: 0}
+                pemMappingDays: {type: integer, minimum: 0}
+                dcrMappingDays: {type: integer, minimum: 0}
+                auditEvidenceDays: {type: integer, minimum: 0}
+                securityEventDays: {type: integer, minimum: 0}
+                legalHoldEnabled: {type: boolean}
+                status: {type: string, enum: [DRAFT, ACTIVE, RETIRED]}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time}
+      responses:
+        '201': {description: Retention policy recorded}
+        '400': {description: Invalid retention policy}
+        '401': {description: ALTIL session required}
+        '403': {description: Retention policy scope or security/compliance role denied}
+  /api/v1/pem/uncertainty:
+    get:
+      tags: [Governed AI]
+      summary: Read the regulatory uncertainty register
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Customer-scoped uncertainty records}
+        '401': {description: ALTIL session required}
+        '403': {description: Security/compliance role or tenant scope required}
+    post:
+      tags: [Governed AI]
+      summary: Record an unresolved classification or policy uncertainty
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, category, subjectType, description]
+              properties:
+                customerId: {type: string}
+                category: {type: string, enum: [CLASSIFICATION, JURISDICTION, POLICY_INTERPRETATION, CONFLICTING_POLICY, MISSING_RULE, UNKNOWN_ENTITY, UNKNOWN_RELATIONSHIP, DOCUMENT_CONTEXT]}
+                subjectType: {type: string}
+                subjectId: {type: string}
+                description: {type: string}
+                appliedSafeguard: {type: string}
+                status: {type: string, enum: [OPEN, RESOLVED, ACCEPTED_RISK]}
+                transactionId: {type: string}
+      responses:
+        '201': {description: Uncertainty record created}
+        '400': {description: Invalid uncertainty record}
+        '401': {description: ALTIL session required}
+        '403': {description: Uncertainty scope or security/compliance role denied}
+  /api/v1/environments:
+    get:
+      tags: [Developers]
+      summary: List explicit customer environments
+      description: Returns persisted environment entities. Legacy application environment labels remain valid until an explicit environment is bound.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: tenantId, in: query, required: false, schema: {type: string}}
+      responses:
+        '200': {description: Environment inventory}
+        '401': {description: ALTIL session required}
+        '403': {description: Tenant scope or permission denied}
+        '503': {description: Environment persistence unavailable}
+    post:
+      tags: [Developers]
+      summary: Create an explicit customer environment
+      description: Environment creation is tenant-scoped and does not change legacy application labels.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerId, environmentCode, name]
+              properties:
+                customerId: {type: string}
+                applicationId: {type: string}
+                environmentCode: {type: string, pattern: '^[a-z][a-z0-9_-]{1,63}$'}
+                name: {type: string}
+                status: {type: string, enum: [active, suspended, retired]}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time}
+      responses:
+        '201': {description: Environment created}
+        '400': {description: Invalid environment or application binding}
+        '401': {description: ALTIL session required}
+        '403': {description: Tenant scope or permission denied}
+        '503': {description: Environment persistence unavailable}
+  /api/v1/environments/{id}:
+    put:
+      tags: [Developers]
+      summary: Update an explicit customer environment
+      description: Environment lifecycle changes are audited; retire rather than delete to preserve binding history.
+      security:
+        - BearerSession: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                status: {type: string, enum: [active, suspended, retired]}
+                effectiveFrom: {type: string, format: date-time}
+                effectiveTo: {type: string, format: date-time}
+      responses:
+        '200': {description: Environment updated}
+        '400': {description: Invalid environment update}
+        '401': {description: ALTIL session required}
+        '403': {description: Tenant scope or permission denied}
+        '404': {description: Environment not found in caller scope}
+        '503': {description: Environment persistence unavailable}
   /api/v1/usage:
     get:
       tags: [Developers]
@@ -1041,8 +1711,8 @@ paths:
   /api/v1/models:
     get:
       tags: [Governed AI]
-      summary: List routeable OpenRouter models
-      description: Returns only live ALTIL registry models routed through OpenRouter. API-key callers require the currently enforced `read:inference` scope. No upstream catalogue refresh is triggered by this read.
+      summary: List routeable live provider models
+      description: Returns only live-discovered and inference-verified models from provider connections authorized for the caller's tenant, application and API key. API-key callers require the currently enforced `read:inference` scope. No upstream catalogue refresh is triggered by this read.
       security:
         - ALTILKey: []
         - BearerSession: []
@@ -1073,6 +1743,114 @@ paths:
         '403': {description: Tenant scope or inference permission denied}
         '429': {description: Key rate limit reached}
         '503': {description: OpenRouter runtime is not configured}
+  /api/v1/provider-accounts:
+    get:
+      tags: [Governed AI]
+      summary: List provider connections visible to the authenticated operator
+      description: Returns redacted connection metadata only. Credentials are encrypted server-side and are never returned. Results are restricted to a global Super Admin grant or the caller's customer-managed connections.
+      security:
+        - BearerSession: []
+      responses:
+        '200': {description: Visible provider connection metadata and live verification state}
+        '401': {description: Session is required}
+        '403': {description: Provider read permission or scope is missing}
+    post:
+      tags: [Governed AI]
+      summary: Create an encrypted provider connection
+      description: Creates an ALTIL-managed or customer-managed/BYOK connection. Customer-managed connections require an ownerId within the caller's scope; byokOnly prevents fallback to ALTIL-managed credentials. The connection is not routeable until live credential and model inference verification succeeds.
+      security:
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [providerId, label, apiKey]
+              properties:
+                providerId: {type: string}
+                label: {type: string}
+                apiKey: {type: string, writeOnly: true}
+                ownerType: {type: string, enum: [ALTIL_MANAGED, CUSTOMER_MANAGED]}
+                ownerId: {type: string}
+                byokOnly: {type: boolean}
+      responses:
+        '201': {description: Encrypted connection metadata; secret is not returned}
+        '400': {description: Invalid provider, owner or credential input}
+        '401': {description: Session is required}
+        '403': {description: Provider configuration permission or scope is missing}
+  /api/v1/provider-accounts/{id}/test:
+    post:
+      tags: [Governed AI]
+      summary: Verify a provider connection with live discovery and inference
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      security:
+        - BearerSession: []
+      responses:
+        '200': {description: Live credential and inference verification succeeded}
+        '403': {description: Provider connection is outside the caller's scope}
+        '422': {description: Live provider verification failed}
+  /api/v1/provider-accounts/{id}/discover-models:
+    post:
+      tags: [Governed AI]
+      summary: Discover models from the provider connection's live catalogue
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      security:
+        - BearerSession: []
+      responses:
+        '200': {description: Live discovered model metadata}
+        '403': {description: Provider connection is outside the caller's scope}
+        '422': {description: Live discovery failed}
+  /api/v1/provider-accounts/{id}/models:
+    get:
+      tags: [Governed AI]
+      summary: List discovered and verified models for a provider connection
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      security:
+        - BearerSession: []
+      responses:
+        '200': {description: Model metadata with AVAILABLE, VERIFIED, allowed and default state}
+        '403': {description: Provider connection is outside the caller's scope}
+  /api/v1/provider-accounts/{id}/models/{modelId}/test:
+    post:
+      tags: [Governed AI]
+      summary: Run a live inference verification for a discovered model
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: modelId, in: path, required: true, schema: {type: string}}
+      security:
+        - BearerSession: []
+      responses:
+        '200': {description: Model is live verified and may become routeable}
+        '403': {description: Provider connection is outside the caller's scope}
+        '404': {description: Model was not returned by the provider's live catalogue}
+        '422': {description: Live inference verification failed}
+  /api/v1/provider-accounts/{id}:
+    patch:
+      tags: [Governed AI]
+      summary: Update provider routing policy for a visible connection
+      description: Only live-verified models may be selected as the default or allowed routes. Credentials are not returned or replaced by this operation.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      security:
+        - BearerSession: []
+      responses:
+        '200': {description: Updated redacted connection metadata}
+        '400': {description: Model selection is not live verified}
+        '403': {description: Provider connection is outside the caller's scope}
+    delete:
+      tags: [Governed AI]
+      summary: Remove a visible provider connection
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      security:
+        - BearerSession: []
+      responses:
+        '200': {description: Provider connection removed}
+        '403': {description: Provider connection is outside the caller's scope}
   /api/v1/gateway/usage:
     get:
       tags: [Governed AI]
@@ -1104,7 +1882,7 @@ paths:
     post:
       tags: [Governed AI]
       summary: Create an ALTIL-governed OpenAI-compatible chat completion
-      description: The selected model must be present and routeable in the ALTIL model registry through OpenRouter. Existing application binding, tenant isolation, rate/spend/licence quotas, policy and compliance checks apply. OpenRouter credentials remain server-side. Streaming relays upstream SSE progressively. When provider usage is unavailable, ALTIL's existing usage ledger uses estimates and the non-streaming response marks them with `altil.usage_estimated=true`.
+      description: The selected model must be present and routeable through an authorized live provider connection. Existing application binding, tenant isolation, rate/spend/licence quotas, policy and compliance checks apply. Provider credentials remain server-side. Streaming is normalized for OpenAI-compatible connections; unsupported native event formats fail closed. When provider usage is unavailable, ALTIL's existing usage ledger uses estimates and the non-streaming response marks them with `altil.usage_estimated=true`.
       security:
         - ALTILKey: []
         - BearerSession: []
@@ -1210,6 +1988,50 @@ paths:
         '401': {description: API key or session required}
         '403': {description: Tenant or scope denied}
         '503': {description: OpenRouter runtime is not configured}
+  /api/v1/embeddings:
+    post:
+      tags: [Governed AI]
+      summary: Create embeddings through an authorized live provider connection
+      description: Routes only to a tenant-authorized, live-verified embedding model. No synthetic fallback is used.
+      security:
+        - ALTILKey: []
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input]
+              properties:
+                model: {type: string, description: Live-verified embedding model identifier}
+                input: {oneOf: [{type: string}, {type: array, items: {type: string}}]}
+                encoding_format: {type: string, enum: [float, base64]}
+                app_id: {type: string}
+      responses:
+        '200': {description: Provider embedding response}
+        '400': {description: Invalid embedding input}
+        '401': {description: API key or session rejected}
+        '403': {description: Tenant, application, key, scope or model boundary denied}
+        '422': {description: Policy or capability denial}
+        '503': {description: No authorized live embedding route or provider unavailable}
+  /v1/embeddings:
+    post:
+      tags: [Governed AI]
+      summary: Alias for POST /api/v1/embeddings
+      security:
+        - ALTILKey: []
+        - BearerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/paths/~1api~1v1~1embeddings/post/requestBody/content/application~1json/schema'}
+      responses:
+        '200': {description: Provider embedding response}
+        '401': {description: API key or session rejected}
+        '403': {description: Tenant, application, key, scope or model boundary denied}
+        '503': {description: No authorized live embedding route or provider unavailable}
   /v1/chat/completions:
     post:
       tags: [Governed AI]

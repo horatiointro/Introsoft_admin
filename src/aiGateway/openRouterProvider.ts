@@ -75,7 +75,10 @@ function normalizeModel(value: unknown): NormalizedProviderModel | undefined {
 export class OpenRouterProviderAdapter implements AIProviderAdapter {
   readonly providerId = 'openrouter';
   readonly capabilities: ReadonlySet<AIProviderCapability> = new Set([
-    'models', 'chat', 'streaming', 'responses', 'embeddings', 'vision', 'tools', 'structured_outputs', 'reasoning',
+    // These are endpoint-level capabilities guaranteed by OpenRouter's
+    // public API. Model-specific vision/tools/reasoning support comes only
+    // from the live model catalogue metadata below.
+    'models', 'chat', 'streaming', 'responses', 'embeddings',
   ]);
   private readonly baseUrl: URL;
 

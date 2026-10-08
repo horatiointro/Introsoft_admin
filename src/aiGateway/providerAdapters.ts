@@ -24,7 +24,13 @@ function strings(value: unknown): string[] {
 function textFromContent(value: unknown): string {
   if (typeof value === 'string') return value.trim();
   if (!Array.isArray(value)) return '';
-  return value.map(part => typeof part === 'string' ? part : typeof record(part).text === 'string' ? String(record(part).text) : '').join('').trim();
+  return value.map(part => {
+    if (typeof part === 'string') return part;
+    const item = record(part);
+    if (typeof item.text === 'string') return String(item.text);
+    if (typeof item.output_text === 'string') return String(item.output_text);
+    return textFromContent(item.content) || textFromContent(item.parts) || textFromContent(item.output);
+  }).join('').trim();
 }
 
 /** Converts native provider response envelopes into the gateway's common text/usage shape. */
@@ -61,7 +67,7 @@ export function normalizeProviderResponse(providerType: ProviderType, payload: u
   const choices = Array.isArray(body.choices) ? body.choices : [];
   const choice = record(choices[0]);
   const message = record(choice.message);
-  const text = textFromContent(message.content) || textFromContent(choice.text) || (typeof body.output_text === 'string' ? body.output_text.trim() : '') || (typeof body.response === 'string' ? body.response.trim() : '');
+  const text = textFromContent(message.content) || textFromContent(choice.text) || (typeof body.output_text === 'string' ? body.output_text.trim() : '') || textFromContent(body.output) || (typeof body.response === 'string' ? body.response.trim() : '');
   const usage = record(body.usage);
   const inputTokens = Number(usage.prompt_tokens ?? usage.input_tokens) || undefined;
   const outputTokens = Number(usage.completion_tokens ?? usage.output_tokens) || undefined;
@@ -132,6 +138,17 @@ class OpenAiCompatibleAdapter extends BaseAdapter {
   chatCompletions(request: Readonly<Record<string, unknown>>, signal?: AbortSignal): Promise<Response> {
     return this.fetcher(url(this.base, 'chat/completions'), { method: 'POST', headers: this.headers({ ...this.authHeaders(), 'content-type': 'application/json' }), body: JSON.stringify(request), signal });
   }
+
+  /** OpenAI-compatible providers may expose the native Responses API. The
+   * caller decides whether the discovered connection advertises this route;
+   * the adapter never silently falls back to chat completions. */
+  responses(request: Readonly<Record<string, unknown>>, signal?: AbortSignal): Promise<Response> {
+    return this.fetcher(url(this.base, 'responses'), { method: 'POST', headers: this.headers({ ...this.authHeaders(), 'content-type': 'application/json' }), body: JSON.stringify(request), signal });
+  }
+
+  embeddings(request: Readonly<Record<string, unknown>>, signal?: AbortSignal): Promise<Response> {
+    return this.fetcher(url(this.base, 'embeddings'), { method: 'POST', headers: this.headers({ ...this.authHeaders(), 'content-type': 'application/json' }), body: JSON.stringify(request), signal });
+  }
 }
 
 class AnthropicAdapter extends BaseAdapter {
@@ -188,12 +205,17 @@ class OllamaAdapter extends BaseAdapter {
     const messages = Array.isArray(request.messages) ? request.messages : [];
     return this.fetcher(url(this.base, 'api/chat'), { method: 'POST', headers: this.headers({ 'content-type': 'application/json' }), body: JSON.stringify({ model: request.model, messages, stream: request.stream === true }), signal });
   }
+
+  embeddings(request: Readonly<Record<string, unknown>>, signal?: AbortSignal): Promise<Response> {
+    const input = typeof request.input === 'string' ? request.input : Array.isArray(request.input) ? request.input : [];
+    return this.fetcher(url(this.base, 'api/embed'), { method: 'POST', headers: this.headers({ 'content-type': 'application/json' }), body: JSON.stringify({ model: request.model, input }), signal });
+  }
 }
 
 function normalizeModel(value: unknown, provider: Pick<AIProvider, 'id' | 'type'>): NormalizedProviderModel | undefined {
   const item = record(value); const id = typeof item.id === 'string' ? item.id.trim() : ''; if (!id) return undefined;
-  const architecture = record(item.architecture); const inputModalities = strings(architecture.input_modalities).length ? strings(architecture.input_modalities) : ['text'];
-  const outputModalities = strings(architecture.output_modalities).length ? strings(architecture.output_modalities) : ['text'];
+  const architecture = record(item.architecture); const inputModalities = strings(architecture.input_modalities);
+  const outputModalities = strings(architecture.output_modalities);
   const supportedParameters = strings(item.supported_parameters);
   const embeddingModel = /embedding|embed/i.test(String(item.id || item.name || ''));
   const capabilities = new Set<AIProviderCapability>(['models']);
@@ -203,9 +225,12 @@ function normalizeModel(value: unknown, provider: Pick<AIProvider, 'id' | 'type'
   const supportsEmbeddings = /embedding/i.test(String(item.id || '')) || /embedding/i.test(String(item.name || ''));
   const supportsReasoning = supportedParameters.some(p => /reason/i.test(p));
   if (supportsTools) capabilities.add('tools');
+  if (supportedParameters.includes('response_format')) capabilities.add('structured_outputs');
   if (supportsVision) capabilities.add('vision');
   if (supportsEmbeddings || embeddingModel) capabilities.add('embeddings');
   if (supportsReasoning) capabilities.add('reasoning');
+  if (outputModalities.includes('audio')) capabilities.add('audio');
+  if (outputModalities.includes('image')) capabilities.add('image_generation');
   if (item.supports_streaming === true || supportedParameters.includes('stream')) capabilities.add('streaming');
   const contextLength = Number(item.context_length || item.contextWindow || item.inputTokenLimit);
   return { id, canonicalSlug: typeof item.canonical_slug === 'string' ? item.canonical_slug : id, name: typeof item.name === 'string' ? item.name : typeof item.displayName === 'string' ? item.displayName : id, ...(typeof item.description === 'string' ? { description: item.description } : {}), ...(Number.isSafeInteger(contextLength) && contextLength > 0 ? { contextLength } : {}), inputModalities, outputModalities, architecture, supportedParameters, capabilities: [...capabilities], ...(item.supports_streaming === true || supportedParameters.includes('stream') ? { supportsStreaming: true } : {}), ...(supportsTools ? { supportsTools: true } : {}), ...(supportsVision ? { supportsVision: true } : {}), ...(supportsEmbeddings || embeddingModel ? { supportsEmbeddings: true } : {}), ...(supportsReasoning ? { supportsReasoning: true } : {}), upstreamMetadata: { ...item, providerId: provider.id, providerType: provider.type } };

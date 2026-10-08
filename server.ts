@@ -197,7 +197,6 @@ import { canonicalClientIp } from './src/security/clientIp';
 import { getFirebaseAccessToken, sendFirebaseMessage } from './src/utils/firebaseTransport';
 
 import { chargeSavedPaymentMethod, createHostedPayment, createPaymentMethodSetup, newPaymentIntentId, verifyIkhokhaSignature, verifyPayfastSignature, type PaymentProvider } from './src/utils/paymentGateways';
-import { OpenRouterProviderAdapter } from './src/aiGateway/openRouterProvider';
 import { createProviderAdapter, normalizeProviderResponse } from './src/aiGateway/providerAdapters';
 import { classifyProviderError } from './src/aiGateway/providerAdapter';
 import { OpenAiRequestValidationError, openAiModelList, toOpenRouterChatRequest, validateOpenAiChatRequest, type OpenAiChatRequest } from './src/aiGateway/openAiChatRequest';
@@ -214,7 +213,12 @@ import { createTransactionContext } from './src/transaction/context';
 
 let providers: AIProvider[] = [...INITIAL_PROVIDERS];
 
-let models: AIModel[] = [...INITIAL_MODELS];
+// Static catalogue rows are documentation only until a provider connection
+// performs live discovery and inference verification. They must never become
+// routable merely because they exist in source.
+let models: AIModel[] = INITIAL_MODELS.map(model => model.lastVerifiedAt
+  ? { ...model }
+  : { ...model, enabled: false, status: 'offline', verificationStatus: 'pending', freeQuotaState: 'unknown' });
 
 type ModelFleetEvent = { id: string; at: string; modelId?: string; modelIdentifier?: string; action: string; detail: string; source?: string };
 
@@ -261,8 +265,30 @@ function persistProviderAccounts() { mkdirSync(path.dirname(providerAccountsPath
 function publicProviderAccount(account: ProviderAccount) { const { encryptedKey: _secret, ...safe } = account; return safe; }
 function providerAccountVisibleTo(account: ProviderAccount, req: any): boolean {
   const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
-  if (roles.includes('SUPER_ADMIN') || !req.user?.tenantId) return true;
-  return (account.ownerType || 'ALTIL_MANAGED') === 'CUSTOMER_MANAGED' && account.ownerId === (req.user.tenantId || req.user.tenant_id);
+  const hasGlobalSuperAdmin = roles.some((role: string) => role === 'SUPER_ADMIN' || role === 'Super Admin')
+    && req.user?.authorization?.grants?.some((grant: any) => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL') === true;
+  if (hasGlobalSuperAdmin) return true;
+  const tenantId = req.user?.tenantId || req.user?.tenant_id;
+  return Boolean(tenantId)
+    && (account.ownerType || 'ALTIL_MANAGED') === 'CUSTOMER_MANAGED'
+    && account.ownerId === tenantId;
+}
+
+/** Provider connections are tenant resources. Platform operators need the
+ * global Super Admin grant or the explicit provider permission; customer
+ * administrators can manage only their own CUSTOMER_MANAGED connections. */
+function requireProviderConnectionAccess(write = false) {
+  return (req: AuthenticatedRequest, res: any, next: any): void => {
+    if (!req.user) return void res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' });
+    const isGlobalSuperAdmin = req.user.roles.some(role => role === 'SUPER_ADMIN' || role === 'Super Admin')
+      && req.user.authorization?.grants?.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL') === true;
+    const permission = write ? 'provider.configure' : 'provider.read';
+    const hasPermission = req.user.authorization?.grants?.some(grant => grant.permissions.includes(permission)) === true;
+    if (!isGlobalSuperAdmin && !hasPermission) {
+      return void res.status(403).json({ error: 'Forbidden', code: 'PROVIDER_CONNECTION_PERMISSION_REQUIRED', message: `Missing required permission: ${permission}` });
+    }
+    next();
+  };
 }
 function upsertProviderEditAccount(provider: AIProvider, secret: string): ProviderAccount {
   const label = `${provider.name} default account`;
@@ -325,8 +351,11 @@ function activateVerifiedProviderModel(provider: AIProvider, modelIdentifier: st
     providerName: provider.name,
     displayName: displayName || modelIdentifier,
     status: 'online',
-    contextWindow: contextWindow || 32768,
-    maxOutputTokens: maxOutputTokens || 4096,
+    // Unknown limits remain unknown. Do not manufacture capacity values from
+    // the provider catalogue; the request path applies its own bounded
+    // operational default when the provider did not publish a limit.
+    contextWindow: Number.isSafeInteger(contextWindow) && (contextWindow as number) > 0 ? contextWindow as number : 0,
+    maxOutputTokens: Number.isSafeInteger(maxOutputTokens) && (maxOutputTokens as number) > 0 ? maxOutputTokens as number : 0,
     enabled: true,
     capabilities: liveCapabilities?.length ? [...liveCapabilities] : ['chat'],
     costPer1kInput: 0,
@@ -358,7 +387,7 @@ async function verifyProviderAccount(account: ProviderAccount): Promise<{ tested
     account.discoveredModelCount = catalog.length;
     account.discoveredModels = catalog.map(model => ({ id: model.id, canonicalSlug: model.canonicalSlug, name: model.name, description: model.description, contextLength: model.contextLength, inputModalities: [...model.inputModalities], outputModalities: [...model.outputModalities], supportedParameters: [...model.supportedParameters], capabilities: [...model.capabilities], supportsStreaming: model.supportsStreaming, supportsTools: model.supportsTools, supportsVision: model.supportsVision, supportsEmbeddings: model.supportsEmbeddings, supportsReasoning: model.supportsReasoning, provenance: 'LIVE' }));
     persistProviderAccounts();
-    const candidates = catalog.filter(item => item.inputModalities.includes('text') && item.capabilities.includes('chat')).slice(0, 8);
+    const candidates = catalog.filter(item => (item.inputModalities.length === 0 || item.inputModalities.includes('text')) && item.capabilities.includes('chat')).slice(0, 8);
     if (!candidates.length) throw new Error('The account is valid, but the provider returned no chat-capable text model to test.');
     let testedModel = ''; let lastProbeIssue = 'No candidate model produced text.';
     for (const candidate of candidates) {
@@ -1891,6 +1920,29 @@ async function callOpenAiCompatibleModel(provider: AIProvider, model: AIModel, p
 
 }
 
+async function callResponsesModel(provider: AIProvider, model: AIModel, request: Readonly<Record<string, unknown>>, ownerId?: string): Promise<{ text: string; inputTokens: number; outputTokens: number; usageReported: boolean; responseId?: string; finishReason?: string }> {
+  const apiKey = liveProviderKey(provider, model.modelIdentifier, ownerId);
+  if (!apiKey) throw new Error(`Provider ${provider.name} has no valid live API key configured.`);
+  const adapter = createProviderAdapter(provider, apiKey);
+  if (!adapter.responses) throw new Error('UNSUPPORTED_CAPABILITY: The selected provider does not expose a Responses adapter.');
+  const response = await adapter.responses({ ...request, model: model.modelIdentifier, stream: false }, AbortSignal.timeout(provider.timeoutMs || 60000));
+  const payload = await response.json().catch(() => ({})) as any;
+  if (!response.ok) {
+    const detail = String(payload?.error?.message || payload?.message || `HTTP ${response.status}`).replaceAll(apiKey, '[REDACTED]').slice(0, 240);
+    throw new Error(`${classifyProviderError(response.status, detail)}: ${detail}`);
+  }
+  const normalized = normalizeProviderResponse(provider.type, payload);
+  if (!normalized.text) throw new Error('Provider returned an empty Responses result.');
+  return {
+    text: normalized.text,
+    inputTokens: normalized.inputTokens ?? Math.ceil(String(request.input || '').length / 4),
+    outputTokens: normalized.outputTokens ?? Math.ceil(normalized.text.length / 4),
+    usageReported: normalized.inputTokens !== undefined || normalized.outputTokens !== undefined,
+    responseId: normalized.id,
+    finishReason: normalized.finishReason,
+  };
+}
+
 
 
 async function refreshFreeModelCatalog(accountId?: string) {
@@ -1920,18 +1972,14 @@ async function refreshFreeModelCatalog(accountId?: string) {
 
 
   try {
-
-    const response = await fetch('https://openrouter.ai/api/v1/models', { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(30000) });
-
-    if (!response.ok) throw new Error(`Catalog returned HTTP ${response.status}`);
-
-    const payload = await response.json() as { data?: Array<{ id: string; name?: string; description?: string; context_length?: number; architecture?: { modality?: string; input_modalities?: string[] }; pricing?: { prompt?: string; completion?: string }; top_provider?: { max_completion_tokens?: number } }> };
-
-    const freeModels = (payload.data || []).filter(m => Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0 && m.id && (m.architecture?.input_modalities || []).includes('text'));
-
     const target = providers.find(p => p.id === selectedAccount?.providerId && p.enabled) || providers.find(p => p.type === 'openrouter' && p.enabled);
 
     if (!target) throw new Error('No enabled OpenRouter provider is configured.');
+
+    // OpenRouter's free catalogue is a filter over the common live adapter;
+    // it must not maintain a second raw-fetch/provider implementation.
+    const catalog = await createProviderAdapter(target, apiKey).listModels(AbortSignal.timeout(30000));
+    const freeModels = catalog.filter(model => Number(model.pricing?.prompt) === 0 && Number(model.pricing?.completion) === 0 && (model.inputModalities.length === 0 || model.inputModalities.includes('text')) && model.capabilities.includes('chat'));
 
     const probeGuard = scanAndSanitizePrompt('Reply with the single word OK.', {});
 
@@ -1949,21 +1997,10 @@ async function refreshFreeModelCatalog(accountId?: string) {
 
       try {
 
-        const probe = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-
-          method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', ...(resolvePublicBaseUrl(process.env) ? { 'HTTP-Referer': resolvePublicBaseUrl(process.env)! } : {}), 'X-Title': 'ALTIL Model Fleet Validator' },
-
-          body: JSON.stringify({ model: item.id, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 2, temperature: 0 }),
-
-          signal: AbortSignal.timeout(20000)
-
-        });
-
-        if (!probe.ok) throw new Error(`Live probe returned HTTP ${probe.status}`);
-
-        const probeBody = await probe.json() as any;
-
-        if (!extractProviderResponseText(probeBody)) throw new Error('Probe returned no text completion.');
+        const probe = await createProviderAdapter(target, apiKey).chatCompletions({ model: item.id, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 2, temperature: 0, stream: false }, AbortSignal.timeout(20000));
+        const probeBody = await probe.json().catch(() => ({})) as any;
+        const normalizedProbe = normalizeProviderResponse(target.type, probeBody);
+        if (!probe.ok || !normalizedProbe.text) throw new Error(`Live probe returned HTTP ${probe.status} without a usable text completion.`);
 
         if (selectedAccount) selectedAccount.verifiedModels = [...new Set([...(selectedAccount.verifiedModels || []), item.id])];
 
@@ -1981,9 +2018,9 @@ async function refreshFreeModelCatalog(accountId?: string) {
 
             id: `m-or-${item.id.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 48)}-${Date.now().toString(36)}`, modelIdentifier: item.id, providerId: target.id, providerName: target.name, displayName: item.name || item.id,
 
-            status: 'online', contextWindow: item.context_length || 32768, maxOutputTokens: item.top_provider?.max_completion_tokens || 4096, enabled: true, isFree: true,
+            status: 'online', contextWindow: item.contextLength || 0, maxOutputTokens: Number(item.limits?.max_completion_tokens) || 0, enabled: true, isFree: true,
 
-            capabilities: ['general_ai', ...(item.architecture?.input_modalities?.includes('image') ? ['document_analysis'] : [])], costPer1kInput: tokensPer1kPrompt, costPer1kOutput: tokensPer1kCompletion,
+            capabilities: [...item.capabilities], costPer1kInput: tokensPer1kPrompt, costPer1kOutput: tokensPer1kCompletion,
 
             averageLatencyMs: 0, description: item.description || `Free model discovered from OpenRouter and live-probed on ${checkedAt}.`, catalogSource: 'OpenRouter', lastVerifiedAt: checkedAt, lastCatalogUpdateAt: checkedAt, freeQuotaState: 'available', verificationStatus: 'verified'
 
@@ -2078,7 +2115,7 @@ async function persistAiRegistry(): Promise<void> {
     const marks = providerRows.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?)').join(',');
     await executeQuery(`INSERT INTO ai_providers (id,provider_code,name,vendor,endpoint_type,routing_weight,health_status,average_latency_ms,total_calls,error_rate_percent,is_active,metadata_json) VALUES ${marks} ON DUPLICATE KEY UPDATE name=VALUES(name),vendor=VALUES(vendor),endpoint_type=VALUES(endpoint_type),routing_weight=VALUES(routing_weight),health_status=VALUES(health_status),average_latency_ms=VALUES(average_latency_ms),total_calls=VALUES(total_calls),error_rate_percent=VALUES(error_rate_percent),is_active=VALUES(is_active),metadata_json=VALUES(metadata_json)`, providerRows.flat());
   }
-  const modelRows = models.filter(model => providers.some(provider => provider.id === model.providerId)).map(model => [model.id,model.providerId,model.modelIdentifier,model.displayName,model.costPer1kInput || 0,model.costPer1kOutput || 0,model.contextWindow || 32768,(model.capabilities || []).join(','),model.status,JSON.stringify(model)]);
+  const modelRows = models.filter(model => providers.some(provider => provider.id === model.providerId)).map(model => [model.id,model.providerId,model.modelIdentifier,model.displayName,model.costPer1kInput || 0,model.costPer1kOutput || 0,model.contextWindow || 0,(model.capabilities || []).join(','),model.status,JSON.stringify(model)]);
   if (modelRows.length) {
     const marks = modelRows.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',');
     await executeQuery(`INSERT INTO ai_models (id,provider_id,model_code,display_name,cost_per_1k_tokens_input_usd,cost_per_1k_tokens_output_usd,context_window_tokens,capability_tags,status,metadata_json) VALUES ${marks} ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),display_name=VALUES(display_name),cost_per_1k_tokens_input_usd=VALUES(cost_per_1k_tokens_input_usd),cost_per_1k_tokens_output_usd=VALUES(cost_per_1k_tokens_output_usd),context_window_tokens=VALUES(context_window_tokens),capability_tags=VALUES(capability_tags),status=VALUES(status),metadata_json=VALUES(metadata_json)`, modelRows.flat());
@@ -2099,7 +2136,8 @@ async function restoreAiRegistryFromDatabase(): Promise<void> {
   if (modelRows.length) models = modelRows.map(row => {
     let metadata: Partial<AIModel> = {};
     try { metadata = row.metadata_json ? readJsonColumn(row.metadata_json) : {}; } catch { /* relational fields remain authoritative */ }
-    return { ...(INITIAL_MODELS.find(item => item.id === row.id) || INITIAL_MODELS[0]), ...metadata, id:row.id, modelIdentifier:row.model_code, providerId:row.provider_id, displayName:row.display_name, costPer1kInput:Number(row.cost_per_1k_tokens_input_usd || 0), costPer1kOutput:Number(row.cost_per_1k_tokens_output_usd || 0), contextWindow:Number(row.context_window_tokens || 32768), status:String(row.status || 'offline').toLowerCase() as AIModel['status'], enabled:metadata.enabled ?? String(row.status).toLowerCase()==='online' };
+    const liveVerified = metadata.verificationStatus === 'verified' && typeof metadata.lastVerifiedAt === 'string' && Boolean(Date.parse(metadata.lastVerifiedAt));
+    return { ...(INITIAL_MODELS.find(item => item.id === row.id) || INITIAL_MODELS[0]), ...metadata, id:row.id, modelIdentifier:row.model_code, providerId:row.provider_id, displayName:row.display_name, costPer1kInput:Number(row.cost_per_1k_tokens_input_usd || 0), costPer1kOutput:Number(row.cost_per_1k_tokens_output_usd || 0), contextWindow:Number(row.context_window_tokens || 0), status:liveVerified && String(row.status).toLowerCase() === 'online' ? 'online' : 'offline', enabled:Boolean(metadata.enabled && liveVerified) };
   });
 }
 
@@ -3944,10 +3982,10 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
 
   // Provider account vault: credentials are encrypted at rest and never returned to a client.
-  app.get('/api/v1/provider-accounts', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
+  app.get('/api/v1/provider-accounts', requireAuthentication, requireProviderConnectionAccess(false), (req, res) => {
     res.json(providerAccounts.filter(item => providerAccountVisibleTo(item, req)).map(item => { const current = Boolean(item.enabled && item.state === 'active' && item.lastTestStatus === 'passed' && item.lastTestedAt && Date.now() - Date.parse(item.lastTestedAt) < 24 * 60 * 60 * 1000); return { ...publicProviderAccount(item), ownerType: item.ownerType || 'ALTIL_MANAGED', currentStatus: current ? 'online' : item.state === 'paused' ? 'paused' : item.lastTestStatus === 'failed' ? 'offline' : 'check_required', providerName: providers.find(p => p.id === item.providerId)?.name || 'Unknown provider', testedModels: item.verifiedModels?.length || 0, availableModels: current ? (item.verifiedModels || []) : [] }; }));
   });
-  app.post('/api/v1/provider-accounts', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
+  app.post('/api/v1/provider-accounts', requireAuthentication, requireProviderConnectionAccess(true), (req: AuthenticatedRequest, res) => {
     const provider = providers.find(p => p.id === req.body.providerId);
     const label = typeof req.body.label === 'string' ? req.body.label.trim().slice(0, 100) : '';
     const key = typeof req.body.apiKey === 'string' ? req.body.apiKey.trim() : '';
@@ -3957,12 +3995,15 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
     const ownerId = ownerType === 'CUSTOMER_MANAGED' && typeof req.body.ownerId === 'string' ? req.body.ownerId.trim() : undefined;
     if (ownerType === 'CUSTOMER_MANAGED' && !ownerId) return res.status(400).json({ error: 'Customer-managed connections require an ownerId.' });
     if (ownerType === 'CUSTOMER_MANAGED' && !customers.some(customer => customer.id === ownerId)) return res.status(400).json({ error: 'The customer owner does not exist.' });
+    const isGlobalSuperAdmin = req.user?.roles?.some(role => role === 'SUPER_ADMIN' || role === 'Super Admin')
+      && req.user.authorization?.grants?.some(grant => grant.role === 'SUPER_ADMIN' && grant.visibility === 'GLOBAL') === true;
+    if (!isGlobalSuperAdmin && (ownerType !== 'CUSTOMER_MANAGED' || ownerId !== (req.user?.tenantId || ''))) return res.status(403).json({ error: 'Customer administrators may create only their own customer-managed provider connections.' });
     if (ownerType === 'CUSTOMER_MANAGED' && !providerAccountVisibleTo({ ownerType, ownerId } as ProviderAccount, req)) return res.status(403).json({ error: 'Provider account owner is outside the current tenant scope.' });
     const account: ProviderAccount = { id: `pa-${randomUUID()}`, providerId: provider.id, label, keyPrefix: `${key.slice(0, 7)}…${key.slice(-4)}`, enabled: false, state: 'needs_test', createdAt: new Date().toISOString(), requests: 0, tokens: 0, ownerType, ownerId, byokOnly: req.body.byokOnly === true, encryptedKey: encryptProviderSecret(key) };
     providerAccounts.push(account); persistProviderAccounts();
     res.status(201).json(publicProviderAccount(account));
   });
-  app.post('/api/v1/provider-accounts/:id/test', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req, res) => {
+  app.post('/api/v1/provider-accounts/:id/test', requireAuthentication, requireProviderConnectionAccess(true), async (req, res) => {
     const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' }); if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
     try {
       const verification = await verifyProviderAccount(account);
@@ -3972,7 +4013,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
       res.status(422).json({ ok: false, account: publicProviderAccount(account), error: account.lastTestMessage });
     }
   });
-  app.post('/api/v1/provider-accounts/:id/discover-models', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req, res) => {
+  app.post('/api/v1/provider-accounts/:id/discover-models', requireAuthentication, requireProviderConnectionAccess(true), async (req, res) => {
     const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' }); if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
     const provider = providers.find(item => item.id === account.providerId); if (!provider) return res.status(404).json({ error: 'Provider not found.' });
     try {
@@ -3983,13 +4024,13 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
       persistProviderAccounts(); return res.json({ ok: true, account: publicProviderAccount(account), models: account.discoveredModels });
     } catch (error) { account.discoveryStatus = 'FAILED'; account.discoveryError = error instanceof Error ? error.message.slice(0, 220) : 'Live model discovery failed.'; persistProviderAccounts(); return res.status(422).json({ ok: false, account: publicProviderAccount(account), error: account.discoveryError }); }
   });
-  app.get('/api/v1/provider-accounts/:id/models', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
+  app.get('/api/v1/provider-accounts/:id/models', requireAuthentication, requireProviderConnectionAccess(false), (req, res) => {
     const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' }); if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
     const verified = new Set(account.verifiedModels || []);
     const modelsForAccount = (account.discoveredModels || []).map(model => ({ ...model, status: verified.has(String(model.id)) ? 'VERIFIED' : 'AVAILABLE', allowed: account.allowedModels === undefined || account.allowedModels.includes(String(model.id)), default: account.defaultModelIdentifier === model.id }));
     return res.json({ accountId: account.id, source: account.discoveryStatus || 'UNAVAILABLE', lastDiscoveredAt: account.lastDiscoveredAt || null, models: modelsForAccount });
   });
-  app.post('/api/v1/provider-accounts/:id/models/:modelId/test', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req, res) => {
+  app.post('/api/v1/provider-accounts/:id/models/:modelId/test', requireAuthentication, requireProviderConnectionAccess(true), async (req, res) => {
     const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' }); if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
     const provider = providers.find(item => item.id === account.providerId); if (!provider) return res.status(404).json({ error: 'Provider not found.' });
     const modelIdentifier = decodeURIComponent(req.params.modelId);
@@ -4009,7 +4050,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
       return res.json({ ok: true, modelIdentifier: selected.id, latencyMs: Date.now() - startedAt, responseId: normalized.id || null, usage: { inputTokens: normalized.inputTokens ?? null, outputTokens: normalized.outputTokens ?? null, reported: normalized.inputTokens !== undefined || normalized.outputTokens !== undefined } });
     } catch (error) { account.lastTestStatus = 'failed'; account.lastTestMessage = error instanceof Error ? error.message.slice(0, 220) : 'Live model check failed.'; account.state = 'error'; account.enabled = false; persistProviderAccounts(); return res.status(422).json({ ok: false, code: 'LIVE_INFERENCE_FAILED', error: account.lastTestMessage }); }
   });
-  app.patch('/api/v1/provider-accounts/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
+  app.patch('/api/v1/provider-accounts/:id', requireAuthentication, requireProviderConnectionAccess(true), (req, res) => {
     const account = providerAccounts.find(item => item.id === req.params.id); if (!account) return res.status(404).json({ error: 'Provider account not found.' });
     if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
     if (req.body.enabled === false) { account.enabled = false; account.state = 'paused'; }
@@ -4028,7 +4069,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
     }
     persistProviderAccounts(); res.json(publicProviderAccount(account));
   });
-  app.delete('/api/v1/provider-accounts/:id', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), (req, res) => {
+  app.delete('/api/v1/provider-accounts/:id', requireAuthentication, requireProviderConnectionAccess(true), (req, res) => {
     const account = providerAccounts.find(item => item.id === req.params.id);
     if (!account) return res.status(404).json({ error: 'Provider account not found.' });
     if (!providerAccountVisibleTo(account, req)) return res.status(403).json({ error: 'Provider account is outside the current tenant scope.' });
@@ -4384,35 +4425,43 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
   app.post('/api/v1/models', requireAuthentication, requireRole(['SUPER_ADMIN', 'AI_ENGINEER']), async (req: AuthenticatedRequest, res) => {
 
+    const providerId = typeof req.body.providerId === 'string' ? req.body.providerId.trim() : '';
+    const provider = providers.find(item => item.id === providerId);
+    if (!provider) return res.status(400).json({ error: 'A valid provider connection is required.' });
+
     const newModel: AIModel = {
 
       id: `m-${Date.now().toString(36)}`,
 
-      modelIdentifier: req.body.modelIdentifier || 'custom-model:v1',
+      modelIdentifier: typeof req.body.modelIdentifier === 'string' ? req.body.modelIdentifier.trim() : '',
 
-      providerId: req.body.providerId || providers[0]?.id || 'p-ollama',
+      providerId,
 
       displayName: req.body.displayName || req.body.modelIdentifier || 'New Model',
 
-      status: 'online',
+      status: 'offline',
 
-      contextWindow: Number(req.body.contextWindow) || 32768,
+      contextWindow: Number.isSafeInteger(Number(req.body.contextWindow)) && Number(req.body.contextWindow) > 0 ? Number(req.body.contextWindow) : 0,
 
-      maxOutputTokens: Number(req.body.maxOutputTokens) || 4096,
+      maxOutputTokens: Number.isSafeInteger(Number(req.body.maxOutputTokens)) && Number(req.body.maxOutputTokens) > 0 ? Number(req.body.maxOutputTokens) : 0,
 
-      enabled: req.body.enabled !== false,
+      enabled: false,
 
-      capabilities: req.body.capabilities || ['general_ai'],
+      capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.filter((value: unknown): value is string => typeof value === 'string') : [],
 
       costPer1kInput: Number(req.body.costPer1kInput) || 0.0,
 
       costPer1kOutput: Number(req.body.costPer1kOutput) || 0.0,
 
-      averageLatencyMs: Number(req.body.averageLatencyMs) || 200,
+      averageLatencyMs: 0,
 
-      description: req.body.description || ''
+      description: typeof req.body.description === 'string' ? req.body.description : '',
+      verificationStatus: 'pending',
+      catalogSource: 'MANUAL_CATALOG'
 
     };
+
+    if (!newModel.modelIdentifier) return res.status(400).json({ error: 'A provider model identifier is required.' });
 
     newModel.freeQuotaState = newModel.isFree ? 'unknown' : undefined;
 
@@ -4431,7 +4480,19 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
     if (idx === -1) return res.status(404).json({ error: 'Model not found' });
 
-    models[idx] = { ...models[idx], ...req.body };
+    const current = models[idx];
+    // Legacy model records remain editable for display and policy metadata,
+    // but provider identity and live-verification state are authoritative
+    // outputs of a real provider connection and cannot be forged by CRUD.
+    const editable = ['displayName', 'description', 'capabilities', 'contextWindow', 'maxOutputTokens', 'costPer1kInput', 'costPer1kOutput'] as const;
+    const changes: Partial<AIModel> = {};
+    for (const field of editable) if (Object.prototype.hasOwnProperty.call(req.body, field)) (changes as any)[field] = req.body[field];
+    if (Object.prototype.hasOwnProperty.call(req.body, 'enabled')) {
+      if (req.body.enabled === false) changes.enabled = false;
+      else if (req.body.enabled === true && current.verificationStatus === 'verified' && current.lastVerifiedAt && isLiveModelRouteable({ ...current, enabled: true })) changes.enabled = true;
+      else return res.status(409).json({ error: 'A model can only be enabled after a successful live provider verification.' });
+    }
+    models[idx] = { ...current, ...changes };
     try { await persistAiRegistry(); } catch { return res.status(503).json({ error: 'Model registry could not be saved to the database.' }); }
 
     res.json(models[idx]);
@@ -5740,6 +5801,11 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
     const body = req.body || {};
 
+    if (isResponsesApi && body.stream === true) {
+      return res.status(422).json({ error: { message: 'Responses streaming is not available until the selected provider event format is normalized.', type: 'altil_error', code: 'UNSUPPORTED_CAPABILITY' } });
+    }
+    if (isResponsesApi) req.altilPublicResponsesRequest = body;
+
     let publicChatRequest: OpenAiChatRequest | undefined;
     if (!isResponsesApi) {
       try { publicChatRequest = validateOpenAiChatRequest(body); }
@@ -5840,6 +5906,63 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
       capabilities: ['chat', 'reasoning', 'governance']
     } as any] : [];
     return res.json(openAiModelList([...autoModel, ...routeable], new Map(providers.map(provider => [provider.id, provider.name]))));
+  });
+
+  // Embeddings are routed through the same tenant/application/provider
+  // boundary as chat. There is deliberately no synthetic fallback: a
+  // provider must advertise a live embedding model and expose an adapter
+  // implementation before this endpoint can return data.
+  app.post(['/v1/embeddings', '/api/v1/embeddings'], authenticateGatewayTenantForScope('write:inference'), async (req: any, res) => {
+    const tenantId = String(req.gatewayTenantId || '');
+    const appId = String(req.gatewayAppId || req.body?.app_id || '').trim();
+    const appRecord = applications.find(app => app.id === appId && app.customerId === tenantId && app.status === 'active');
+    if (!appRecord) return res.status(403).json({ error: { code: 'APPLICATION_NOT_ACTIVE', message: 'An active application in the authenticated tenant is required.' } });
+    const input = typeof req.body?.input === 'string'
+      ? req.body.input
+      : Array.isArray(req.body?.input) && req.body.input.every((value: unknown) => typeof value === 'string')
+        ? req.body.input
+        : undefined;
+    if (input === undefined || (Array.isArray(input) && input.length === 0)) return res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Embedding input must be a string or a non-empty array of strings.' } });
+    const inputs = Array.isArray(input) ? input : [input];
+    if (inputs.some(value => value.length === 0 || value.length > 12000)) return res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Each embedding input must contain 1 to 12,000 characters.' } });
+    const sanitizedInputs: string[] = [];
+    for (const value of inputs) {
+      const compliance = scanAndSanitizePrompt(value, { popiaRules: globalComplianceConfig.popia, gdprRules: globalComplianceConfig.gdpr });
+      if (compliance.actionTaken === 'BLOCKED') return res.status(422).json({ error: { code: 'CONTENT_POLICY_REJECTED', message: 'Embedding input was blocked by the active privacy policy.' } });
+      sanitizedInputs.push(compliance.sanitizedPrompt);
+    }
+    const requestedModel = typeof req.body?.model === 'string' ? req.body.model.trim() : '';
+    const candidates = models.filter(model => isLiveModelRouteable(model, tenantId) && model.capabilities.includes('embeddings'));
+    const selected = requestedModel && requestedModel !== 'altil-auto'
+      ? candidates.find(model => model.id === requestedModel || model.modelIdentifier === requestedModel)
+      : candidates[0];
+    if (!selected) return res.status(requestedModel ? 404 : 503).json({ error: { code: requestedModel ? 'MODEL_NOT_AVAILABLE' : 'NO_AUTHORIZED_ROUTE', message: requestedModel ? 'The requested embedding model is not live-verified for this tenant.' : 'No live-verified embedding model is available for this tenant.' } });
+    const provider = providers.find(item => item.id === selected.providerId);
+    if (!provider) return res.status(503).json({ error: { code: 'PROVIDER_UNAVAILABLE', message: 'The selected provider connection is unavailable.' } });
+    const apiKey = liveProviderKey(provider, selected.modelIdentifier, tenantId);
+    if (!apiKey) return res.status(503).json({ error: { code: 'NO_AUTHORIZED_ROUTE', message: 'No authorized provider connection is available for this tenant.' } });
+    const key = req.gatewayApiKeyId ? apiKeys.find(item => item.id === req.gatewayApiKeyId) : undefined;
+    if (key) {
+      const boundary = validateApiKeyBoundary({ key, applicationId: appRecord.id, environmentId: appRecord.environmentId || appRecord.environment, providerId: provider.id, modelId: selected.id });
+      if (!boundary.allowed) return res.status(403).json({ error: { code: 'API_KEY_BOUNDARY_REJECTED', message: 'This API key is not valid for the selected provider or model.' } });
+    }
+    const adapter = createProviderAdapter(provider, apiKey);
+    if (!adapter.embeddings) return res.status(422).json({ error: { code: 'UNSUPPORTED_CAPABILITY', message: 'The selected provider connection does not support embeddings.' } });
+    try {
+      const upstream = await adapter.embeddings({ model: selected.modelIdentifier, input: Array.isArray(input) ? sanitizedInputs : sanitizedInputs[0], ...(typeof req.body?.encoding_format === 'string' ? { encoding_format: req.body.encoding_format } : {}) }, AbortSignal.timeout(provider.timeoutMs || 30000));
+      const payload = await upstream.json().catch(() => ({})) as Record<string, unknown>;
+      if (!upstream.ok) {
+        const detail = String((payload as any)?.error?.message || (payload as any)?.message || `HTTP ${upstream.status}`).slice(0, 220);
+        return res.status(502).json({ error: { code: classifyProviderError(upstream.status, detail), message: 'The provider rejected the embedding request.' } });
+      }
+      const responsePayload = provider.type === 'ollama' && Array.isArray((payload as any).embeddings)
+        ? { object: 'list', data: (payload as any).embeddings.map((embedding: unknown, index: number) => ({ object: 'embedding', index, embedding })), model: selected.modelIdentifier, usage: { prompt_tokens: null, total_tokens: null } }
+        : payload;
+      void emitAltilEvent({ requestId: String(req.headers['x-request-id'] || randomUUID()), category: 'AUDIT', action: 'ai.embeddings.completed', tenantId, applicationId: appRecord.id, apiKeyId: key?.id, providerId: provider.id, modelId: selected.id, outcome: 'SUCCESS', detail: 'Live provider embedding request completed.' }).catch(() => undefined);
+      return res.json(responsePayload);
+    } catch {
+      return res.status(503).json({ error: { code: 'PROVIDER_UNAVAILABLE', message: 'The provider did not complete the embedding request.' }, retryable: true });
+    }
   });
 
 
@@ -6937,6 +7060,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
     let primaryModel = (isRouteable(requestedPrimary) ? requestedPrimary : undefined) || configuredDefault || routeableModels.find(m => m.verificationStatus !== 'failed') || routeableModels[0];
 
     const publicChatRequest = req.altilPublicChatRequest as OpenAiChatRequest | undefined;
+    const publicResponsesRequest = req.altilPublicResponsesRequest as Readonly<Record<string, unknown>> | undefined;
     const publicContentEnvelope = publicChatRequest ? toAltilContentEnvelope(publicChatRequest.messages) : undefined;
     if (publicChatRequest && !isAutoModel && (!namedRequestedModel || (routeableModels.length > 0 && !isRouteable(namedRequestedModel)))) {
       return res.status(404).json({ error: { code: 'MODEL_NOT_AVAILABLE', message: 'The requested model is not currently available in the ALTIL routeable model registry.' }, requestId });
@@ -6962,6 +7086,9 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
     const normalizedSseProviderTypes = new Set(['openai', 'groq', 'deepseek', 'mistral', 'together', 'openai_compatible', 'openrouter']);
     if (publicChatRequest?.stream === true && !normalizedSseProviderTypes.has(primaryProvider.type)) {
       return res.status(422).json({ success: false, code: 'UNSUPPORTED_CAPABILITY', error: 'Streaming is not available for this provider connection yet.', requestId });
+    }
+    if (publicResponsesRequest && !['openai', 'openrouter', 'openai_compatible'].includes(primaryProvider.type)) {
+      return res.status(422).json({ success: false, code: 'UNSUPPORTED_CAPABILITY', error: 'The Responses API is not available for this provider connection yet.', requestId });
     }
 
     if (authenticatedCaller.type === 'api_key' && authenticatedCaller.keyRecord) {
@@ -7089,6 +7216,23 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
       });
 
+      // Use a provider's native Responses endpoint when the adapter exposes
+      // it. Providers without that capability remain on the governed
+      // compatibility path; no synthetic response is generated.
+      if (!dispatchSuccess && publicResponsesRequest && ['openai', 'openrouter', 'openai_compatible'].includes(primaryProvider.type)) {
+        try {
+          const live = await callResponsesModel(primaryProvider, primaryModel, { ...publicResponsesRequest, input: dcrRequired ? gatewayProviderPrompt : publicResponsesRequest.input }, callerTenantId);
+          responseText = live.text;
+          providerUsage = { inputTokens: live.inputTokens, outputTokens: live.outputTokens };
+          req.altilUsageReported = live.usageReported;
+          req.altilProviderResponseId = live.responseId;
+          req.altilFinishReason = live.finishReason || 'stop';
+          dispatchSuccess = true;
+        } catch (error) {
+          recordModelEvent({ modelId: primaryModel.id, modelIdentifier: primaryModel.modelIdentifier, action: 'live_responses_failed', detail: String(error instanceof Error ? error.message : 'Responses request failed').slice(0, 220), source: primaryProvider.name });
+        }
+      }
+
 
 
       // OpenAI-compatible gateways (including OpenRouter and discovered free models) are called live.
@@ -7116,7 +7260,7 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
         const onResponseClose = () => { if (!res.writableEnded) { clientDisconnected = true; controller.abort(new Error('Client disconnected.')); } };
         res.once('close', onResponseClose);
         try {
-          const upstream = await new OpenRouterProviderAdapter({ apiKey: runtimeKey }).chatCompletions(forwardedRequest, controller.signal);
+          const upstream = await createProviderAdapter(primaryProvider, runtimeKey).chatCompletions(forwardedRequest, controller.signal);
           if (!upstream.ok) {
             clearTimeout(timeout); res.off('close', onResponseClose);
             return res.status(502).json({ error: { code: 'UPSTREAM_PROVIDER_ERROR', message: 'OpenRouter could not complete this request.' }, requestId });
@@ -7370,15 +7514,19 @@ if (trustedProxyCidrs.length) app.set('trust proxy', trustedProxyCidrs);
 
           let candidateText = '';
 
-          if (['openai', 'groq', 'openrouter', 'anthropic', 'gemini', 'ollama', 'deepseek', 'mistral', 'together', 'openai_compatible'].includes(candidateProvider.type)) {
-
-            const live = await callOpenAiCompatibleModel(candidateProvider, candidate, `Application: ${appRecord.name}\nCapability: ${chosenCapability}\n\n${dcrRequired ? gatewayProviderPrompt : candidateCompliance.sanitizedPrompt}`, Number(req.body?.max_tokens), 0, undefined, callerTenantId);
-
+          if (publicResponsesRequest) {
+            if (!['openai', 'openrouter', 'openai_compatible'].includes(candidateProvider.type)) continue;
+            const live = await callResponsesModel(candidateProvider, candidate, { ...publicResponsesRequest, input: dcrRequired ? gatewayProviderPrompt : publicResponsesRequest.input }, callerTenantId);
             candidateText = live.text;
-
             providerUsage = { inputTokens: live.inputTokens, outputTokens: live.outputTokens };
             req.altilUsageReported = live.usageReported;
-
+            req.altilProviderResponseId = live.responseId;
+            req.altilFinishReason = live.finishReason || 'stop';
+          } else if (['openai', 'groq', 'openrouter', 'anthropic', 'gemini', 'ollama', 'deepseek', 'mistral', 'together', 'openai_compatible'].includes(candidateProvider.type)) {
+            const live = await callOpenAiCompatibleModel(candidateProvider, candidate, `Application: ${appRecord.name}\nCapability: ${chosenCapability}\n\n${dcrRequired ? gatewayProviderPrompt : candidateCompliance.sanitizedPrompt}`, Number(req.body?.max_tokens), 0, undefined, callerTenantId);
+            candidateText = live.text;
+            providerUsage = { inputTokens: live.inputTokens, outputTokens: live.outputTokens };
+            req.altilUsageReported = live.usageReported;
           } else continue;
 
           if (!candidateText.trim()) continue;

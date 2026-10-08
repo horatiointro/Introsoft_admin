@@ -1,6 +1,11 @@
+export type OpenAiContentPart =
+  | Readonly<{ type: 'text' | 'input_text'; text: string }>
+  | Readonly<{ type: 'image_url'; image_url: Readonly<{ url: string; detail?: 'auto' | 'low' | 'high' }> }>
+  | Readonly<{ type: 'input_image'; image_url: string }>;
+
 export type OpenAiChatMessage = Readonly<{
   role: 'system' | 'user' | 'assistant';
-  content: string | readonly Readonly<{ type: 'text' | 'input_text'; text: string }>[];
+  content: string | readonly OpenAiContentPart[];
 }>;
 
 export type OpenAiChatRequest = Readonly<Record<string, unknown>> & Readonly<{
@@ -38,10 +43,23 @@ function validateMessage(value: unknown, index: number): OpenAiChatMessage {
   if (!Array.isArray(message.content)) throw new OpenAiRequestValidationError(`${param}.content`, 'Message content must be text.');
   const content = message.content.map((part, partIndex) => {
     const item = asObject(part);
-    if (!item || !['text', 'input_text'].includes(String(item.type)) || typeof item.text !== 'string') {
-      throw new OpenAiRequestValidationError(`${param}.content[${partIndex}]`, 'Only text content parts are currently supported.');
+    if (!item) throw new OpenAiRequestValidationError(`${param}.content[${partIndex}]`, 'Each content part must be an object.');
+    if (['text', 'input_text'].includes(String(item.type))) {
+      if (typeof item.text !== 'string' || item.text.length > 1_000_000) throw new OpenAiRequestValidationError(`${param}.content[${partIndex}].text`, 'Text content must be a string no longer than 1,000,000 characters.');
+      return Object.freeze({ type: item.type as 'text' | 'input_text', text: item.text });
     }
-    return Object.freeze({ type: item.type as 'text' | 'input_text', text: item.text });
+    if (item.type === 'image_url') {
+      const image = asObject(item.image_url);
+      if (!image || typeof image.url !== 'string' || !image.url.trim() || image.url.length > 4_000_000 || (image.detail !== undefined && !['auto', 'low', 'high'].includes(String(image.detail)))) {
+        throw new OpenAiRequestValidationError(`${param}.content[${partIndex}].image_url`, 'image_url requires a bounded URL or data reference and an optional detail value.');
+      }
+      return Object.freeze({ type: 'image_url' as const, image_url: Object.freeze({ url: image.url, ...(image.detail ? { detail: image.detail as 'auto' | 'low' | 'high' } : {}) }) });
+    }
+    if (item.type === 'input_image') {
+      if (typeof item.image_url !== 'string' || !item.image_url.trim() || item.image_url.length > 4_000_000) throw new OpenAiRequestValidationError(`${param}.content[${partIndex}].image_url`, 'input_image requires a bounded image URL or data reference.');
+      return Object.freeze({ type: 'input_image' as const, image_url: item.image_url });
+    }
+    throw new OpenAiRequestValidationError(`${param}.content[${partIndex}]`, 'Unsupported content modality. Use text, input_text, image_url, or input_image.');
   });
   return Object.freeze({ role, content: Object.freeze(content) });
 }
@@ -102,7 +120,7 @@ export function toOpenRouterChatRequest(input: {
     role: message.role,
     content: typeof message.content === 'string'
       ? input.sanitizeText(message.content)
-      : message.content.map(part => ({ ...part, text: input.sanitizeText(part.text) })),
+      : message.content.map(part => (part.type === 'text' || part.type === 'input_text' ? { ...part, text: input.sanitizeText(part.text) } : part)),
   }));
   const forwarded: Record<string, unknown> = { model: input.modelId, messages };
   for (const [key, value] of Object.entries(input.request)) {

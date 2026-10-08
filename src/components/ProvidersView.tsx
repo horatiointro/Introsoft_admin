@@ -31,10 +31,13 @@ import {
   HelpCircle,
   Copy
 } from 'lucide-react';
-import { AIProvider, ProviderTestResult, ProviderType } from '../types';
+import { AIProvider, Customer, ProviderTestResult, ProviderType } from '../types';
 
 interface ProvidersViewProps {
   providers: AIProvider[];
+  customers?: Customer[];
+  globalScope?: boolean;
+  organizationId?: string | null;
   onAddProvider: (provider: Partial<AIProvider> & { autoProvisionModels?: boolean }) => void;
   onUpdateProvider: (id: string, provider: Partial<AIProvider>) => Promise<void>;
   onDeleteProvider: (id: string) => void;
@@ -42,16 +45,20 @@ interface ProvidersViewProps {
   onViewTelemetry?: (providerId: string) => void;
 }
 
-type ProviderAccountRow = { id: string; providerId: string; providerName: string; label: string; keyPrefix: string; enabled: boolean; state: string; currentStatus: string; createdAt: string; lastTestedAt?: string; lastTestStatus?: string; lastTestMessage?: string; requests: number; tokens: number; testedModels: number; availableModels: string[]; verifiedModels?: string[]; allowedModels?: string[]; defaultModelIdentifier?: string; discoveredModelCount?: number; discoveryStatus?: string; discoveredModels?: Array<{ id: string; name?: string; capabilities?: string[]; provenance?: string }> };
+type ProviderAccountRow = { id: string; providerId: string; providerName: string; label: string; keyPrefix: string; enabled: boolean; state: string; currentStatus: string; createdAt: string; lastTestedAt?: string; lastTestStatus?: string; lastTestMessage?: string; requests: number; tokens: number; testedModels: number; availableModels: string[]; verifiedModels?: string[]; allowedModels?: string[]; defaultModelIdentifier?: string; discoveredModelCount?: number; discoveryStatus?: string; ownerType?: 'ALTIL_MANAGED' | 'CUSTOMER_MANAGED'; ownerId?: string; byokOnly?: boolean; discoveredModels?: Array<{ id: string; name?: string; capabilities?: string[]; provenance?: string }> };
 const API_BASE = `${import.meta.env.BASE_URL}api/v1`;
-const ProviderAccountsPanel: React.FC<{ providers: AIProvider[] }> = ({ providers }) => {
+const ProviderAccountsPanel: React.FC<{ providers: AIProvider[]; customers?: Customer[]; globalScope?: boolean; organizationId?: string | null }> = ({ providers, customers = [], globalScope = false, organizationId }) => {
   const [accounts, setAccounts] = useState<ProviderAccountRow[]>([]);
   const [label, setLabel] = useState(''); const [apiKey, setApiKey] = useState(''); const [providerId, setProviderId] = useState(providers.find(p => p.type === 'openrouter')?.id || providers[0]?.id || '');
+  const [ownerType, setOwnerType] = useState<'ALTIL_MANAGED' | 'CUSTOMER_MANAGED'>(globalScope ? 'ALTIL_MANAGED' : 'CUSTOMER_MANAGED');
+  const [ownerId, setOwnerId] = useState(organizationId || customers[0]?.id || ''); const [byokOnly, setByokOnly] = useState(!globalScope);
   const [busy, setBusy] = useState(false); const [notice, setNotice] = useState(''); const [noticeTone, setNoticeTone] = useState<'success' | 'error'>('success');
   const load = async () => { const response = await apiFetch(`${API_BASE}/provider-accounts`); if (response.ok) setAccounts(await response.json()); };
   useEffect(() => { void load(); }, []);
+  useEffect(() => { if (!ownerId && (organizationId || customers[0]?.id)) setOwnerId(organizationId || customers[0]?.id || ''); }, [customers, organizationId, ownerId]);
+  useEffect(() => { if (!globalScope) { setOwnerType('CUSTOMER_MANAGED'); if (organizationId) setOwnerId(organizationId); setByokOnly(true); } }, [globalScope, organizationId]);
   const request = async (url: string, method = 'POST', body?: unknown, failurePrefix = '') => { setBusy(true); setNotice(''); try { const response = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }); const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Provider account action failed.'); setNoticeTone('success'); setNotice(result.message || 'Provider account action succeeded.'); await load(); return result; } catch (error) { setNoticeTone('error'); setNotice(`${failurePrefix}${error instanceof Error ? error.message : 'Provider account action failed.'}`); } finally { setBusy(false); } };
-  const add = async (event: React.FormEvent) => { event.preventDefault(); const result = await request(`${API_BASE}/provider-accounts`, 'POST', { providerId, label, apiKey }); if (result?.id) { setApiKey(''); setLabel(''); const checked = await request(`${API_BASE}/provider-accounts/${result.id}/test`, 'POST', undefined, 'Credential encrypted and stored, but live validation failed: '); if (checked?.ok) { setNoticeTone('success'); setNotice('Credential encrypted, stored, and live validation passed. This account is ready for routing.'); } } };
+  const add = async (event: React.FormEvent) => { event.preventDefault(); const result = await request(`${API_BASE}/provider-accounts`, 'POST', { providerId, label, apiKey, ownerType, ...(ownerType === 'CUSTOMER_MANAGED' ? { ownerId, byokOnly } : {}) }); if (result?.id) { setApiKey(''); setLabel(''); const checked = await request(`${API_BASE}/provider-accounts/${result.id}/test`, 'POST', undefined, 'Credential encrypted and stored, but live validation failed: '); if (checked?.ok) { setNoticeTone('success'); setNotice('Credential encrypted, stored, and live validation passed. This account is ready for routing.'); } } };
   return <section className="space-y-5">
     <div className="grid gap-4 xl:grid-cols-[.8fr_1.2fr]">
       <form onSubmit={add} className="rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[.07] to-indigo-400/[.04] p-5">
@@ -59,11 +66,13 @@ const ProviderAccountsPanel: React.FC<{ providers: AIProvider[] }> = ({ provider
         <label className="mt-5 block text-xs text-slate-400">Provider<select value={providerId} onChange={e => setProviderId(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 text-sm text-white">{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         <label className="mt-3 block text-xs text-slate-400">Account label<input required value={label} onChange={e => setLabel(e.target.value)} placeholder="OpenRouter main account" className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 text-sm text-white"/></label>
         <label className="mt-3 block text-xs text-slate-400">API key<input required type="password" autoComplete="new-password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Paste provider key" className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 font-mono text-sm text-white"/></label>
+        {globalScope && <label className="mt-3 block text-xs text-slate-400">Ownership<select value={ownerType} onChange={e => { const next = e.target.value as 'ALTIL_MANAGED' | 'CUSTOMER_MANAGED'; setOwnerType(next); setByokOnly(next === 'CUSTOMER_MANAGED'); }} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 text-sm text-white"><option value="ALTIL_MANAGED">ALTIL managed</option><option value="CUSTOMER_MANAGED">Customer managed (BYOK)</option></select></label>}
+        {ownerType === 'CUSTOMER_MANAGED' && <><label className="mt-3 block text-xs text-slate-400">Company scope<select required value={ownerId} onChange={e => setOwnerId(e.target.value)} className="mt-1 w-full rounded-xl border border-white/10 bg-[#0b111a] p-3 text-sm text-white"><option value="">Select a company</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label><label className="mt-3 flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={byokOnly} onChange={e => setByokOnly(e.target.checked)} />BYOK only — never fall back to an ALTIL-managed credential</label></>}
         <button disabled={busy} className="mt-4 w-full rounded-xl bg-cyan-200 px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy?'Saving and testing…':'Encrypt, save & test account'}</button>{notice&&<div className={`mt-3 rounded-xl border p-3 text-xs ${noticeTone==='error'?'border-red-400/30 bg-red-500/10 text-red-200':'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'}`}>{notice}</div>}
       </form>
       <div className="rounded-2xl border border-white/10 bg-[#0e141d] p-5"><div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold text-white">Model access roster</h2><p className="mt-1 text-xs text-slate-500">Accounts become routable only after credential and inference checks pass.</p></div><span className="rounded-full border border-cyan-200/10 bg-cyan-100/[.05] px-3 py-1 text-xs text-cyan-100">{accounts.filter(a=>a.enabled&&a.state==='active'&&a.lastTestStatus==='passed'&&a.lastTestedAt&&Date.now()-Date.parse(a.lastTestedAt)<24*60*60*1000).length} ready</span></div>
         <div className="mt-4 space-y-3">{accounts.map(account=><article key={account.id} className="rounded-xl border border-white/[.08] bg-white/[.025] p-4"><div className="flex flex-wrap items-center gap-3"><div className={`grid h-10 w-10 place-items-center rounded-xl ${account.currentStatus==='online'?'bg-emerald-300/10 text-emerald-200':'bg-amber-300/10 text-amber-200'}`}>{account.currentStatus==='online'?<CheckCircle2 size={18}/>:<Key size={18}/>}</div><div className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{account.label}</b><span className="text-[11px] text-slate-500">{account.providerName} · <code>{account.keyPrefix}</code></span></div><span className={`rounded-full px-2.5 py-1 text-[10px] uppercase ${account.currentStatus==='online'?'bg-emerald-300/10 text-emerald-200':account.currentStatus==='paused'?'bg-slate-300/10 text-slate-300':'bg-amber-300/10 text-amber-100'}`}>{account.currentStatus.replace('_',' ')}</span></div>
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Requests',account.requests],['Tokens',account.tokens],['Verified models',account.testedModels],['Available models',account.availableModels.length]].map(([k,v])=><div key={k} className="rounded-lg bg-black/20 p-2"><small className="block text-[9px] uppercase tracking-wider text-slate-500">{k}</small><b className="mt-1 block text-sm text-slate-200">{v}</b></div>)}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span className="rounded border border-white/10 px-2 py-1">{account.ownerType === 'CUSTOMER_MANAGED' ? `Customer managed${account.ownerId ? ` · ${account.ownerId}` : ''}` : 'ALTIL managed'}</span>{account.ownerType === 'CUSTOMER_MANAGED' && account.byokOnly && <span className="rounded border border-amber-300/20 bg-amber-300/[.06] px-2 py-1 text-amber-200">BYOK only</span>}</div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[['Requests',account.requests],['Tokens',account.tokens],['Verified models',account.testedModels],['Available models',account.availableModels.length]].map(([k,v])=><div key={k} className="rounded-lg bg-black/20 p-2"><small className="block text-[9px] uppercase tracking-wider text-slate-500">{k}</small><b className="mt-1 block text-sm text-slate-200">{v}</b></div>)}</div>
           <div className="mt-3"><div className="mb-2 text-[9px] uppercase tracking-wider text-slate-500">Tested model routes on this account</div><div className="flex flex-wrap gap-1.5">{account.availableModels.map(model=><span key={model} className="rounded-md border border-emerald-200/10 bg-emerald-100/[.035] px-2 py-1 font-mono text-[9px] text-emerald-100">{model}</span>)}{!account.availableModels.length&&<span className="text-[10px] text-slate-600">No tested model routes yet</span>}</div></div>
           {!!account.discoveredModels?.length && <div className="mt-3"><div className="mb-2 flex items-center gap-2 text-[9px] uppercase tracking-wider text-slate-500"><span>Live discovered catalogue</span><span className="rounded border border-cyan-200/10 px-1.5 py-0.5 text-cyan-200">{account.discoveryStatus || 'LIVE'}</span></div><div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">{account.discoveredModels.map(model=><span key={model.id} title={model.capabilities?.join(', ') || 'Capabilities not advertised'} className="rounded-md border border-cyan-200/10 bg-cyan-100/[.035] px-2 py-1 font-mono text-[9px] text-cyan-100">{model.name || model.id}</span>)}</div><div className="mt-1 text-[9px] text-slate-600">Returned by the provider; only verified routes can be selected or used.</div></div>}
           <div className="mt-3 text-[10px] text-slate-500">{account.lastTestedAt ? <>Last live check {new Date(account.lastTestedAt).toLocaleString()} · {account.lastTestStatus} · {account.lastTestMessage}</> : 'No live connection test has completed yet.'}</div>
@@ -165,6 +174,9 @@ const PROVIDER_PRESETS = [
 
 export const ProvidersView: React.FC<ProvidersViewProps> = ({
   providers,
+  customers,
+  globalScope,
+  organizationId,
   onAddProvider,
   onUpdateProvider,
   onDeleteProvider,
@@ -356,7 +368,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({
         </div>
       </div>
 
-      {accountsOpen ? <ProviderAccountsPanel providers={providers}/> : <>
+      {accountsOpen ? <ProviderAccountsPanel providers={providers} customers={customers} globalScope={globalScope} organizationId={organizationId}/> : <>
 
       {/* Filter and Search Bar */}
       <div className="bg-[#111111] border border-[#222222] rounded p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
